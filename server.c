@@ -19,7 +19,11 @@ int main(int argc, char **argv) {
 	// effettua il parsing del file di configurazione riempiendo i campi della struttura
 	struct serv_params run_params;
 	memset(&run_params, 0, sizeof(struct serv_params)); // per sicurezza azzero tutto
-	parse_config(&run_params);
+	if(parse_config(&run_params) == -1) {
+		// ho avuto un errore, perciò tramite errno scrivo l'errore nel file di log
+		// TODO: logging
+		;
+	}
 
 	// stampo tutti i campi
 	printf("thread pool size: %ld\n", run_params.thread_pool);

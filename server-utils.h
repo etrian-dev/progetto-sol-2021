@@ -44,4 +44,13 @@ int rialloca_buffer(char **buf, size_t newsz);
 // Funzione per convertire una stringa s in un long int
 int isNumber(const char* s, long* n);
 
+// Funzione per effettuare il logging: prende come parametri
+// 1) il file descriptor (deve essere già aperto in scrittura) del file di log
+// 2) il codice di errore (errno)
+// 3) la stringa da stampare nel file (null-terminated)
+// La funzione ritorna:
+// 0 se ha successo
+// -1 se riscontra un errore (settato errno)
+int log(int log_fd, int errcode, char *message);
+
 #endif

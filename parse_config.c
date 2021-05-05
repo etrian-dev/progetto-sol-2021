@@ -24,40 +24,36 @@ int parse_config(struct serv_params *params) {
 	// apro il file di configurazione in lettura, usando il path definito nell'header server-utils.h
 	FILE *conf_fp = NULL;
 	if((conf_fp = fopen(CONF_PATH, "r")) == NULL) {
-		// errore nell'apertura del file
-		// TODO: scrittura nel file di log
+		// errore nell'apertura del file, settato errno
 		return -1;
 	}
 
 	// alloco un buffer per la lettura
 	char *buf = malloc(BUF_BASESZ * sizeof(char));
 	if(!buf) {
-		// errore nell'allocazione di memoria
-		// TODO: scrittura nel file di log
+		// errore nell'allocazione di memoria, settato errno
+		// salvo errno perché potrebbe essere alterato da errori di cleanup
+		int errno_saved = errno;
 		// chiusura del file di configurazione prima di ritornare
 		cleanup(conf_fp, NULL);
+		// ripristino errno prima di ritornare
+		errno = errno_saved;
 		return -1;
 	}
 	int buf_sz = BUF_BASESZ; // questa variabile manterrà la dimensione del buffer
 
 	// parsing del file formattato secondo come specificato nella relazione
 	while(feof(conf_fp) == 0) {
-
-		// se serve
-		/*if(rialloca_buffer(&buf, buf_sz * 2) == -1) {
-			// errore nella riallocazione del buffer
-			// TODO: scrittura nel file di log
-			cleanup(
-			return -1;
-		}*/
-
 		// leggo nel buffer una riga del file
 		if(fgets(buf, buf_sz, conf_fp) == NULL) {
 			if(feof(conf_fp) != 0) {
-				// errore nella lettura del file di config
-				// TODO: scrittura nel file di log
+				// errore nella lettura del file di config, serttato errno
+				// salvo errno perché potrebbe essere alterato da errori di cleanup
+				int errno_saved = errno;
 				// libero buffer e chiudo il file prima di ritornare
 				cleanup(conf_fp, buf);
+				// ripristino errno prima di ritornare
+				errno = errno_saved;
 				return -1;
 			}
 			// altrimenti vuol dire che è stato raggiunto EOF, per cui uscirà dal ciclo
@@ -77,9 +73,7 @@ int parse_config(struct serv_params *params) {
 				params->thread_pool = tpool;
 			}
 			else {
-				// errore di conversione
-				// TODO: scrittura nel file di log
-				// setto ad un valore di default
+				// errore di conversione, setto ad un valore di default
 				params->thread_pool = TPOOL_DFL;
 			}
 		}
@@ -91,9 +85,7 @@ int parse_config(struct serv_params *params) {
 				params->max_memsz = memsz;
 			}
 			else {
-				// errore di conversione
-				// TODO: scrittura nel file di log
-				// setto ad un valore di default
+				// errore di conversione, setto ad un valore di default
 				params->max_memsz = MAXMEM_DFL;
 			}
 		}
@@ -105,9 +97,7 @@ int parse_config(struct serv_params *params) {
 				params->max_fcount = fcount;
 			}
 			else {
-				// errore di conversione
-				// TODO: scrittura nel file di log
-				// setto ad un valore di default
+				// errore di conversione, setto ad un valore di default
 				params->max_fcount = MAXFILES_DFL;
 			}
 		}
@@ -115,9 +105,7 @@ int parse_config(struct serv_params *params) {
 			// non devo convertire niente, ma devo duplicare la stringa perché verrà sovrascritta
 			params->sock_path = strndup(value, strlen(value));
 			if(!(params->sock_path)) {
-				// errore nella duplicazione della stringa
-				// TODO: scrittura nel file di log
-				// scrivo il valore di default
+				// errore nella duplicazione della stringa, scrivo il valore di default
 				strncpy(params->sock_path, SOCK_PATH_DFL, DFL_PATHLEN);
 				// safe, se assumo di aver definito bene le macro
 			}
@@ -126,9 +114,7 @@ int parse_config(struct serv_params *params) {
 			// non devo convertire niente, ma devo duplicare la stringa perché verrà sovrascritta
 			params->log_path = strndup(value, strlen(value));
 			if(!(params->log_path)) {
-				// errore nella duplicazione della stringa
-				// TODO: scrittura nel file di log
-				// scrivo il valore di default
+				// errore nella duplicazione della stringa, scrivo il valore di default
 				strncpy(params->log_path, LOG_PATH_DFL, DFL_PATHLEN);
 				// safe, se assumo di aver definito bene le macro
 			}
