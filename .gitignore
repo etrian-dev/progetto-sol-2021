@@ -1,0 +1,5 @@
+# ignora eseguibili, file di config, file oggetto, file odt etc...
+*.out
+*.o
+config.txt
+relazione.odt
