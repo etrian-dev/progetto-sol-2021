@@ -14,13 +14,16 @@
 #include <errno.h>
 #include <assert.h>
 
+// funzione di cleanup: libera memoria e chiude il file di configurazione
+void cleanup(FILE *fp, char *buf); // entrambi gli argomenti possono essere NULL
+
 // Questo file contiene l'implementazione della funzione che effettua il parsing del file
 // di configurazione "config.txt" e riempe una struttura contenente tutti i parametri
 // del server settati opportunamente
 int parse_config(struct serv_params *params) {
 	// apro il file di configurazione in lettura, usando il path definito nell'header server-utils.h
-	int conf_fd = -1;
-	if((conf_fd = open(CONF_PATH, O_RDONLY)) == -1) {
+	FILE *conf_fp = NULL;
+	if((conf_fp = fopen(CONF_PATH, "r")) == NULL) {
 		// errore nell'apertura del file
 		// TODO: scrittura nel file di log
 		return -1;
@@ -31,20 +34,129 @@ int parse_config(struct serv_params *params) {
 	if(!buf) {
 		// errore nell'allocazione di memoria
 		// TODO: scrittura nel file di log
+		// chiusura del file di configurazione prima di ritornare
+		cleanup(conf_fp, NULL);
 		return -1;
 	}
 	int buf_sz = BUF_BASESZ; // questa variabile manterrà la dimensione del buffer
 
-	int bytes_read = 0;
-	// parsing secondo il formato specificato
-	while((bytes_read = read(conf_fd, buf, buf_sz)) == -1) { // TODO: readn?
-		if(rialloca_buffer(&buf, buf_sz * 2) == -1) {
+	// parsing del file formattato secondo come specificato nella relazione
+	while(feof(conf_fp) == 0) {
+
+		// se serve
+		/*if(rialloca_buffer(&buf, buf_sz * 2) == -1) {
 			// errore nella riallocazione del buffer
 			// TODO: scrittura nel file di log
-			// TODO: cleanup function
+			cleanup(
 			return -1;
+		}*/
+
+		// leggo nel buffer una riga del file
+		if(fgets(buf, buf_sz, conf_fp) == NULL) {
+			if(feof(conf_fp) != 0) {
+				// errore nella lettura del file di config
+				// TODO: scrittura nel file di log
+				// libero buffer e chiudo il file prima di ritornare
+				cleanup(conf_fp, buf);
+				return -1;
+			}
+			// altrimenti vuol dire che è stato raggiunto EOF, per cui uscirà dal ciclo
+			// testando di nuovo la condizione
+			continue;
+		}
+
+		// ho ottenuto la linea: la tokenizzo
+		char *stat = NULL;
+		char *token = strtok_r(buf, "\t", &stat); // i token sono separati da un tab
+		char *value = strtok_r(NULL, "\n", &stat);
+		if(value && strcmp(token, TPOOLSIZE) == 0) {
+			// converto la stringa in un numero usando una funzione di utilità
+			long tpool;
+			if(isNumber(value, &tpool) == 0 && tpool > 0) {
+				// la conversione ha avuto successo, quindi scrivo il valore del parametro
+				params->thread_pool = tpool;
+			}
+			else {
+				// errore di conversione
+				// TODO: scrittura nel file di log
+				// setto ad un valore di default
+				params->thread_pool = TPOOL_DFL;
+			}
+		}
+		else if(value && strcmp(token, MAXMEM) == 0) {
+			// converto la stringa in un numero usando una funzione di utilità
+			long memsz;
+			if(isNumber(value, &memsz) == 0 && memsz > 0) {
+				// la conversione ha avuto successo, quindi scrivo il valore del parametro
+				params->max_memsz = memsz;
+			}
+			else {
+				// errore di conversione
+				// TODO: scrittura nel file di log
+				// setto ad un valore di default
+				params->max_memsz = MAXMEM_DFL;
+			}
+		}
+		else if(value && strcmp(token, MAXFILES) == 0) {
+			// converto la stringa in un numero usando una funzione di utilità
+			long fcount;
+			if(isNumber(value, &fcount) == 0 && fcount > 0) {
+				// la conversione ha avuto successo, quindi scrivo il valore del parametro
+				params->max_fcount = fcount;
+			}
+			else {
+				// errore di conversione
+				// TODO: scrittura nel file di log
+				// setto ad un valore di default
+				params->max_fcount = MAXFILES_DFL;
+			}
+		}
+		else if(value && strcmp(token, SOCK_PATH) == 0) {
+			// non devo convertire niente, ma devo duplicare la stringa perché verrà sovrascritta
+			params->sock_path = strndup(value, strlen(value));
+			if(!(params->sock_path)) {
+				// errore nella duplicazione della stringa
+				// TODO: scrittura nel file di log
+				// scrivo il valore di default
+				strncpy(params->sock_path, SOCK_PATH_DFL, DFL_PATHLEN);
+				// safe, se assumo di aver definito bene le macro
+			}
+		}
+		else if(value && strcmp(token, LOG_PATH) == 0) {
+			// non devo convertire niente, ma devo duplicare la stringa perché verrà sovrascritta
+			params->log_path = strndup(value, strlen(value));
+			if(!(params->log_path)) {
+				// errore nella duplicazione della stringa
+				// TODO: scrittura nel file di log
+				// scrivo il valore di default
+				strncpy(params->log_path, LOG_PATH_DFL, DFL_PATHLEN);
+				// safe, se assumo di aver definito bene le macro
+			}
+		}
+		else {
+			// campo non riconosciuto o valore non valido
+			// non ritorno un errore perché voglio continuare a leggere altri eventuali
+			// campi validi del file di configurazione
+			// TODO: scrittura nel file di log
+			;
 		}
 	}
+	// file di configurazione parsato senza errori e i campi sono stati scritti nella struttura
+
+	// chiudo il file e libero il buffer
+	cleanup(conf_fp, buf);
 
 	return 0;
+}
+
+// funzione di cleanup: libera memoria e chiude il file di configurazione
+void cleanup(FILE *fp, char *buf) {
+	if(buf) {
+		free(buf);
+	}
+	if(fp && fclose(fp) != 0) {
+		// errore nella chiusura del file
+		// TODO: scrittura nel file di log
+		;
+	}
 }

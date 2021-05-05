@@ -16,7 +16,17 @@
 
 // TODO: add brief description of the function
 int main(int argc, char **argv) {
-	// effettua il parsing del file di configurazione
-	parse_config(CONFIG_FILE);
+	// effettua il parsing del file di configurazione riempiendo i campi della struttura
+	struct serv_params run_params;
+	memset(&run_params, 0, sizeof(struct serv_params)); // per sicurezza azzero tutto
+	parse_config(&run_params);
+
+	// stampo tutti i campi
+	printf("thread pool size: %ld\n", run_params.thread_pool);
+	printf("max memory size: %ld\n", run_params.max_memsz);
+	printf("max file count: %ld\n", run_params.max_fcount);
+	printf("socket path: %s\n", run_params.sock_path);
+	printf("log file path: %s\n", run_params.log_path);
+
 	return 0;
 }

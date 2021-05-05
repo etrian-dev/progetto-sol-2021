@@ -26,3 +26,23 @@ int rialloca_buffer(char **buf, size_t newsz) {
 	*buf = newbuf;
 	return 0;
 }
+
+// Funzione per convertire una stringa s in un long int
+// isNumber ritorna
+//	0: ok
+//	1: non e' un numbero
+//	2: overflow/underflow
+//
+int isNumber(const char* s, long* n) {
+  if (s==NULL) return 1;
+  if (strlen(s)==0) return 1;
+  char* e = NULL;
+  errno=0;
+  long val = strtol(s, &e, 10);
+  if (errno == ERANGE) return 2;    // overflow
+  if (e != NULL && *e == (char)0) {
+    *n = val;
+    return 0;   // successo
+  }
+  return 1;   // non e' un numero
+}
