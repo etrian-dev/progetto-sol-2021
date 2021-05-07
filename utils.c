@@ -1,5 +1,5 @@
 // header progetto
-#include <server-utils.h>
+#include <utils.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
@@ -45,4 +45,13 @@ int isNumber(const char* s, long* n) {
     return 0;   // successo
   }
   return 1;   // non e' un numero
+}
+
+// duplico la stringa
+int string_dup(char *dest, const char *src) {
+    if((dest = strndup(src, strlen(src) + 1) == NULL) {
+	// errore di duplicazione della stringa, riporto il codice di errore al chiamante
+	return -1;
+    }
+    return 0;
 }

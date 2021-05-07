@@ -35,15 +35,6 @@ struct serv_params {
 // funzione per il parsing del file di configurazione
 int parse_config(struct serv_params *params);
 
-// definisco una dimensione base dei buffer
-#define BUF_BASESZ 100
-
-// funzione di riallocazione del buffer a newsz.
-// Ritorna 0 se ha successo, -1 se fallisce
-int rialloca_buffer(char **buf, size_t newsz);
-// Funzione per convertire una stringa s in un long int
-int isNumber(const char* s, long* n);
-
 // Funzione per effettuare il logging: prende come parametri
 // 1) il file descriptor (deve essere già aperto in scrittura) del file di log
 // 2) il codice di errore (errno)
