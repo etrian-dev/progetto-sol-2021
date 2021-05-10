@@ -5,8 +5,10 @@
 
 #include <stddef.h> // per il tipo size_t
 
-// definisco il path del file di configurazione come macro
-#define CONF_PATH "./config.txt"
+// definisco il path di default del file di configurazione come macro
+#define CONF_PATH_DFL "./config.txt"
+// definisco i permessi del file di log se devo crearlo
+#define ALL_READ S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH
 
 // struttura contenente i parametri del server
 struct serv_params {
@@ -33,7 +35,7 @@ struct serv_params {
 #define DFL_PATHLEN 50
 
 // funzione per il parsing del file di configurazione
-int parse_config(struct serv_params *params);
+int parse_config(struct serv_params *params, const char *conf_fpath);
 
 // Funzione per effettuare il logging: prende come parametri
 // 1) il file descriptor (deve essere già aperto in scrittura) del file di log

@@ -2,6 +2,8 @@
 #ifndef UTILS_H_INCLUDED
 #define UTILS_H_INCLUDED
 
+#include <stddef.h> // for size_t
+
 // definisco una dimensione base dei buffer
 #define BUF_BASESZ 100
 

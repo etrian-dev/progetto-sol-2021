@@ -28,15 +28,14 @@ int rialloca_buffer(char **buf, size_t newsz) {
   return 0;
 }
 // identica alla precedente, ma prende in ingresso un array di stringhe da ridimensionare
-int rialloca_arr(char ***arr, size_t newlen) {
+/*int rialloca_arr(char ***arr, size_t newlen) {
   char *newarr = realloc(*arr, newsz);
   if(!newarr) {
-    // errore di allocazione
     return -1;
   }
   *arr = newarr;
   return 0;
-}
+}*/
 
 // Funzione per convertire una stringa s in un long int
 // isNumber ritorna
@@ -60,9 +59,9 @@ int isNumber(const char* s, long* n) {
 
 // duplico la stringa
 int string_dup(char *dest, const char *src) {
-    if((dest = strndup(src, strlen(src) + 1) == NULL) {
-	// errore di duplicazione della stringa, riporto il codice di errore al chiamante
-	return -1;
-    }
-    return 0;
+  if((dest = strndup(src, strlen(src) + 1)) == NULL) {
+    // errore di duplicazione della stringa, riporto il codice di errore al chiamante
+    return -1;
+  }
+  return 0;
 }

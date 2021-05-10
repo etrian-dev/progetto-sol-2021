@@ -9,5 +9,5 @@ CLIENT = client.out
 
 .PHONY: all clean cleanall
 
-$(SERVER): parse_config.c server.c utilities.c
+$(SERVER): parse_config.c server.c utils.c logging.c
 	$(CC) $(CFLAGS) $(HEADERS) -o $@ $^

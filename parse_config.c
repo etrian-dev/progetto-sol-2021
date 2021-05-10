@@ -1,4 +1,5 @@
 // header progetto
+#include <utils.h>
 #include <server-utils.h>
 // multithreading headers
 #include <pthread.h>
@@ -20,10 +21,22 @@ void cleanup(FILE *fp, char *buf); // entrambi gli argomenti possono essere NULL
 // Questo file contiene l'implementazione della funzione che effettua il parsing del file
 // di configurazione "config.txt" e riempe una struttura contenente tutti i parametri
 // del server settati opportunamente
-int parse_config(struct serv_params *params) {
-	// apro il file di configurazione in lettura, usando il path definito nell'header server-utils.h
+int parse_config(struct serv_params *params, const char *conf_fpath) {
+	// Se è stato fornito un path per il file di configurazione lo leggo
+	// Altrimenti apro quello di default
 	FILE *conf_fp = NULL;
-	if((conf_fp = fopen(CONF_PATH, "r")) == NULL) {
+	if(conf_fpath) {
+		conf_fp = fopen(conf_fpath, "r");
+		if(!conf_fp) {
+			// errore nell'apertura del file: tento di aprire il file di configurazione di default
+			conf_fp = fopen(CONF_PATH_DFL, "r");
+		}
+	}
+	else {
+		conf_fp = fopen(CONF_PATH_DFL, "r");
+	}
+
+	if(!conf_fp) {
 		// errore nell'apertura del file, settato errno
 		return -1;
 	}
@@ -46,7 +59,7 @@ int parse_config(struct serv_params *params) {
 	while(feof(conf_fp) == 0) {
 		// leggo nel buffer una riga del file
 		if(fgets(buf, buf_sz, conf_fp) == NULL) {
-			if(feof(conf_fp) != 0) {
+			if(feof(conf_fp) == 0) {
 				// errore nella lettura del file di config, serttato errno
 				// salvo errno perché potrebbe essere alterato da errori di cleanup
 				int errno_saved = errno;
@@ -58,7 +71,7 @@ int parse_config(struct serv_params *params) {
 			}
 			// altrimenti vuol dire che è stato raggiunto EOF, per cui uscirà dal ciclo
 			// testando di nuovo la condizione
-			continue;
+			break;
 		}
 
 		// ho ottenuto la linea: la tokenizzo

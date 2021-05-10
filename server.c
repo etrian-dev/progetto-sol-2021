@@ -5,6 +5,8 @@
 #include <pthread.h>
 // system call headers
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -15,12 +17,24 @@
 #include <errno.h>
 #include <assert.h>
 
+// REMINDER: il file di configurazione alternativo (fs-config) è nella home directory
+
 // TODO: add brief description of the function
 int main(int argc, char **argv) {
 	// effettua il parsing del file di configurazione riempiendo i campi della struttura
 	struct serv_params run_params;
 	memset(&run_params, 0, sizeof(struct serv_params)); // per sicurezza azzero tutto
-	if(parse_config(&run_params) == -1) {
+
+	int parse_status;
+	// se ho specificato l'opzione -f al server leggo il file di configurazione da essa
+	if(argc == 3 && strncmp(argv[1], "-f", strlen(argv[1])) == 0) {
+		parse_status = parse_config(&run_params, argv[2]);
+	}
+	else {
+		parse_status = parse_config(&run_params, NULL);
+	}
+
+	if(parse_status == -1) {
 		// errore di parsing: lo riporto su standard output ed esco con tale codice di errore
 		int errcode = errno;
 		perror("Fallito il parsing del file di configurazione");
@@ -38,7 +52,7 @@ int main(int argc, char **argv) {
 	int logfile_fd;
 	// parsing completato con successo: apro il file di log
 	// in scrittura (append), creandolo se non esiste
-	if((logfile_fd = open(run_params.log_path, O_WRONLY|O_CREAT|O_APPEND)) == -1) {
+	if((logfile_fd = open(run_params.log_path, O_WRONLY|O_CREAT|O_APPEND, ALL_READ)) == -1) {
 		// errore nell'apertura o nella creazione del file di log. L'errore è riportato
 		// su standard output, ma il server continua l'esecuzione
 		perror("Impossibile creare o aprire il file di log");
@@ -54,7 +68,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	long int i;
+	/*long int i;
 	for(i = 0; i < run_params.thread_pool; i++) {
 		if(pthread_create(&workers[i], NULL, start_service, some_param) != 0) {
 			if(log(logfile_fd, errno, "Impossibile creare la threadpool") == -1) {
@@ -62,7 +76,7 @@ int main(int argc, char **argv) {
 			}
 			return 2;
 		}
-	}
+	}*/
 
 	return 0;
 }

@@ -1,4 +1,5 @@
 // header progetto
+#include <utils.h>
 #include <server-utils.h>
 // multithreading headers
 #include <pthread.h>
@@ -58,18 +59,18 @@ int log(int log_fd, int errcode, char *message) {
     size_t log_bufsz = BUF_BASESZ;
 
     // inizio la stringa con questo carattere
-    log_msg[0] = "[";
+    log_msg[0] = '[';
 
     // scrive nel buffer (a partire dalla posizione 1)
     // la data ed ora correnti (il buffer usato deve essere lungo almeno 26 caratteri)
-    if(ctime_r(time(NULL), log_msg + 1) == NULL) {
+    if(ctime_r(time(0), log_msg + 1) == NULL) {
 	// errore nella scrittura della data
 	return -1;
     }
     // ctime inserisce anche '\n' ed io lo sostituisco con ']'
     char *end_date = strrchr(log_msg, '\n');
     if(!end_date) {
-	*end_date = ']'
+	*end_date = ']';
     }
 
     // resize del buffer se necessario
@@ -118,7 +119,7 @@ int log(int log_fd, int errcode, char *message) {
 	if(strncat(log_msg, error_str, error_len + 1)) {
 	    // errore nella concatenazione
 	    free(log_msg);
-	    free(error_str);k
+	    free(error_str);
 	    return -1;
 	}
 	// libero questa stringa, dato che è stata concatenata
