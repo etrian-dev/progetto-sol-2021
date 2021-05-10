@@ -42,8 +42,27 @@ int main(int argc, char **argv) {
 		// errore nell'apertura o nella creazione del file di log. L'errore è riportato
 		// su standard output, ma il server continua l'esecuzione
 		perror("Impossibile creare o aprire il file di log");
+		return 1;
 	}
 
+	// creo la thread pool
+	pthread_t *workers = malloc(run_params.thread_pool * sizeof(pthread_t));
+	if(!workers) {
+		if(log(logfile_fd, errno, "Impossibile creare la threadpool") == -1) {
+			perror("Impossibile creare thread pool");
+		}
+		return 1;
+	}
+
+	long int i;
+	for(i = 0; i < run_params.thread_pool; i++) {
+		if(pthread_create(&workers[i], NULL, start_service, some_param) != 0) {
+			if(log(logfile_fd, errno, "Impossibile creare la threadpool") == -1) {
+				perror("Impossibile creare thread pool");
+			}
+			return 2;
+		}
+	}
 
 	return 0;
 }

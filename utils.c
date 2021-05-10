@@ -19,12 +19,23 @@
 // Questa funzione prova a riallocare un buffer ad una nuova dimensione passata come parametro
 // Ritorna 0 se ha successo, -1 se si sono verificati errori
 int rialloca_buffer(char **buf, size_t newsz) {
-	char *newbuf = realloc(*buf, newsz);
-	if(!newbuf) {
-		// errore di allocazione
-	}
-	*buf = newbuf;
-	return 0;
+  char *newbuf = realloc(*buf, newsz);
+  if(!newbuf) {
+    // errore di allocazione
+    return -1;
+  }
+  *buf = newbuf;
+  return 0;
+}
+// identica alla precedente, ma prende in ingresso un array di stringhe da ridimensionare
+int rialloca_arr(char ***arr, size_t newlen) {
+  char *newarr = realloc(*arr, newsz);
+  if(!newarr) {
+    // errore di allocazione
+    return -1;
+  }
+  *arr = newarr;
+  return 0;
 }
 
 // Funzione per convertire una stringa s in un long int

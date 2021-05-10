@@ -30,19 +30,22 @@ struct client_opts {
     short int help_on;                // default: 0 (non stampa il messaggio di help)
     char *fs_socket;                  // default: NULL
     char *dir_write;                  // default: NULL
-    int max_write;                    // default: -1 (interpretato come nessun limite)
-    char **write_arr;                 // default: NULL
+    long int max_write;               // default: -1 (interpretato come nessun limite)
+    char **write_list;                // default: NULL
     char *dir_swapout;                // default: NULL
-    char **read_arr;                  // default: NULL
-    int max_read;                     // default: -1 (interpretato come nessun limite)
+    char **read_list;                 // default: NULL
+    long int max_read;                // default: -1 (interpretato come nessun limite)
     char *dir_save_reads;             // default: NULL
     unsigned long rdelay;             // default: 0 (interpretato come numero di millisecondi)
-    char **lock_arr;                  // default: NULL
-    char **unlock_arr;                // default: NULL
-    char **rm_arr;                    // default: NULL
+    char **lock_list;                 // default: NULL
+    char **unlock_list;               // default: NULL
+    char **rm_list;                    // default: NULL
     short int prints_on;              // default: 0 (non stampa le operazioni su stdout)
 };
 
+// nargs è argc, args è argv del programma client: i parametri sono restituiti nella struttura
 int get_client_options(int nargs, char **args, struct client_opts *params);
+
+int process_filelist(char **files, char **args, int ipos);
 
 #endif

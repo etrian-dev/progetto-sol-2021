@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     struct client_opts options;
     memset(&options, 0, sizeof(struct client_opts)); // azzero per sicurezza
     if(get_client_options(argc, argv, &client_opts) == -1) {
-	// errore nel processare la lista di argomenti
+        // errore nel processare la lista di argomenti
     }
 
     return 0;
