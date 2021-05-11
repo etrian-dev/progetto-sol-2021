@@ -13,6 +13,7 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
+#include <stddef.h>
 
 // sorgente contenente varie funzioni di utilità
 
@@ -29,7 +30,7 @@ int rialloca_buffer(char **buf, size_t newsz) {
 }
 // identica alla precedente, ma prende in ingresso un array di stringhe da ridimensionare
 int rialloca_arr(char ***arr, size_t newlen) {
-  char *newarr = realloc(*arr, newsz);
+  char **newarr = realloc(*arr, newlen);
   if(!newarr) {
     // errore di allocazione
     return -1;
@@ -59,10 +60,10 @@ int isNumber(const char* s, long* n) {
 }
 
 // duplico la stringa
-int string_dup(char *dest, const char *src) {
-    if((dest = strndup(src, strlen(src) + 1) == NULL) {
-	// errore di duplicazione della stringa, riporto il codice di errore al chiamante
-	return -1;
-    }
-    return 0;
+int string_dup(char **dest, const char *src) {
+  if((*dest = strndup(src, strlen(src) + 1)) == NULL) {
+    // errore di duplicazione della stringa, riporto il codice di errore al chiamante
+    return -1;
+  }
+  return 0;
 }
