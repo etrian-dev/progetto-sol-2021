@@ -4,18 +4,9 @@
 #ifndef FS_API_H_DEFINED
 #define FS_API_H_DEFINED
 
-// hash table header
-#include "icl_hash.h"
 #include <stddef.h> // per size_t
 
 #define SOCK_PATH_MAXLEN 108 // per socket AF_UNIX è la massima lunghezza del path al socket
-
-// Un array è usato per gestire l'associazione socket file descriptor <=> client
-#define NCLIENTS_DFL 10 // inizialmente riserva spazio per 10 client
-struct clients {
-	char *sockname;    // assumo che tutti i client siano connessi allo stesso socket (≈ stesso server)
-	int *pair[2];      // ho un array di coppie (#client, #file descriptor del socket)
-}
 
 // definisco enum per flags dei file nel fileserver
 enum file_flags

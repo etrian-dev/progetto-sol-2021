@@ -1,18 +1,40 @@
 // header api
 #include <fs-api.h>
-// hash table header
-#include "icl_hash.h"
 // syscall headers
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 // std headers
 #include <time.h>
+#include <string.h>
 
 // file contenente l'implementazione della api di comunicazione tra file storage server ed i client
 
-// semplice funzione di confronto tra interi: -1 se a < b; 0 se a == b; 1 se a > b
-int cmp_int(void *a, void *b) { return (int)a - (int)b; }
+// nome del socket
+char *socket_name;
+
+int init_clients_info(char *soname) {
+    if((socket_name = strndup(soname, strlen(soname) + 1)) == NULL) {
+	// errore di allocazione
+	return -1;
+    }
+    return 0;
+}
+
+int update_clients_info(const int conn_fd) {
+    // collego lo standard input e standard output del client al socket conn_fd
+    if(dup2(conn_fd, 0) == -1 || dup2(conn_fd, 1) == -1) {
+	// errore nella duplicazione dei file descriptor
+	return -1;
+    }
+    // posso chiudere il fd della connessione, avendolo duplicato
+    if(close(conn_fd) == -1) {
+	// errore di chiusura del fd
+	return -1;
+    }
+    return 0;
+}
+
 
 // funzione di utilità per convertire msec in un delay specificato secondo timespec
 void get_delay(const int msec, struct timespec *delay) {
@@ -84,7 +106,20 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 	}
 	// Altrimenti la connessione ha avuto successo: effettuo delle operazioni prima di ritornare 0
 	else {
-
+	    if(!socket_name) {
+		// è il primo client che tenta di connettersi al server
+		// devo allocare memoria ed inserire il nome del socket
+		if(init_clients_info(sockname) == -1) {
+		    errno_saved = errno; // salvo l'errore
+		    close(conn_sock); // tento di chiudere il socket aperto
+		    errno = errno_saved;
+		    return -1;
+		}
+	    }
+	    // poi collego il client al socket sia per lettura che per scrittura e chiudo conn_sock
+	    if(update_clients_info(conn_sock) == -1) {
+		return -1;
+	    }
 	}
     } while(!term);
 

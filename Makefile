@@ -6,14 +6,13 @@ HEADERS = -I .
 
 SERVER = fs-server.out
 CLIENT = client.out
-API = libfs-api.so
 
-.PHONY: all clean cleanall
+.PHONY: all clean cleanall fs-api
 
-all: $(SERVER) $(API)
+all: $(SERVER) fs-api
 
 $(SERVER): parse_config.c server.c utils.c logging.c
 	$(CC) $(CFLAGS) $(HEADERS) -o $@ $^
 
-$(API): fs-api.c fs-api.h
-	$(CC) $(CFLAGS) -shared -fPIC -o $@ $<
+fs-api:
+	cd fs-api && $(MAKE)
