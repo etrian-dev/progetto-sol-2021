@@ -5,6 +5,7 @@
 #define FS_API_H_DEFINED
 
 #include <stddef.h> // per size_t
+#include <time.h>
 
 #define SOCK_PATH_MAXLEN 108 // per socket AF_UNIX è la massima lunghezza del path al socket
 
@@ -14,6 +15,9 @@ enum file_flags
 	O_CREATE = 0x1,
 	O_LOCK = 0x10
 };
+
+// nome del socket
+char *socket_name;
 
 // apre la connessione al socket sockname, su cui il server sta ascoltando
 int openConnection(const char *sockname, int msec, const struct timespec abstime);

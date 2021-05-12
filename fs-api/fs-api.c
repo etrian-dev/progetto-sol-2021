@@ -12,9 +12,6 @@
 
 // file contenente l'implementazione della api di comunicazione tra file storage server ed i client
 
-// nome del socket
-char *socket_name;
-
 int init_clients_info(const char *soname) {
     if((socket_name = strndup(soname, strlen(soname) + 1)) == NULL) {
 	// errore di allocazione
