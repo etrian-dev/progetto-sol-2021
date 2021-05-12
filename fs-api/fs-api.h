@@ -22,16 +22,16 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 int closeConnection(const char *sockname);
 
 // apre il file pathname (se presente nel server e solo per il client che la invia)
-int openFile(const char *pathname, int flags);
+//int openFile(const char *pathname, int flags);
 
 // invia al server la richiesta di lettura del file pathname
-int readFile(const char *pathname, void **buf, size_t *size);
+//int readFile(const char *pathname, void **buf, size_t *size);
 
 // invia al server la richiesta di scrittura del file pathname
 //int writeFile(const char *pathname, const char *dirname);
 
 // invia al server la richiesta di concatenare al file il buffer buf
-int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
+//int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
 
 // invia al server la richiesta di acquisire la mutua esclusione sul file pathname
 //int lockFile(const char *pathname);
@@ -40,7 +40,7 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
 //int unlockFile(const char *pathname);
 
 // invia al server la richiesta di chiusura del file pathname (solo per il client che la invia)
-int closeFile(const char *pathname);
+//int closeFile(const char *pathname);
 
 // invia al server la richiesta di rimozione del file dal server (solo se ha la lock su tale file)
 //int removeFile(const char *pathname);

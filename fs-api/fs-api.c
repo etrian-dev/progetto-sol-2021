@@ -4,16 +4,18 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <unistd.h>
 // std headers
 #include <time.h>
 #include <string.h>
+#include <errno.h>
 
 // file contenente l'implementazione della api di comunicazione tra file storage server ed i client
 
 // nome del socket
 char *socket_name;
 
-int init_clients_info(char *soname) {
+int init_clients_info(const char *soname) {
     if((socket_name = strndup(soname, strlen(soname) + 1)) == NULL) {
 	// errore di allocazione
 	return -1;
@@ -41,7 +43,7 @@ void get_delay(const int msec, struct timespec *delay) {
     // dato che il delay è specificato in ms devo convertirlo a ns per scriverlo in timespec
     // Se il delay in ms è troppo grande (>=1000) per essere convertito in ns provo a convertire in secondi
     // Se non gestissi questi due casi potrei avere overflow su tv_nsec
-    else if(msec >= 1000) {
+    if(msec >= 1000) {
 	delay->tv_sec = (time_t)(msec / 1000); // con la divisione intera ottengo il numero di secondi in msec ms
 	delay->tv_nsec = (msec % 1000) * 1000000; // il resto è convertito a ns e non posso avere overflow
     }
@@ -62,7 +64,7 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 
     // Il socket su cui connettersi è AF_UNIX e di tipo SOCK_STREAM
     int conn_sock;
-    if((conn_sock = socket(AF_UNIX, SOCK_STREAM, 0) == -1) {
+    if((conn_sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 	// errore nella creazione del socket: ritorno -1 ed errno sarà settato
 	return -1;
     }
@@ -86,7 +88,7 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 
 	// preparo la struttura per contenere l'indirizzo del socket
 	struct sockaddr_un address;
-	memset(address, 0, sizeof(struct sockaddr_un)); // azzero per sicurezza
+	memset(&address, 0, sizeof(struct sockaddr_un)); // azzero per sicurezza
 
 	address.sun_family = AF_UNIX;
 	strncpy(address.sun_path, sockname, SOCK_PATH_MAXLEN); // TODO: controllo errori
@@ -131,7 +133,7 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 
 // chiude la connessione a sockname
 int closeConnection(const char *sockname) {
-
+    return -1;
 }
 
 

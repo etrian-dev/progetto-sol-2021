@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
 
 	long int i;
 	for(i = 0; i < run_params.thread_pool; i++) {
-		if(pthread_create(&workers[i], NULL, start_service, some_param) != 0) {
+		if(pthread_create(&workers[i], NULL, work, NULL) != 0) {
 			if(log(logfile_fd, errno, "Impossibile creare la threadpool") == -1) {
 				perror("Impossibile creare thread pool");
 			}

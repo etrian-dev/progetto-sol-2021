@@ -17,6 +17,8 @@
 
 // sorgente contenente varie funzioni di utilità
 
+pthread_mutex_t mux = PTHREAD_MUTEX_INITIALIZER;
+
 // Questa funzione prova a riallocare un buffer ad una nuova dimensione passata come parametro
 // Ritorna 0 se ha successo, -1 se si sono verificati errori
 int rialloca_buffer(char **buf, size_t newsz) {

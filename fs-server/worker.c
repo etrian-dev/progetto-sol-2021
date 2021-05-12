@@ -20,5 +20,5 @@
 // worker thread
 
 void *work(void *queue) {
-
+    return NULL;
 }

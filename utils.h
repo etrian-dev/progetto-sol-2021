@@ -19,7 +19,7 @@ int isNumber(const char* s, long* n);
 int string_dup(char **dest, const char *src);
 
 // definisco un mutex per l'accesso alla coda
-pthread_mutex_t mux = PTHREAD_MUTEX_INITIALIZER;
+extern pthread_mutex_t mux;
 // definisco operazioni sulla coda concorrente
 // defines the Queue structure: the data field holds a string
 // and the next field a pointer to the next element in the queue
