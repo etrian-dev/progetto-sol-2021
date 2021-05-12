@@ -4,3 +4,5 @@ logging.c: writen nella scrittura nel file di log?
 
 Riguardo al file parse_config.c:
 Salvataggio/ripristino di errno va fatto ogni volta oppure lo sposto in cleanup()?
+
+API con tabella o pipe?
