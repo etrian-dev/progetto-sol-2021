@@ -11,3 +11,9 @@ CLIENT = client.out
 
 $(SERVER): parse_config.c server.c utils.c logging.c
 	$(CC) $(CFLAGS) $(HEADERS) -o $@ $^
+
+
+
+
+$(CLIENT): client.c client-utils.c utils.c
+	$(CC) $(CFLAGS) $(HEADERS) -o $@ $^

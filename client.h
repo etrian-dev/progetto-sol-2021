@@ -2,6 +2,8 @@
 #ifndef CLIENT_H_INCLUDED
 #define CLIENT_H_INCLUDED
 
+#include <stddef.h>
+
 // definizione delle opzioni riconosciute dal client
 // -h: stampa la lista di tutte le opzioni accettate
 // -f <fname>: specifica il nome del socket per la comunicazione con il server
@@ -22,7 +24,7 @@
 // -u <file1> [, <filen>]: lista di file su cui il client richiede il rilascio della mutua esclusione
 // -c <file1> [, <filen>]: lista di file da rimuovere dal server (se presenti)
 // -p: Stampa sullo standard output ogni operazione effettuata dal client
-#define CLIENT_OPSTRING ":hf:w:D:R::d:t:p"
+#define CLIENT_OPSTRING ":hf:w:D:R:d:t:p"
 // i due punti iniziali per distinguere tra opzione non riconosciuta e argomento mancante
 
 // definisco una struttura che conterrà i valori delle opzioni specificate
@@ -30,16 +32,16 @@ struct client_opts {
     short int help_on;                // default: 0 (non stampa il messaggio di help)
     char *fs_socket;                  // default: NULL
     char *dir_write;                  // default: NULL
-    long int max_write;               // default: -1 (interpretato come nessun limite)
+    long int max_write;               // default: 0 (interpretato come nessun limite)
     char **write_list;                // default: NULL
     char *dir_swapout;                // default: NULL
     char **read_list;                 // default: NULL
-    long int max_read;                // default: -1 (interpretato come nessun limite)
+    long int max_read;                // default: 0 (interpretato come nessun limite)
     char *dir_save_reads;             // default: NULL
-    unsigned long rdelay;             // default: 0 (interpretato come numero di millisecondi)
+    long int rdelay;                  // default: 0 (interpretato come numero di millisecondi)
     char **lock_list;                 // default: NULL
     char **unlock_list;               // default: NULL
-    char **rm_list;                    // default: NULL
+    char **rm_list;                   // default: NULL
     short int prints_on;              // default: 0 (non stampa le operazioni su stdout)
 };
 

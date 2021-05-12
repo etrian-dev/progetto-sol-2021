@@ -2,7 +2,7 @@
 #ifndef UTILS_H_INCLUDED
 #define UTILS_H_INCLUDED
 
-#include <stddef.h> // for size_t
+#include <stddef.h>
 
 // definisco una dimensione base dei buffer
 #define BUF_BASESZ 100
@@ -15,6 +15,6 @@ int rialloca_arr(char ***arr, size_t newlen);
 // Funzione per convertire una stringa s in un long int
 int isNumber(const char* s, long* n);
 // Funzione per la duplicazione di una stringa allocata sullo heap
-int string_dup(char *dest, const char *src);
+int string_dup(char **dest, const char *src);
 
 #endif
