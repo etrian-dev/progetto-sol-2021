@@ -68,3 +68,73 @@ int string_dup(char **dest, const char *src) {
   }
   return 0;
 }
+
+// funzione per aggiungere alla coda un elemento
+int enqueue(struct Queue **head, struct Queue **tail, const void *data, size_t size) {
+  // accesso in mutua esclusione alla coda
+  if(pthread_mutex_lock(&mux) != 0) {
+    // errore nell'acquisizione della lock sulla coda
+    return -1;
+  }
+
+	struct Queue *elem = malloc(sizeof(struct Queue));
+	if(!elem) {
+    // errore di allocazione
+    // rilascio la mutua esclusione prima di uscire
+    if(pthread_mutex_unlock(&mux) != 0) {
+      // errore nel rilascio della lock sulla coda
+      return -1;
+    }
+		return -1;
+	}
+	memcpy(elem->data_ptr, data, size);
+	elem->next = NULL;
+	if(*tail) {
+		(*tail)->next = elem;
+		*tail = elem;
+	}
+	else {
+		*head = elem;
+		*tail = elem;
+	}
+
+  // rilascio la mutua esclusione prima di uscire
+  if(pthread_mutex_unlock(&mux) != 0) {
+    // errore nel rilascio della lock sulla coda
+    return -1;
+  }
+  return 0;
+}
+
+struct Queue *pop(struct Queue **head, struct Queue **tail) {
+  // accesso in mutua esclusione alla coda
+  if(pthread_mutex_lock(&mux) != 0) {
+    // errore nell'acquisizione della lock sulla coda
+    return NULL;
+  }
+
+	if(*head) {
+		struct Queue *tmp = *head;
+		if(*head == *tail) {
+			*tail = NULL;
+		}
+		*head = (*head)->next;
+
+    // rilascio la mutua esclusione prima di uscire
+    if(pthread_mutex_unlock(&mux) != 0) {
+      // errore nel rilascio della lock sulla coda
+      return NULL;
+    }
+
+		return tmp; // returns the struct: needs to be freed by the caller
+	}
+
+  // rilascio la mutua esclusione prima di uscire
+  if(pthread_mutex_unlock(&mux) != 0) {
+    // errore nel rilascio della lock sulla coda
+    return NULL;
+  }
+
+	// empty queue
+	return NULL;
+}

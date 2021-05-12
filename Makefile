@@ -4,14 +4,13 @@ CC = gcc
 CFLAGS = -g -Wall -pedantic
 HEADERS = -I .
 
-SERVER = fs-server.out
+
 CLIENT = client.out
 
-.PHONY: all clean cleanall
+.PHONY: all clean cleanall server
 
-$(SERVER): parse_config.c server.c utils.c logging.c
-	$(CC) $(CFLAGS) $(HEADERS) -o $@ $^
-
+server:
+	cd fs-server && $(MAKE)
 
 
 

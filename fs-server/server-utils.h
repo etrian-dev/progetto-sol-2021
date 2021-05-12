@@ -46,4 +46,7 @@ int parse_config(struct serv_params *params, const char *conf_fpath);
 // -1 se riscontra un errore (settato errno)
 int log(int log_fd, int errcode, char *message);
 
+// Funzione eseguita dal worker
+void *work(void *queue);
+
 #endif

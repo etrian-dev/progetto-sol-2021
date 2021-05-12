@@ -19,14 +19,14 @@
 
 // REMINDER: il file di configurazione alternativo (fs-config) è nella home directory
 
-// TODO: add brief description of the function
+// Funzione main del server multithreaded: effettua il ruolo di manager thread
 int main(int argc, char **argv) {
 	// effettua il parsing del file di configurazione riempiendo i campi della struttura
 	struct serv_params run_params;
 	memset(&run_params, 0, sizeof(struct serv_params)); // per sicurezza azzero tutto
 
-	int parse_status;
 	// se ho specificato l'opzione -f al server leggo il file di configurazione da essa
+	int parse_status;
 	if(argc == 3 && strncmp(argv[1], "-f", strlen(argv[1])) == 0) {
 		parse_status = parse_config(&run_params, argv[2]);
 	}
@@ -34,8 +34,8 @@ int main(int argc, char **argv) {
 		parse_status = parse_config(&run_params, NULL);
 	}
 
+	// errore di parsing: lo riporto su standard output ed esco con tale codice di errore
 	if(parse_status == -1) {
-		// errore di parsing: lo riporto su standard output ed esco con tale codice di errore
 		int errcode = errno;
 		perror("Fallito il parsing del file di configurazione");
 		return errcode;
@@ -59,6 +59,8 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	// da qui in poi multithreaded
+
 	// creo la thread pool
 	pthread_t *workers = malloc(run_params.thread_pool * sizeof(pthread_t));
 	if(!workers) {
@@ -68,7 +70,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	/*long int i;
+	long int i;
 	for(i = 0; i < run_params.thread_pool; i++) {
 		if(pthread_create(&workers[i], NULL, start_service, some_param) != 0) {
 			if(log(logfile_fd, errno, "Impossibile creare la threadpool") == -1) {
@@ -76,7 +78,7 @@ int main(int argc, char **argv) {
 			}
 			return 2;
 		}
-	}*/
+	}
 
 	return 0;
 }
