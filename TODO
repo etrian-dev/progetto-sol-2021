@@ -5,4 +5,8 @@ logging.c: writen nella scrittura nel file di log?
 Riguardo al file parse_config.c:
 Salvataggio/ripristino di errno va fatto ogni volta oppure lo sposto in cleanup()?
 
-API con tabella o pipe?
+API con tabella o ht? L'operazione più frequente è la ricerca di un client per pid
+quindi avrebbe senso avere una ht con pid come indici. D'altra parte, non mi aspetto di avere
+più di un centinaio di client connessi al massimo, per cui forse vi è meno overhead nel
+fare una ricerca lineare (2 * NCLIENT) in un array
+// TODO: variare codice errore per msg diagnostica client

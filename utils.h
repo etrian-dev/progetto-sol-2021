@@ -34,4 +34,10 @@ int enqueue(struct Queue **head, struct Queue **tail, const void *data, size_t s
 // Rimuove l'elemento alla testa della coda o ritorna NULL se la coda è vuota
 struct Queue *pop(struct Queue **head, struct Queue **tail);
 
+// Legge esattamente n bytes dal fd
+ssize_t readn(int fd, void *ptr, size_t n);
+// Scrive esattamente n bytes nel fd
+ssize_t writen(int fd, void *ptr, size_t n);
+
+
 #endif

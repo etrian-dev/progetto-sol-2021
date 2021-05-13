@@ -1,5 +1,6 @@
 // header progetto
 #include <utils.h>
+#include <queue.h>
 #include <server-utils.h>
 // multithreading headers
 #include <pthread.h>
@@ -59,6 +60,14 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	// Inizializzo la coda per comunicare con i worker thread
+	struct Queue *workers_q;
+	if(init_queue(&workers_q) == -1) {
+		perror("Impossibile inizializzare la coda");
+		//log(logfile_fd,
+		return 1;
+	}
+
 	// da qui in poi multithreaded
 
 	// creo la thread pool
@@ -72,13 +81,16 @@ int main(int argc, char **argv) {
 
 	long int i;
 	for(i = 0; i < run_params.thread_pool; i++) {
-		if(pthread_create(&workers[i], NULL, work, NULL) != 0) {
+		// Il puntatore alla coda viene passato a tutti i worker
+		if(pthread_create(&workers[i], NULL, work, workers_q) != 0) {
 			if(log(logfile_fd, errno, "Impossibile creare la threadpool") == -1) {
 				perror("Impossibile creare thread pool");
 			}
 			return 2;
 		}
 	}
+
+	// Il thread manager
 
 	return 0;
 }

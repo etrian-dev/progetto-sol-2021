@@ -1,5 +1,6 @@
 // header api
 #include <fs-api.h>
+#include <utils.h>
 // syscall headers
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -11,43 +12,9 @@
 #include <errno.h>
 
 // file contenente l'implementazione della api di comunicazione tra file storage server ed i client
+// TODO: variare codice errore per msg diagnostica client
 
-int init_clients_info(const char *soname) {
-    if((socket_name = strndup(soname, strlen(soname) + 1)) == NULL) {
-	// errore di allocazione
-	return -1;
-    }
-    return 0;
-}
-
-int update_clients_info(const int conn_fd) {
-    // collego lo standard input e standard output del client al socket conn_fd
-    if(dup2(conn_fd, 0) == -1 || dup2(conn_fd, 1) == -1) {
-	// errore nella duplicazione dei file descriptor
-	return -1;
-    }
-    // posso chiudere il fd della connessione, avendolo duplicato
-    if(close(conn_fd) == -1) {
-	// errore di chiusura del fd
-	return -1;
-    }
-    return 0;
-}
-
-
-// funzione di utilità per convertire msec in un delay specificato secondo timespec
-void get_delay(const int msec, struct timespec *delay) {
-    // dato che il delay è specificato in ms devo convertirlo a ns per scriverlo in timespec
-    // Se il delay in ms è troppo grande (>=1000) per essere convertito in ns provo a convertire in secondi
-    // Se non gestissi questi due casi potrei avere overflow su tv_nsec
-    if(msec >= 1000) {
-	delay->tv_sec = (time_t)(msec / 1000); // con la divisione intera ottengo il numero di secondi in msec ms
-	delay->tv_nsec = (msec % 1000) * 1000000; // il resto è convertito a ns e non posso avere overflow
-    }
-    else {
-	delay->tv_nsec = msec * 1000000;
-    }
-}
+struct conn_info *clients_info = NULL;
 
 // apre la connessione al socket sockname, su cui il server sta ascoltando
 int openConnection(const char *sockname, int msec, const struct timespec abstime) {
@@ -105,20 +72,24 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 	}
 	// Altrimenti la connessione ha avuto successo: effettuo delle operazioni prima di ritornare 0
 	else {
-	    if(!socket_name) {
-		// è il primo client che tenta di connettersi al server
-		// devo allocare memoria ed inserire il nome del socket
-		if(init_clients_info(sockname) == -1) {
+	    if(!clients_info) {
+		// è il primo client che tenta di connettersi al server, per cui devo inizializzare
+		// la struttura dati della API
+		if(init_api(sockname) == -1) {
 		    errno_saved = errno; // salvo l'errore
 		    close(conn_sock); // tento di chiudere il socket aperto
 		    errno = errno_saved;
 		    return -1;
 		}
 	    }
-	    // poi collego il client al socket sia per lettura che per scrittura e chiudo conn_sock
-	    if(update_clients_info(conn_sock) == -1) {
+	    // Aggiungo il client alla struttura dati, passando il socket
+	    // Internamente usa il PID per distinguere tra i vari client
+	    if(add_client(conn_sock) == -1) {
 		return -1;
 	    }
+
+	    // tutto ok: connessione tra client e server stabilita
+	    return 0;
 	}
     } while(!term);
 
@@ -128,9 +99,78 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
     return -1;
 }
 
-// chiude la connessione a sockname
+// chiude la connessione a sockname relativa al client chiamante
 int closeConnection(const char *sockname) {
+    // prima controllo che il nome del socket sia quello giusto
+    if(strncmp(clients_info->sockname, sockname, strlen(sockname)) == 0) {
+	// Provo a rimuovere questo client, sapendo il suo PID
+	int cpid = getpid();
+
+	// resetto errno per capire se vi sia stato un eventuale errore di chiusura del socket
+	errno = 0;
+	if(rm_client(cpid) == -1) {
+	    if(errno != 0) {
+		// Fallita la chiusura del socket
+		perror("Fallita chiusura del socket (client rimosso)");
+	    }
+	    else {
+		// Fallita la rimozione perché il client non era connesso
+		return -1;
+	    }
+	}
+	// Rimozione OK
+	return 0;
+    }
+    // è stato richiesto di chiudere la connessione su un socket che non è quello
+    // su cui tale connessione è stata aperta, quindi l'operazione fallisce
     return -1;
+}
+
+// invia al server la richiesta di lettura del file pathname, ritornando un puntatore al buffer
+int readFile(const char *pathname, void **buf, size_t *size) {
+    if(!(buf && !(*buf)) {
+	return -1;
+    }
+
+    // Cerco il client nell'array
+    size_t i = 0;
+    int nfound = 1;
+    int sock = -1;
+    while(nfound && i < clients_info->capacity) {
+	int this_pid = getpid();
+	if(clients_info->client_id[2 * i + 1] == this_pid) {
+	    sock = clients_info->client_id[2 * i];
+	    nfound = 0;
+	}
+	i++;
+    }
+    if(nfound) {
+	// non è stato trovato, quindi non era connesso
+	return -1;
+    }
+    // Scrivo sul socket la richiesta di lettura ed il pathname, poi attendo la risposta
+    size_t req_sz = strlen(pathname) + 3; // la richiesta ha il "formato R\0<pathname>\0"
+    char *req_buf = NULL;
+    if((req_buf = malloc(req_sz * sizeof(char))) == NULL) {
+	// errore di allocazione
+	return -1;
+    }
+    int nwritten = snprintf(req_buf, req_sz, "R%c%s%c", '\0', pathname, '\0');
+    if(nwritten < 0 || nwritten > req_sz) {
+	// errore nella scrittura sul buffer
+	free(req_buf);
+	return -1;
+    }
+    // scrivo la richiesta
+    if(writen(sock, req_buf, req_sz) != req_sz) {
+	// errore nella scrittura
+	free(req_buf);
+	return -1;
+    }
+    // posso liberare il buffer
+    free(req_buf); req_buf = NULL; req_sz = 0;
+
+    // attendo in modo bloccante la risposta
 }
 
 
