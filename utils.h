@@ -42,4 +42,10 @@ readn(int fd, void *ptr, size_t n);
 ssize_t /* Write "n" bytes to a descriptor */
 writen(int fd, void *ptr, size_t n);
 
+// Legge esattamente n bytes dal fd
+ssize_t readn(int fd, void *ptr, size_t n);
+// Scrive esattamente n bytes nel fd
+ssize_t writen(int fd, void *ptr, size_t n);
+
+
 #endif

@@ -16,8 +16,23 @@ enum file_flags
 	O_LOCK = 0x10
 };
 
-// nome del socket
-char *socket_name;
+// La API mantiene una struttura dati interna per associare ad ogni client il proprio socket
+struct conn_info {
+	char *sockname;     // nome del socket (supposto univoco per tutta la sessione)
+	int *client_id;     // array di coppie (socket fd, client PID) allocato in modo contiguo
+	// NOTA: la regola è di mettere prima il fd del socket, poi il PID del client
+	size_t capacity;    // mantiene la capacità dell'array sovrastante
+	size_t count;       // conta il numero di client connessi in questo momento
+};
+
+#define NCLIENTS_DFL 10 // il numero di slot preallocati per clients
+
+extern struct conn_info *clients_info;
+
+// Inizializza la struttura dati della API con il socket passato come argomento
+int init_api(const char *sname);
+int add_client(const int conn_fd);
+int rm_client(const int pid);
 
 // apre la connessione al socket sockname, su cui il server sta ascoltando
 int openConnection(const char *sockname, int msec, const struct timespec abstime);
@@ -26,10 +41,10 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 int closeConnection(const char *sockname);
 
 // apre il file pathname (se presente nel server e solo per il client che la invia)
-//int openFile(const char *pathname, int flags);
+int openFile(const char *pathname, int flags);
 
-// invia al server la richiesta di lettura del file pathname
-//int readFile(const char *pathname, void **buf, size_t *size);
+// invia al server la richiesta di lettura del file pathname, ritornando un puntatore al buffer
+int readFile(const char *pathname, void **buf, size_t *size);
 
 // invia al server la richiesta di scrittura del file pathname
 //int writeFile(const char *pathname, const char *dirname);
