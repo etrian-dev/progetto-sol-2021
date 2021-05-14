@@ -5,11 +5,12 @@ HEADERS = -I .
 
 LIBPATH = -L ./libs
 
-UTILS = libs/libutilities.so
+UTILS   = libs/libutilities.so
+HTABLE  = libs/libicl_hash.so
 
-.PHONY: all clean cleanall server fs-api
+.PHONY: all clean cleanall fs-api server client
 
-all: $(UTILS) fs-api server
+all: $(UTILS) $(HTABLE) fs-api server
 	#crea (se non esistono) le directory per i file oggetto e le lib. condivise
 	-mkdir objs libs
 	$(MAKE) -C fs-api
@@ -20,6 +21,13 @@ $(UTILS): utils.o
 	mv $< objs/
 utils.o: utils.c utils.h
 	$(CC) $(CFLAGS) $(HEADERS) -c -fPIC -o $@ $< -lpthread
+
+$(HTABLE): icl_hash.o
+	$(CC) $(CFLAGS) -shared -o $@ $<
+	mv $< objs/
+icl_hash.o: icl_hash/icl_hash.c
+	$(CC) $(CFLAGS) $(HEADERS) -c -fPIC -o $@ $<
+
 clean:
 	-rm -fr $(wildcard ./*.out)
 cleanall: clean

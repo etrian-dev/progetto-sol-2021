@@ -1,5 +1,6 @@
 // header progetto
 #include <utils.h>
+#include <icl_hash.h> // per hashtable
 #include <server-utils.h>
 // multithreading headers
 #include <pthread.h>
@@ -20,5 +21,12 @@
 // worker thread
 
 void *work(void *queue) {
-    return NULL;
+    struct Queue *elem;
+
+    while(1) {
+        // prendo mutex sulla coda di richieste
+        while() {
+            pthread_cond_wait(&
+        }
+    }
 }
