@@ -18,20 +18,28 @@ int isNumber(const char* s, long* n);
 // Funzione per la duplicazione di una stringa allocata sullo heap
 int string_dup(char **dest, const char *src);
 
-// definisco un mutex per l'accesso alla coda
-extern pthread_mutex_t mux;
-// definisco operazioni sulla coda concorrente
-// defines the Queue structure: the data field holds a string
-// and the next field a pointer to the next element in the queue
+// Definisco una coda come lista concatenata
+struct node_t {
+    void *data;
+    struct node_t *next;
+};
 struct Queue {
-    void *data_ptr;
-    struct Queue *next;
+    struct node_t *head;
+    struct node_t *tail;
 };
 
+// inizializza la coda
+struct Queue *queue_init(void);
+
 // Inserisce data (di size bytes) nella coda; Se fallisce ritorna -1, altrimenti 0
-int enqueue(struct Queue **head, struct Queue **tail, const void *data, size_t size);
+int enqueue(struct Queue *q, const void *data_ptr, size_t size);
 
 // Rimuove l'elemento alla testa della coda o ritorna NULL se la coda è vuota
-struct Queue *pop(struct Queue **head, struct Queue **tail);
+struct node_t *pop(struct Queue *q);
+
+ssize_t /* Read "n" bytes from a descriptor */
+readn(int fd, void *ptr, size_t n);
+ssize_t /* Write "n" bytes to a descriptor */
+writen(int fd, void *ptr, size_t n);
 
 #endif

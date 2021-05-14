@@ -47,4 +47,19 @@ int init_ds(struct serv_params *params) {
 	// errore nella creazione della ht (probabilmente malloc)
 	return -1;
     }
+    // inizializzo mutex e cond variables
+    pthread_mutex_init(&mux_jobq, NULL);
+    pthread_mutex_init(&mux_cacheq, NULL);
+    pthread_cond_init(&new_job, NULL);
+    pthread_cond_init(&new_cacheq, NULL);
+    // Inizializzo le code
+    job_queue = queue_init();
+    cache_q = queue_init();
+    if(!job_queue || !cache_q)) {
+	// errore di allocazione
+	return -1;
+    }
+
+    // Tutte le strutture dati inizializzate con successo
+    return 0;
 }

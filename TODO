@@ -13,3 +13,5 @@ API:
 	Per efficienza potrei usare una HT per memorizzare le coppie, indicizzandole col PID, ma siccome mi aspetto di
 	avere al max ~100 client non guadagno molto in termini di efficienza (inoltre potrei adottare una politica di
 	resize dell'array che lo dimezzi quando #client connessi << capacità
+	
+Modificare separatore da '/0' a ':'

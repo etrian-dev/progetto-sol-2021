@@ -17,11 +17,11 @@
 
 // struttura contenente i parametri del server
 struct serv_params {
-	long int thread_pool;   // numero di thread worker del server
-	long int max_memsz;     // massima occupazione memoria dei file
-	long int max_fcount;    // massimo numero di file gestiti contemporaneamente
-	char *sock_path;        // path del socket server
-	char *log_path;         // path del file di log
+    long int thread_pool;   // numero di thread worker del server
+    long int max_memsz;     // massima occupazione memoria dei file
+    long int max_fcount;    // massimo numero di file gestiti contemporaneamente
+    char *sock_path;        // path del socket server
+    char *log_path;         // path del file di log
 };
 
 // i field del file di configurazione sono stringhe definite a tempo di compilazione
@@ -51,7 +51,8 @@ struct fs_filedata_t {
     void *data;
     size_t size;
     int *openedBy;
-    int *lockedBy;
+    size_t nopened;
+    int lockedBy;
 };
 
 // hash table condivisa nel server

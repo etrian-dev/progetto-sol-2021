@@ -59,6 +59,16 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	// inizializzo le strutture dati del server
+	if(init_ds(&run_params) == -1) {
+		if(log(logfile_fd, errno, "Impossibile inizializzare strutture dati server") == -1) {
+			perror("Impossibile inizializzare strutture dati server");
+		}
+		return 1;
+	}
+
+	// adesso disabilito i segnali per il thread manager e per quelli
+
 	// da qui in poi multithreaded
 
 	// creo la thread pool
