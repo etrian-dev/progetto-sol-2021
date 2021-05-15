@@ -37,15 +37,13 @@ int enqueue(struct Queue *q, const void *data_ptr, size_t size);
 // Rimuove l'elemento alla testa della coda o ritorna NULL se la coda è vuota
 struct node_t *pop(struct Queue *q);
 
-ssize_t /* Read "n" bytes from a descriptor */
-readn(int fd, void *ptr, size_t n);
-ssize_t /* Write "n" bytes to a descriptor */
-writen(int fd, void *ptr, size_t n);
-
 // Legge esattamente n bytes dal fd
-ssize_t readn(int fd, void *ptr, size_t n);
+int readn(int fd, void *ptr, size_t n);
 // Scrive esattamente n bytes nel fd
-ssize_t writen(int fd, void *ptr, size_t n);
+int writen(int fd, void *ptr, size_t n);
 
+// definisco enum per flags dei file nel fileserver
+int O_CREATE = 0x1;
+//int O_LOCK 0x10;
 
 #endif

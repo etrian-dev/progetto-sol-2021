@@ -11,5 +11,7 @@ LIBFS_API = ../libs/libfs-api.so
 $(LIBFS_API): fs-api.o
 	$(CC) $(CFLAGS) $(LIBPATH) -shared -o $@ $< $(LIBS)
 	mv $< ../objs/
-fs-api.o: fs-api.c fs-api-utils.c
-	$(CC) $(CFLAGS) $(HEADERS) -c -fPIC -o $@ $^
+fs-api.o: fs-api.c
+	$(CC) $(CFLAGS) $(HEADERS) -c -fPIC -o $@ $<
+fs-api-utils.o: fs-api-utils.c
+	$(CC) $(CFLAGS) $(HEADERS) -c -fPIC -o $@ $<

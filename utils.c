@@ -28,17 +28,6 @@ int rialloca_buffer(char **buf, size_t newsz) {
     *buf = newbuf;
     return 0;
 }
-// identica alla precedente, ma prende in ingresso un array di stringhe da ridimensionare
-/*
-int rialloca_arr(char ***arr, size_t newlen) {
-  char **newarr = realloc(*arr, newlen);
->>>>>>> client
-  if(!newarr) {
-    return -1;
-  }
-  *arr = newarr;
-  return 0;
-}*/
 
 // Funzione per convertire una stringa s in un long int
 // isNumber ritorna
@@ -128,10 +117,9 @@ struct node_t *pop(struct Queue *q) {
     return NULL;
 }
 
-ssize_t /* Read "n" bytes from a descriptor */
-readn(int fd, void *ptr, size_t n) {
+int readn(int fd, void *ptr, size_t n) {
 	size_t nleft;
-	ssize_t nread;
+	int nread;
 	nleft = n;
 	while (nleft > 0) {
 		if((nread = read(fd, ptr, nleft)) < 0) {
@@ -144,10 +132,9 @@ readn(int fd, void *ptr, size_t n) {
 	return(n - nleft); /* return >= 0 */
 }
 
-ssize_t /* Write "n" bytes to a descriptor */
-writen(int fd, void *ptr, size_t n) {
+int writen(int fd, void *ptr, size_t n) {
 	size_t nleft;
-	ssize_t nwritten;
+	int nwritten;
 	nleft = n;
 	while (nleft > 0) {
 		if((nwritten = write(fd, ptr, nleft)) < 0) {
@@ -158,36 +145,4 @@ writen(int fd, void *ptr, size_t n) {
 		ptr += nwritten;
 	}
 	return(n - nleft); /* return >= 0 */
-}
-
-/* Read "n" bytes from a descriptor */
-ssize_t readn(int fd, void *ptr, size_t n) {
-  size_t nleft;
-  ssize_t nread;
-  nleft = n;
-  while(nleft > 0) {
-    if((nread = read(fd, ptr, nleft)) < 0) {
-      if (nleft == n) return -1; /* error, return -1 */
-      else break; /* error, return amount read so far */
-    } else if (nread == 0) break; /* EOF */
-    nleft -= nread;
-    ptr += nread;
-  }
-  return(n - nleft); /* return >= 0 */
-}
-
-/* Write "n" bytes to a descriptor */
-ssize_t writen(int fd, void *ptr, size_t n) {
-  size_t nleft;
-  ssize_t nwritten;
-  nleft = n;
-  while(nleft > 0) {
-    if((nwritten = write(fd, ptr, nleft)) < 0) {
-      if (nleft == n) return -1; /* error, return -1 */
-      else break; /* error, return amount written so far */
-    } else if (nwritten == 0) break;
-    nleft -= nwritten;
-    ptr += nwritten;
-  }
-  return(n - nleft); /* return >= 0 */
 }

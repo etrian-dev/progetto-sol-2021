@@ -9,13 +9,6 @@
 
 #define SOCK_PATH_MAXLEN 108 // per socket AF_UNIX è la massima lunghezza del path al socket
 
-// definisco enum per flags dei file nel fileserver
-enum file_flags
-{
-	O_CREATE = 0x1,
-	O_LOCK = 0x10
-};
-
 // La API mantiene una struttura dati interna per associare ad ogni client il proprio socket
 struct conn_info {
 	char *sockname;     // nome del socket (supposto univoco per tutta la sessione)

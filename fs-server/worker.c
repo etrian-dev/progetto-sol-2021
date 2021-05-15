@@ -24,7 +24,6 @@ void cleanup(struct node_t *node);
 
 void *work(void *queue) {
     struct node_t *elem;
-    struct fs_filedata_t *file;
 
     while(1) {
         // prendo mutex sulla coda di richieste
