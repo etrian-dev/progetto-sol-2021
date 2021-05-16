@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -g -Wall -pedantic
-HEADERS = -I . -I ..
+HEADERS = -I . -I .. -I ../fs-api
 
 LIBPATH = -Wl,-rpath=./libs -L ../libs
 LIBS = -lutilities

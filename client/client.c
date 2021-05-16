@@ -1,6 +1,7 @@
 // header client
-#include <utils.h>
 #include <client.h>
+// header API
+#include <fs-api.h>
 // system call headers
 #include <sys/types.h>
 #include <sys/un.h>
@@ -26,9 +27,13 @@ int main(int argc, char **argv) {
     if(get_client_options(argc, argv, options) == -1) {
         // errore nel processare la lista di argomenti
         if(errno != 0) {
-            printf("Errore %d: %s\n", errno, strerror(errno));
+            fprintf(stderr, "Errore %d: %s\n", errno, strerror(errno));
         }
         // altrimenti è un errore specifico di sintassi delle opzioni, non di syscall o simili
+        else {
+            fprintf(stderr, "Errore di sintassi delle opzioni\n");
+        }
+        return 1;
     }
 
     // stampo le opzioni riconosciute
@@ -37,11 +42,34 @@ int main(int argc, char **argv) {
     printf("Delay: %ld\n", options->rdelay);
     printf("Socket: %s\n", options->fs_socket);
     printf("Directory swapout: %s\n", options->dir_swapout);
+    printf("Directory with files to write: %s\n", options->dir_write);
+    printf("Max #file written from %s: %ld\n", options->dir_write, options->max_write);
     printf("Directory save reads: %s\n", options->dir_save_reads);
-    printf("Directory for files to write: %s\n", options->dir_write);
     printf("Max #file read: %ld\n", options->max_read);
 
-    free(options);
+    // Se è stato richiesto il messaggio di help stampa quello e poi esce
+    if(options->help_on) {
+        printf(HELP_MSG, argv[0]);
+        return 0;
+    }
+
+    printf("Lista di file da scrivere\n");
+    int i = 0;
+    while(options->write_list[i]) {
+        printf("%s, ", options->write_list[i]);
+        i++;
+    }
+    printf("\nLista di file da leggere\n");
+    i = 0;
+    while(options->read_list[i]) {
+        printf("%s, ", options->read_list[i]);
+        i++;
+    }
+
+
+
+    // libera la struttra dati contenente le opzioni del client
+    free_client_opt(options);
 
     return 0;
 }
