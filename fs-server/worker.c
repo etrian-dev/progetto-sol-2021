@@ -1,6 +1,5 @@
 // header progetto
 #include <utils.h>
-#include <icl_hash.h> // per hashtable
 #include <server-utils.h>
 // multithreading headers
 #include <pthread.h>
@@ -18,11 +17,11 @@
 #include <errno.h>
 #include <assert.h>
 
-void cleanup(struct node_t *node);
+void cleanup_worker(struct node_t *node);
 
 // worker thread
 
-void *work(void *queue) {
+void *work(void *unused) {
     struct node_t *elem;
 
     while(1) {
@@ -32,16 +31,16 @@ void *work(void *queue) {
             return NULL;
         }
         // aspetto tramite la variabile di condizione che arrivi una richiesta
-        while((elem = pop(&job_queue)) == NULL) {
+        while((elem = pop(job_queue)) == NULL) {
             pthread_cond_wait(&new_job, &mux_jobq);
         }
         // persing della richiesta, il cui formato è <OP>:<socket>:<string>\0
         char operation;
         int client_sock;
-        char *buffer;
+        char *buffer = NULL;
         if(sscanf((char*)elem->data, "%c:%d:%s", &operation, &client_sock, buffer) != 3) {
             // errore nel parsing: la richiesta non rispetta il formato dato
-            cleanup(elem);
+            //cleanup_worker(elem);
             // TODO: reply error
         }
 
@@ -56,12 +55,15 @@ void *work(void *queue) {
             case 'L': // lock file
             case 'U': // unlock file
             case 'C': // remove file
+            ;
         }
-        cleanup(elem);
+        cleanup_worker(elem);
     }
 }
 
-void cleanup(struct node_t *node) {
-    free(node->data);
+void cleanup_worker(struct node_t *node) {
+    if(node->data) {
+        free(node->data);
+    }
     free(node);
 }

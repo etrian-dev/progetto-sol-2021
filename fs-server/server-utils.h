@@ -76,6 +76,12 @@ extern pthread_cond_t new_cacheq;
 int init_ds(struct serv_params *params);
 
 //-----------------------------------------------------------------------------------
+// Operazioni sui file
+struct fs_filedata_t *insert_file(const char *path, const void *buf, const size_t size, const int client);
+int openFile(const char *pathname, const int client_sock, int flags);
+int read_file(const char *pathname, const int client_sock);
+
+//-----------------------------------------------------------------------------------
 //Gestione dei log
 
 // Funzione per effettuare il logging: prende come parametri

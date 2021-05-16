@@ -15,8 +15,8 @@
 #include <errno.h>
 #include <assert.h>
 
-// funzione di cleanup: libera memoria e chiude il file di configurazione
-void cleanup(FILE *fp, char *buf); // entrambi gli argomenti possono essere NULL
+// funzione di cleanup_conf: libera memoria e chiude il file di configurazione
+void cleanup_conf(FILE *fp, char *buf); // entrambi gli argomenti possono essere NULL
 
 // Questo file contiene l'implementazione della funzione che effettua il parsing del file
 // di configurazione "config.txt" e riempe una struttura contenente tutti i parametri
@@ -45,10 +45,10 @@ int parse_config(struct serv_params *params, const char *conf_fpath) {
 	char *buf = malloc(BUF_BASESZ * sizeof(char));
 	if(!buf) {
 		// errore nell'allocazione di memoria, settato errno
-		// salvo errno perché potrebbe essere alterato da errori di cleanup
+		// salvo errno perché potrebbe essere alterato da errori di cleanup_conf
 		int errno_saved = errno;
 		// chiusura del file di configurazione prima di ritornare
-		cleanup(conf_fp, NULL);
+		cleanup_conf(conf_fp, NULL);
 		// ripristino errno prima di ritornare
 		errno = errno_saved;
 		return -1;
@@ -61,10 +61,10 @@ int parse_config(struct serv_params *params, const char *conf_fpath) {
 		if(fgets(buf, buf_sz, conf_fp) == NULL) {
 			if(feof(conf_fp) == 0) {
 				// errore nella lettura del file di config, serttato errno
-				// salvo errno perché potrebbe essere alterato da errori di cleanup
+				// salvo errno perché potrebbe essere alterato da errori di cleanup_conf
 				int errno_saved = errno;
 				// libero buffer e chiudo il file prima di ritornare
-				cleanup(conf_fp, buf);
+				cleanup_conf(conf_fp, buf);
 				// ripristino errno prima di ritornare
 				errno = errno_saved;
 				return -1;
@@ -143,13 +143,13 @@ int parse_config(struct serv_params *params, const char *conf_fpath) {
 	// file di configurazione parsato senza errori e i campi sono stati scritti nella struttura
 
 	// chiudo il file e libero il buffer
-	cleanup(conf_fp, buf);
+	cleanup_conf(conf_fp, buf);
 
 	return 0;
 }
 
-// funzione di cleanup: libera memoria e chiude il file di configurazione
-void cleanup(FILE *fp, char *buf) {
+// funzione di cleanup_conf: libera memoria e chiude il file di configurazione
+void cleanup_conf(FILE *fp, char *buf) {
 	if(buf) {
 		free(buf);
 	}

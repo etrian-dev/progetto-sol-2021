@@ -10,6 +10,8 @@
 #include <time.h>
 #include <string.h>
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // file contenente l'implementazione della api di comunicazione tra file storage server ed i client
 
@@ -128,14 +130,15 @@ int openFile(const char *pathname, int flags) {
     int csock = clients_info->client_id[2 * pos];
 
     // preparo la stringa per fare la richiesta: "O:<flags>:<socket>:<pathname>"
-    char *req = calloc(strlen(pathname) + 30, sizeof(char)); // abbastanza per fare spazio agli interi...
+    size_t req_len = strlen(pathname) + 30; // abbastanza per fare spazio agli interi...
+    char *req = calloc(req_len, sizeof(char));
     if(!req) {
 	// errore di allocazione
 	return -1;
     }
     // non so esattamente quanti byte scrive, ma se ritorna <0 allora errore
     int nbytes;
-    if((nbytes = snprintf(req, "%c:%d:%d:%s", OPEN_FILE, flags, csock, pathname)) < 0) {
+    if((nbytes = snprintf(req, req_len, "%c:%d:%d:%s", OPEN_FILE, flags, csock, pathname)) < 0) {
 	return -1;
     }
     // Nota: nbytes non comprende il terminatore di path, per cui devo aggiungere 1
@@ -193,7 +196,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
 	return -1;
     }
     // scrivo la richiesta
-    if(writen(sock, req_buf, req_sz) != req_sz) {
+    if(writen(csock, req_buf, req_sz) != req_sz) {
 	// errore nella scrittura
 	free(req_buf);
 	return -1;
@@ -209,7 +212,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
 	return -1;
     }
     char ret; size_t file_sz;
-    if(sscanf(reply, "%c:%ld:", &ret, &file_sz) != 2) {
+    if(sscanf(reply, "%c:%lu:", &ret, &file_sz) != 2) {
 	// errore nel formato della risposta
 	return -1;
     }

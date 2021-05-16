@@ -1,5 +1,5 @@
 // header progetto
-#include <utils.h>
+#include <icl_hash.h>
 #include <server-utils.h>
 // multithreading headers
 #include <pthread.h>
@@ -55,7 +55,7 @@ int init_ds(struct serv_params *params) {
     // Inizializzo le code
     job_queue = queue_init();
     cache_q = queue_init();
-    if(!job_queue || !cache_q)) {
+    if(!job_queue || !cache_q) {
 	// errore di allocazione
 	return -1;
     }

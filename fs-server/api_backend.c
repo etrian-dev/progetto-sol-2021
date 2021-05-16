@@ -24,7 +24,7 @@ struct fs_filedata_t *find_file(const char *fname) {
         // Fallita operazione di lock
         return NULL;
     }
-    file = icl_hash_find(fs_table, buffer);
+    struct fs_filedata_t *file = icl_hash_find(fs_table, (void *)fname);
     if(pthread_mutex_unlock(&mux_ht) == -1) {
         // Fallita operazione di unlock
         return NULL;
@@ -41,7 +41,7 @@ struct fs_filedata_t *insert_file(const char *path, const void *buf, const size_
     }
     // Alloco la struttura del file
     struct fs_filedata_t *newfile = NULL;
-    if((newfile = calloc(sizeof(struct fs_filedata_t))) == NULL) {
+    if((newfile = calloc(1, sizeof(struct fs_filedata_t))) == NULL) {
         // errore di allocazione
         return NULL;
     }
@@ -68,7 +68,6 @@ struct fs_filedata_t *insert_file(const char *path, const void *buf, const size_
         // Fallita operazione di lock
         return NULL;
     }
-    void *esito;
     if(icl_hash_insert(fs_table, path_cpy, newfile) == NULL) {
         // errore nell'inserimento nella ht
         free(path_cpy);
@@ -148,13 +147,13 @@ int read_file(const char *pathname, const int client_sock) {
     }
     // file trovato: cercare socket di questo client
     else {
-        if(lockedBy != -1 && lockedBy != client_sock) {
+       // if(lockedBy != -1 && lockedBy != client_sock) {
             // il file è lockato, ma non da questo client, quindi l'operazione fallisce
             // TODO: reply error
             // TODO: log fallimento
             ;
-        }
-        else {
+       // }
+
             int i, isOpen, nexit;
             i = isOpen = 0;
             nexit = 1;
@@ -187,7 +186,7 @@ int read_file(const char *pathname, const int client_sock) {
                 // TODO: log fallimento
                 ;
             }
-        }
+
     }
 
     return 0;

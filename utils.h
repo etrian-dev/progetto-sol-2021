@@ -42,8 +42,8 @@ int readn(int fd, void *ptr, size_t n);
 // Scrive esattamente n bytes nel fd
 int writen(int fd, void *ptr, size_t n);
 
-// definisco enum per flags dei file nel fileserver
-int O_CREATE = 0x1;
-//int O_LOCK 0x10;
+// definisco flags dei file nel fileserver
+extern int O_CREATE;
+// extern int O_LOCK;
 
 #endif
