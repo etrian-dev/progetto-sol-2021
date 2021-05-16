@@ -24,8 +24,21 @@ extern struct conn_info *clients_info;
 
 // Inizializza la struttura dati della API con il socket passato come argomento
 int init_api(const char *sname);
-int add_client(const int conn_fd);
+int add_client(const int conn_fd, const int pid);
 int rm_client(const int pid);
+int isConnected(const int pid);
+
+// funzione di utilità per convertire msec in un delay specificato secondo timespec
+void get_delay(const int msec, struct timespec *delay);
+
+//-----------------------------------------------------------------------------------
+
+// definisco i tipi di operazioni
+#define OPEN_FILE 'O'
+#define CREATE_FILE 'C'
+#define READ_FILE 'R'
+#define WRITE_FILE 'W'
+#define APPEND_FILE 'A'
 
 // apre la connessione al socket sockname, su cui il server sta ascoltando
 int openConnection(const char *sockname, int msec, const struct timespec abstime);

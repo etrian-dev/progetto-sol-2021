@@ -12,6 +12,7 @@
 
 // Implementazione di alcune funzioni di utilità per l'API
 
+// inizializza la struttura dati della API per la connessione al socket so sname
 int init_api(const char *sname) {
     if((clients_info = malloc(sizeof(struct conn_info))) == NULL) {
 	// errore di allocazione
@@ -36,7 +37,7 @@ int init_api(const char *sname) {
     return 0;
 }
 
-int add_client(const int conn_fd) {
+int add_client(const int conn_fd, const int pid) {
     size_t first_free;
 
     // guardo se devo espandere l'array di id
@@ -62,37 +63,49 @@ int add_client(const int conn_fd) {
 
     // inserisco prima il socket della connessione e dopo il PID del chiamante per distinguere i client
     clients_info->client_id[2 * first_free] = conn_fd;
-    clients_info->client_id[2 * first_free + 1] = getpid();
+    clients_info->client_id[2 * first_free + 1] = pid;
     clients_info->count++; // devo anche aggiornare il numero di client connessi
     return 0;
 }
 
 int rm_client(const int pid) {
-    // Cerco il PID fornito nell'array: se esiste allora libero la posizione
-    int nfound = 1;
-    size_t i = 0;
-    while(nfound && i < clients_info->capacity) {
-	if(clients_info->client_id[2 * i + 1] == pid) {
-	    int sock = clients_info->client_id[2 * i];
-	    // aggiorno il numero di client connessi
-	    client_info->count--;
-	    // libero slot
-	    clients_info->client_id[2 * i] = -1;
-	    clients_info->client_id[2 * i + 1] = -1;
-
-	    // chiudo il socket
-	    if(close(sock) == -1) {
-		// errore di chiusura del socket: riporto l'errore al client ma libero comunque la entry
-		return -1;
-	    }
-	    nfound = 0;
-	}
-	i++;
-    }
-    if(nfound) {
+    int cIdx = -1;
+    if((cIdx = isConnected(pid)) == -1) {
 	// client non trovato, quindi non posso rimuoverlo
 	return -1;
     }
+    // prendo il socket di questo client
+    int sock = clients_info->client_id[2 * cIdx];
+
+    // libero questa posizione del'array
+    clients_info->client_id[2 * i] = -1;
+    clients_info->client_id[2 * i + 1] = -1;
+    // aggiorno il numero di client connessi
+    client_info->count--;
+
+    // chiudo il socket
+    if(close(sock) == -1) {
+	// errore di chiusura del socket: riporto l'errore al client (ma lo slot è libero)
+	return -1;
+    }
+
+    // Rimozione connessione OK
+    return 0;
+}
+
+int isConnected(const int pid) {
+    // Cerco il PID fornito nell'array: se esiste allora libero la posizione
+    int i = 0;
+    while(i < clients_info->capacity) {
+	if(clients_info->client_id[2 * i + 1] == pid) {
+	    // Trovato: ritorno la posizione
+	    return i;
+	}
+	i++;
+    }
+
+    // Non trovato
+    return -1;
 }
 
 
