@@ -19,45 +19,44 @@
 
 // File contenente la gestione delle strutture dati del server
 
-// Dichiaro qui tutte le strutture dati condivise
 
-// hash table condivisa nel server
-icl_hash_t *fs_table;
-// mutex per l'accesso alla ht
-pthread_mutex_t mux_ht;
+// Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
+// e riempe la struttura passata tramite puntatore
+int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
+    // controllo che siano entrambi non nulli, altrimenti ho segmentation fault
+    if(!(params && server_ds)) {
+        return -1;
+    }
 
-// coda per la comunicazione con i worker
-struct Queue *job_queue;
-// lock e cond variables per l'accesso in ME
-pthread_mutex_t mux_jobq;
-pthread_cond_t new_job;
+    *server_ds = malloc(sizeof(struct fs_ds_t));
+	if(!(*server_ds)) {
+		return -1;
+	}
 
-// coda per l'implementazione della politica di rimpiazzamento FIFO
-struct Queue *cache_q;
-// lock e cond variables per l'accesso in ME
-pthread_mutex_t mux_cacheq;
-pthread_cond_t new_cacheq;
+    // creo anche la pipe per il feedback tra thread worker e manager
+	if(pipe((*server_ds)->feedback) == -1) {
+		return -1;
+	}
 
-int init_ds(struct serv_params *params) {
     // creo la ht per la memorizzazione dei file
     // Alloco preventivamente slot per il massimo numero di file che possono essere
     // inseriti nel server. La funzione hash è quella fornita da icl_hash e la chiave
     // sarà il path, per cui string_compare va bene per confrontare le chiavi
-    if((fs_table = icl_hash_create(params->max_fcount, hash_pjw, string_compare)) == NULL) {
-	// errore nella creazione della ht (probabilmente malloc)
-	return -1;
+    if(((*server_ds)->fs_table = icl_hash_create(params->max_fcount, hash_pjw, string_compare)) == NULL) {
+        // errore nella creazione della ht (probabilmente malloc)
+        return -1;
     }
     // inizializzo mutex e cond variables
-    pthread_mutex_init(&mux_jobq, NULL);
-    pthread_mutex_init(&mux_cacheq, NULL);
-    pthread_cond_init(&new_job, NULL);
-    pthread_cond_init(&new_cacheq, NULL);
+    pthread_mutex_init(&((*server_ds)->mux_jobq), NULL);
+    pthread_mutex_init(&((*server_ds)->mux_cacheq), NULL);
+    pthread_cond_init(&((*server_ds)->new_job), NULL);
+    pthread_cond_init(&((*server_ds)->new_cacheq), NULL);
     // Inizializzo le code
-    job_queue = queue_init();
-    cache_q = queue_init();
-    if(!job_queue || !cache_q) {
-	// errore di allocazione
-	return -1;
+    (*server_ds)->job_queue = queue_init();
+    (*server_ds)->cache_q = queue_init();
+    if(!((*server_ds)->job_queue && (*server_ds)->cache_q)) {
+        // errore di allocazione
+        return -1;
     }
 
     // Tutte le strutture dati inizializzate con successo

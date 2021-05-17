@@ -10,6 +10,7 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <signal.h>
 // headers libreria standard
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,16 +61,37 @@ int main(int argc, char **argv) {
 	}
 
 	// inizializzo le strutture dati del server
-	if(init_ds(&run_params) == -1) {
+	struct fs_ds_t *server_ds = NULL; // la struttura dati viene allocata in init_ds
+	if(init_ds(&run_params, &server_ds) == -1) {
 		if(log(logfile_fd, errno, "Impossibile inizializzare strutture dati server") == -1) {
 			perror("Impossibile inizializzare strutture dati server");
 		}
 		return 1;
 	}
-
-	// adesso disabilito i segnali per il thread manager e per quelli
+	// assegno il descrittore del file di log alla struttura dati, per effettuare il logging
+	// anche nei thread worker
+	server_ds->log_fd = logfile_fd;
 
 	// da qui in poi multithreaded
+
+	// creo il thread che gestisce la terminazione
+
+	// adesso disabilito tutti i segnali per il thread manager e per quelli da esso creati (worker)
+	sigset_t mask_sigs;
+	if(sigfillset(&mask_sigs) == -1) {
+		if(log(logfile_fd, errno, "Impossibile creare mashera segnali") == -1) {
+			perror("Impossibile creare mashera segnali");
+		}
+		return 1;
+	}
+	int ret;
+	if((ret = pthread_sigmask(SIG_BLOCK, &mask_sigs, NULL)) != 0) {
+		if(log(logfile_fd, ret, "Impossibile bloccare i segnali") == -1) {
+			perror("Impossibile bloccare i segnali");
+		}
+		return 1;
+	}
+
 
 	// creo la thread pool
 	pthread_t *workers = malloc(run_params.thread_pool * sizeof(pthread_t));
@@ -82,8 +104,8 @@ int main(int argc, char **argv) {
 
 	long int i;
 	for(i = 0; i < run_params.thread_pool; i++) {
-		// Il puntatore alle code viene passato a tutti i worker
-		if(pthread_create(&workers[i], NULL, work, NULL) != 0) {
+		// Il puntatore alle strutture dati viene passato ad ogni worker thread come parametro
+		if(pthread_create(&workers[i], NULL, work, server_ds) != 0) {
 			if(log(logfile_fd, errno, "Impossibile creare la threadpool") == -1) {
 				perror("Impossibile creare thread pool");
 			}

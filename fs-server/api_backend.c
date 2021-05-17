@@ -18,21 +18,21 @@
 #include <errno.h>
 #include <assert.h>
 
-struct fs_filedata_t *find_file(const char *fname) {
+struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
     // cerco il file nella tabella
-    if(pthread_mutex_lock(&mux_ht) == -1) {
+    if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di lock
         return NULL;
     }
-    struct fs_filedata_t *file = icl_hash_find(fs_table, (void *)fname);
-    if(pthread_mutex_unlock(&mux_ht) == -1) {
+    struct fs_filedata_t *file = icl_hash_find(ds->fs_table, (void *)fname);
+    if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di unlock
         return NULL;
     }
     return file;
 }
 
-struct fs_filedata_t *insert_file(const char *path, const void *buf, const size_t size, const int client) {
+struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const void *buf, const size_t size, const int client) {
     // Duplico il path da usare come chiave
     char *path_cpy = strndup(path, strlen(path) + 1);
     if(!path_cpy) {
@@ -64,35 +64,35 @@ struct fs_filedata_t *insert_file(const char *path, const void *buf, const size_
     }
 
     // Adesso accedo alla ht in mutua esclusione ed inserisco la entry
-    if(pthread_mutex_lock(&mux_ht) == -1) {
+    if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di lock
         return NULL;
     }
-    if(icl_hash_insert(fs_table, path_cpy, newfile) == NULL) {
+    if(icl_hash_insert(ds->fs_table, path_cpy, newfile) == NULL) {
         // errore nell'inserimento nella ht
         free(path_cpy);
         free(newfile->openedBy);
         free(newfile);
         return NULL;
     }
-    if(pthread_mutex_unlock(&mux_ht) == -1) {
+    if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di unlock
         return NULL;
     }
     return newfile; // ritorno il puntatore al file inserito
 }
 
-int openFile(const char *pathname, const int client_sock, int flags) {
+int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags) {
     // Preparo stringa di risposta
     char reply[BUF_BASESZ];
     memset(reply, 0, BUF_BASESZ * sizeof(char));
     // Cerco il file nella tabella
-    struct fs_filedata_t *file = find_file(pathname);
+    struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
         // file non trovato: se era stata specificata la flag di creazione lo creo
         if(flags & O_CREATE) {
             // inserisco un file vuoto (passando NULL come buffer) nella tabella
-            if(insert_file(pathname, NULL, 0, client_sock)) {
+            if(insert_file(ds, pathname, NULL, 0, client_sock)) {
                 // Inserimento OK
                 snprintf(reply, BUF_BASESZ, "%c:%d", 'Y', 0);
                 writen(client_sock, reply, 4);
@@ -138,12 +138,13 @@ int openFile(const char *pathname, const int client_sock, int flags) {
     return 0;
 }
 
-int read_file(const char *pathname, const int client_sock) {
+int readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
     // Cerco il file nella tabella
-    struct fs_filedata_t *file = find_file(pathname);
+    struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
         // chiave non trovata => restituire errore alla API
         // TODO: reply error
+        ;
     }
     // file trovato: cercare socket di questo client
     else {

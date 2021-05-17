@@ -55,31 +55,37 @@ struct fs_filedata_t {
     int lockedBy;
 };
 
-// hash table condivisa nel server
-extern icl_hash_t *fs_table;
-// mutex per l'accesso alla ht
-extern pthread_mutex_t mux_ht;
+// Dichiaro qui tutte le strutture dati condivise
+struct fs_ds_t {
+    // hash table condivisa nel server
+    icl_hash_t *fs_table;
+    // mutex per l'accesso alla ht
+    pthread_mutex_t mux_ht;
 
-// coda per la comunicazione con i worker
-extern struct Queue *job_queue;
-// lock e cond variables per l'accesso in ME
-extern pthread_mutex_t mux_jobq;
-extern pthread_cond_t new_job;
+    // coda per la comunicazione delle richieste ai worker
+    struct Queue *job_queue;
+    // lock e cond variables per l'accesso in ME
+    pthread_mutex_t mux_jobq;
+    pthread_cond_t new_job;
 
-// coda per l'implementazione della politica di rimpiazzamento FIFO
-extern struct Queue *cache_q;
-// lock e cond variables per l'accesso in ME
-extern pthread_mutex_t mux_cacheq;
-extern pthread_cond_t new_cacheq;
+    // coda per l'implementazione della politica di rimpiazzamento FIFO
+    struct Queue *cache_q;
+    // lock e cond variables per l'accesso in ME
+    pthread_mutex_t mux_cacheq;
+    pthread_cond_t new_cacheq;
+
+    int feedback[2]; // pipe per il feedback dal worker al manager
+    int log_fd; // file descriptor del file di log
+};
 
 // Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
-int init_ds(struct serv_params *params);
+// e riempe la struttura passata tramite puntatore
+int init_ds(struct serv_params *params, struct fs_ds_t **server_ds);
 
 //-----------------------------------------------------------------------------------
 // Operazioni sui file
-struct fs_filedata_t *insert_file(const char *path, const void *buf, const size_t size, const int client);
-int openFile(const char *pathname, const int client_sock, int flags);
-int read_file(const char *pathname, const int client_sock);
+int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
+int readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
 
 //-----------------------------------------------------------------------------------
 //Gestione dei log
