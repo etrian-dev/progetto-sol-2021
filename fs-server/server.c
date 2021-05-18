@@ -271,7 +271,7 @@ int main(int argc, char **argv) {
 	}
 
 	unlink(run_params.sock_path);
-	close(run_params.sock_path);
+	close(listen_connections);
 
 	return 0;
 }
