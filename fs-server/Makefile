@@ -7,5 +7,5 @@ LIBS = -lfs-api -lutilities -licl_hash -lpthread
 
 SERVER = ../fs-server.out
 
-$(SERVER): parse_config.c logging.c worker.c api_backend.c server-ds.c server.c
+$(SERVER): parse_config.c logging.c worker.c api_backend.c sock_init.c server-ds.c term_thread.c server.c
 	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -o $@ $^ $(LIBS)

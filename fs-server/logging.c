@@ -61,9 +61,11 @@ int log(int log_fd, int errcode, char *message) {
     // inizio la stringa con questo carattere
     log_msg[0] = '[';
 
+    time_t curr_time = time(0);
+
     // scrive nel buffer (a partire dalla posizione 1)
     // la data ed ora correnti (il buffer usato deve essere lungo almeno 26 caratteri)
-    if(ctime_r(time(0), log_msg + 1) == NULL) {
+    if(ctime_r(&curr_time, log_msg + 1) == NULL) {
 	// errore nella scrittura della data
 	return -1;
     }

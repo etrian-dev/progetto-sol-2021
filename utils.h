@@ -6,7 +6,7 @@
 #include <stddef.h>
 
 // definisco una dimensione base dei buffer
-#define BUF_BASESZ 100
+#define BUF_BASESZ 512
 
 // funzione di riallocazione del buffer a newsz.
 // Ritorna 0 se ha successo, -1 se fallisce
