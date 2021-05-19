@@ -6,7 +6,7 @@
 
 // messaggio di help
 #define HELP_MSG \
-"Usage: ./%s [OPTIONS]\n\nOPTIONS\n\
+"Usage: %s [OPTIONS]\n\nOPTIONS\n\
 \t-h: stampa questo messaggio e termina\n\
 \t-f <filename>: specifica il socket AF_UNIX a cui il client prova a connettersi\n\
 \t-r <file1> [, <filen>]: specifica una lista di file da leggere nel server\n\

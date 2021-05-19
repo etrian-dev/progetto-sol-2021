@@ -17,10 +17,7 @@
 #include <errno.h>
 #include <assert.h>
 
-void cleanup_worker(struct node_t *node);
-
 // worker thread
-
 void *work(void *ds) {
     struct fs_ds_t *server_ds = (struct fs_ds_t *)ds;
     struct node_t *elem;
@@ -35,56 +32,48 @@ void *work(void *ds) {
         while((elem = pop(server_ds->job_queue)) == NULL) {
             pthread_cond_wait(&(server_ds->new_job), &(server_ds->mux_jobq));
         }
+        if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
+            // Fallita operazione di unlock
+            return NULL;
+        }
+
+        int client_sock = elem->socket; // il socket è passato dal manager all'interno della struttura
+
         // persing della richiesta (dichiaro qui le variabili usate da tutti rami dello switch per comodità
         char operation;
         int flags = 0x0;
-        int client_sock = -1;
-        char *path = NULL;
-        // Prima devo determinare il tipo di richiesta, perché da ciò dipende il resto della stringa
-        if(sscanf((char*)elem->data, "%c:", &operation) != 1) {
+        char *path = calloc(BUF_BASESZ, sizeof(char));
+        // Tento di estrarre l'operazione da fare, le eventuali flags ed il path
+        if(sscanf((char*)elem->data, "%c:%d:%[^:]", &operation, &flags, path) != 3) {
             // errore nel parsing: la richiesta non rispetta il formato dato
             //cleanup_worker(elem);
             // TODO: reply error
-            ;
+            printf("scanf error\n");
         }
         // Sulla base dell'operazione richiesta termino il suo parsing e poi chiamo
         // la corrispondente funzione del backend che la implementa
         switch(operation) {
             case 'O': // operazione di apertura di un file
-                // devo estrarre le flag di apertura, il socket ed il path
-                if(sscanf((char*)elem->data, "%*c:%d:%d:%s", &flags, &client_sock, path) != 3) {
-                     // errore nel parsing: la richiesta non rispetta il formato dato
-                    //cleanup_worker(elem);
-                    // TODO: reply error
-                    ;
-                }
                 if(openFile(server_ds, path, client_sock, flags) == -1) {
                     // Operazione non consentita: logging
-                    if(log(server_ds->log_fd, errno, "openFile: Operazione non consentita") == -1) {
+                    if(log(server_ds, errno, "openFile: Operazione non consentita") == -1) {
                         perror("openFile: Operazione non consentita");
                     }
                 }
                 // L'apertura del file ha avuto successo: logging
-                if(log(server_ds->log_fd, errno, "openFile: Operazione riuscita") == -1) {
+                if(log(server_ds, errno, "openFile: Operazione riuscita") == -1) {
                     perror("openFile: Operazione riuscita");
                 }
                 break;
             case 'R': // operazione di lettura: il buffer contiene il pathname
-                // devo estrarre il path ed il socket del client
-                if(sscanf((char*)elem->data, "%*c:%d:%s", &client_sock, path) != 2) {
-                     // errore nel parsing: la richiesta non rispetta il formato dato
-                    //cleanup_worker(elem);
-                    // TODO: reply error
-                    ;
-                }
                 if(readFile(server_ds, path, client_sock) == -1) {
                     // Operazione non consentita: logging
-                    if(log(server_ds->log_fd, errno, "readFile: Operazione non consentita") == -1) {
+                    if(log(server_ds, errno, "readFile: Operazione non consentita") == -1) {
                         perror("readFile: Operazione non consentita");
                     }
                 }
                 // L'apertura del file ha avuto successo: logging
-                if(log(server_ds->log_fd, errno, "readFile: Operazione riuscita") == -1) {
+                if(log(server_ds, errno, "readFile: Operazione riuscita") == -1) {
                     perror("readFile: Operazione riuscita");
                 }
                 break;
@@ -94,12 +83,32 @@ void *work(void *ds) {
             case 'U': // unlock file
             case 'C': // remove file
             default:
-                ;
+                break;
         }
-        cleanup_worker(elem);
-    }
-}
 
-void cleanup_worker(struct node_t *node) {
-   ;
+        printf("Aperto %s\n", path);
+
+        free(path);
+
+        if(pthread_mutex_lock(&(server_ds->mux_feedback)) == -1) {
+            if(log(server_ds, errno, "Fallito lock feedback") == -1) {
+                perror("Fallito lock feedback");
+            }
+        }
+
+        // Quindi deposito il socket servito nella pipe di feedback
+        if(write(server_ds->feedback[1], (void*)&client_sock, 4) == -1) {
+            if(log(server_ds, errno, "Fallito invio feedback al server") == -1) {
+                perror("Fallito invio feedback al server");
+            }
+        }
+
+        if(pthread_mutex_unlock(&(server_ds->mux_feedback)) == -1) {
+            if(log(server_ds, errno, "Fallito unlock feedback") == -1) {
+                perror("Fallito unlock feedback");
+            }
+        }
+
+        free(elem);
+    }
 }

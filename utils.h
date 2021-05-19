@@ -20,8 +20,9 @@ int string_dup(char **dest, const char *src);
 
 // Definisco una coda come lista concatenata
 struct node_t {
-    void *data;
-    struct node_t *next;
+    void *data;            // i dati contenuti nella coda
+    int socket;            // il socket associato ai dati
+    struct node_t *next;   // puntatore al prossimo nodo della lista concatenata
 };
 struct Queue {
     struct node_t *head;
@@ -32,7 +33,7 @@ struct Queue {
 struct Queue *queue_init(void);
 
 // Inserisce data (di size bytes) nella coda; Se fallisce ritorna -1, altrimenti 0
-int enqueue(struct Queue *q, const void *data_ptr, size_t size);
+int enqueue(struct Queue *q, const void *data_ptr, size_t size, const int csock);
 
 // Rimuove l'elemento alla testa della coda o ritorna NULL se la coda è vuota
 struct node_t *pop(struct Queue *q);

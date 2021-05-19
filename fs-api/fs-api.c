@@ -129,8 +129,9 @@ int openFile(const char *pathname, int flags) {
     // pos ora contiene la posizione del client, per cui posso accedere a clients_info
     int csock = clients_info->client_id[2 * pos];
 
-    // preparo la stringa per fare la richiesta: "O:<flags>:<socket>:<pathname>"
-    size_t req_len = strlen(pathname) + 30; // abbastanza per fare spazio agli interi...
+    // preparo la stringa per fare la richiesta: "O:<flags>:<pathname>"
+    size_t req_len = strlen(pathname) + BUF_BASESZ; // impongo un upper bound alla lunghezza delle richeste
+
     char *req = calloc(req_len, sizeof(char));
     if(!req) {
 	// errore di allocazione
@@ -138,28 +139,34 @@ int openFile(const char *pathname, int flags) {
     }
     // non so esattamente quanti byte scrive, ma se ritorna <0 allora errore
     int nbytes;
-    if((nbytes = snprintf(req, req_len, "%c:%d:%d:%s", OPEN_FILE, flags, csock, pathname)) < 0) {
+    if((nbytes = snprintf(req, req_len, "%c:%1d:%s", OPEN_FILE, flags, pathname)) < 0) {
 	return -1;
     }
     // Nota: nbytes non comprende il terminatore di path, per cui devo aggiungere 1
     nbytes++;
 
+    if(nbytes > strlen(pathname) + BUF_BASESZ) {
+	// richiesta troppo lunga: non può essere inviata
+	return -1;
+    }
+
     // la stringa contenente la richesta può essere scritta sul socket
     if(writen(csock, req, nbytes) != nbytes) {
-	// errore nell'invio della richiesta
+	// errore nell'invio del la richiesta
 	return -1;
     }
 
     // libero il buffer
     free(req);
 
-    // Richiesta inviata: attendo risposta, che in questo caso consta di un solo carattere
-    char reply;
-    if(read(csock, &reply, 1) == -1) {
+    // Richiesta inviata: attendo risposta, che in questo caso è composta dalla stringa
+    // con formato <Y|N>:<0|-1>\0
+    char reply[5];
+    if(read(csock, &reply, 5) == -1) {
 	// errore nella risposta
 	return -1;
     }
-    if(reply != 'Y') {
+    if(reply[0] != 'Y') {
 	// errore: la richiesta non è stata soddisfatta
 	return -1;
     }

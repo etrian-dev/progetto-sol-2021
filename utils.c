@@ -76,11 +76,14 @@ struct Queue *queue_init(void) {
         free(q);
         return NULL;
     }
+    // La coda inizialmente è vuota!
+    q->head = NULL;
+    q->tail = NULL;
     return q;
 }
 
 // funzione per aggiungere alla coda un elemento
-int enqueue(struct Queue *q, const void *data_ptr, size_t size) {
+int enqueue(struct Queue *q, const void *data_ptr, size_t size, const int csock) {
     // alloco un nuovo nodo della coda
     struct node_t *elem = malloc(sizeof(struct node_t));
     if(!elem) {
@@ -95,6 +98,7 @@ int enqueue(struct Queue *q, const void *data_ptr, size_t size) {
     }
     // copio i dati
     memcpy(elem->data, data_ptr, size);
+    elem->socket = csock;
     elem->next = NULL;
 
     // Il nuovo nodo è aggiunto in fondo alla coda

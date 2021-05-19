@@ -49,6 +49,8 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     // inizializzo mutex e cond variables
     pthread_mutex_init(&((*server_ds)->mux_jobq), NULL);
     pthread_mutex_init(&((*server_ds)->mux_cacheq), NULL);
+    pthread_mutex_init(&((*server_ds)->mux_feedback), NULL);
+    pthread_mutex_init(&((*server_ds)->mux_log), NULL);
     pthread_cond_init(&((*server_ds)->new_job), NULL);
     pthread_cond_init(&((*server_ds)->new_cacheq), NULL);
     // Inizializzo le code

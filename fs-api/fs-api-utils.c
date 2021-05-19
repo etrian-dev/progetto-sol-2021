@@ -9,6 +9,8 @@
 #include <time.h>
 #include <string.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 
 // Implementazione di alcune funzioni di utilità per l'API
 
@@ -29,7 +31,7 @@ int init_api(const char *sname) {
     }
     else {
 	// setto ogni entry dell'array a -1 per indicare che sono libere
-	memeset(clients_info->client_id, -1, NCLIENTS_DFL * 2 * sizeof(int));
+	memset(clients_info->client_id, -1, NCLIENTS_DFL * 2 * sizeof(int));
 	clients_info->capacity = NCLIENTS_DFL; // setto anche il numero di slot allocati
     }
     // Inizializzo anche il numero di client connessi
@@ -78,10 +80,10 @@ int rm_client(const int pid) {
     int sock = clients_info->client_id[2 * cIdx];
 
     // libero questa posizione del'array
-    clients_info->client_id[2 * i] = -1;
-    clients_info->client_id[2 * i + 1] = -1;
+    clients_info->client_id[2 * cIdx] = -1;
+    clients_info->client_id[2 * cIdx + 1] = -1;
     // aggiorno il numero di client connessi
-    client_info->count--;
+    clients_info->count--;
 
     // chiudo il socket
     if(close(sock) == -1) {

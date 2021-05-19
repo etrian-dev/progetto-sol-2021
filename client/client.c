@@ -2,6 +2,8 @@
 #include <client.h>
 // header API
 #include <fs-api.h>
+// header utilità
+#include <utils.h>
 // system call headers
 #include <sys/types.h>
 #include <sys/un.h>
@@ -15,6 +17,8 @@
 #include <assert.h>
 #include <stddef.h>
 
+#define PRINT(flag, cmd) \
+    if((flag)) { cmd }
 
 // Funzione main del processo client
 int main(int argc, char **argv) {
@@ -37,15 +41,16 @@ int main(int argc, char **argv) {
     }
 
     // stampo le opzioni riconosciute
-    printf("Help: %s\n", (options->help_on ? "ON" : "OFF"));
-    printf("Stdout prints: %s\n", (options->prints_on ? "ON" : "OFF"));
-    printf("Delay: %ld\n", options->rdelay);
-    printf("Socket: %s\n", options->fs_socket);
-    printf("Directory swapout: %s\n", options->dir_swapout);
-    printf("Directory with files to write: %s\n", options->dir_write);
-    printf("Max #file written from %s: %ld\n", options->dir_write, options->max_write);
-    printf("Directory save reads: %s\n", options->dir_save_reads);
-    printf("Max #file read: %ld\n", options->max_read);
+    PRINT(options->prints_on,
+        printf("Help: %s\n", (options->help_on ? "ON" : "OFF"));
+        printf("Stdout prints: %s\n", (options->prints_on ? "ON" : "OFF"));
+        printf("Delay: %ldms\n", options->rdelay);
+        printf("Socket: %s\n", options->fs_socket);
+        printf("Directory swapout: %s\n", options->dir_swapout);
+        printf("Directory with files to write: %s\n", options->dir_write);
+        printf("Max #file written from %s: %ld\n", options->dir_write, options->max_write);
+        printf("Directory save reads: %s\n", options->dir_save_reads);
+        printf("Max #file read: %ld\n", options->max_read);)
 
     // Se è stato richiesto il messaggio di help stampa quello e poi esce
     if(options->help_on) {
@@ -53,20 +58,34 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    printf("Lista di file da scrivere\n");
+    struct timespec fivesec;
+    clock_gettime(CLOCK_REALTIME, &fivesec);
+    fivesec.tv_sec += 5;
+    // In primo luogo il client apre la connessione con il server
+    if(openConnection(options->fs_socket,options->rdelay, fivesec) == -1) {
+        perror("Impossible connettersi al server");
+        return 1;
+    }
+    PRINT(options->prints_on, printf("[%d] Connesso al server\n", getpid());)
+
+    // Apro i file richiesti in lettura o scrittura
     int i = 0;
-    while(options->write_list[i]) {
-        printf("%s, ", options->write_list[i]);
-        i++;
-    }
-    printf("\nLista di file da leggere\n");
-    i = 0;
     while(options->read_list[i]) {
-        printf("%s, ", options->read_list[i]);
+        if(openFile(options->read_list[i], O_CREATE) == -1) {
+            PRINT(options->prints_on, printf("Impossibile aprire il file %s\n", options->read_list[i]);)
+        }
+        else {
+            PRINT(options->prints_on, printf("File %s aperto\n", options->read_list[i]);)
+        }
         i++;
     }
 
-
+    // La connessione con il server viene chiusa
+    if(closeConnection(options->fs_socket) == -1) {
+        perror("Impossible disconnettersi dal server");
+        return 1;
+    }
+    PRINT(options->prints_on, printf("[%d] Disconnesso dal server\n", getpid());)
 
     // libera la struttra dati contenente le opzioni del client
     free_client_opt(options);

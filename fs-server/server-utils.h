@@ -77,7 +77,10 @@ struct fs_ds_t {
     pthread_cond_t new_cacheq;
 
     int feedback[2]; // pipe per il feedback dal worker al manager
+    pthread_mutex_t mux_feedback;
+
     int log_fd; // file descriptor del file di log
+    pthread_mutex_t mux_log;
 };
 
 // Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
@@ -112,7 +115,7 @@ int readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
 // La funzione ritorna:
 // 0 se ha successo
 // -1 se riscontra un errore (settato errno)
-int log(int log_fd, int errcode, char *message);
+int log(struct fs_ds_t *ds, int errcode, char *message);
 
 // Funzione eseguita dal worker
 void *work(void *queue);

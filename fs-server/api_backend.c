@@ -18,6 +18,8 @@
 #include <errno.h>
 #include <assert.h>
 
+// Cerca il file con quel nome nel server: se lo trova ritorna un puntatore alla struttura
+// che lo contiene, altrimenti ritorna NULL
 struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
     // cerco il file nella tabella
     if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
@@ -32,6 +34,8 @@ struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
     return file;
 }
 
+// Inserisce nel fileserver il file path con contenuto buf, di dimensione size, proveniente dal socket client
+// Se l'inserimento riescie allora ritorna un puntatore ad esso, altrimenti NULL
 struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const void *buf, const size_t size, const int client) {
     // Duplico il path da usare come chiave
     char *path_cpy = strndup(path, strlen(path) + 1);
@@ -82,6 +86,8 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
     return newfile; // ritorno il puntatore al file inserito
 }
 
+// Apre il file con path pathname (se presente) per il client con le flag passate come parametro
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
 int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags) {
     // Preparo stringa di risposta
     char reply[BUF_BASESZ];
@@ -115,12 +121,13 @@ int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, in
             i++;
         }
         if(isOpen) {
-            // File già aperto: l'operazione di apertura fallisce
+            // File già aperto da questo client: l'operazione di apertura fallisce
             snprintf(reply, BUF_BASESZ, "%c:%d", 'N', -1);
             writen(client_sock, reply, 5);
             return -1;
         }
         // Il File non era aperto da questo client: lo apro
+        // TODO: lock
         int *newentry = realloc(file->openedBy, file->nopened + 1);
         if(!newentry) {
             // fallita allocazione nuovo spazio per fd
@@ -138,6 +145,8 @@ int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, in
     return 0;
 }
 
+// Apre il file con path pathname (se presente) per il client con le flag passate come parametro
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
 int readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
     // Cerco il file nella tabella
     struct fs_filedata_t *file = find_file(ds, pathname);

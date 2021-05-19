@@ -47,7 +47,7 @@ void get_errorstr(int errcode, char **error_str) {
 // La funzione ritorna:
 // 0 se ha successo
 // -1 se riscontra un errore (settato errno)
-int log(int log_fd, int errcode, char *message) {
+int log(struct fs_ds_t *ds, int errcode, char *message) {
     // Il formato dei record nel file di log è il seguente:
     // [data ed ora correnti] <message>: <stringa corrispondente ad errcode>\n
 
@@ -118,7 +118,7 @@ int log(int log_fd, int errcode, char *message) {
 	    log_bufsz = log_bufsz * 2;
 	}
 	// adesso concateno il messaggio di errore
-	if(strncat(log_msg, error_str, error_len + 1)) {
+	if(strncat(log_msg, error_str, error_len + 1) == NULL) {
 	    // errore nella concatenazione
 	    free(log_msg);
 	    free(error_str);
@@ -128,12 +128,20 @@ int log(int log_fd, int errcode, char *message) {
 	free(error_str);
     }
 
+    if(pthread_mutex_lock(&(ds->mux_log)) == -1) {
+	perror("Lock fallito");
+    }
+
     // messaggio di log preparato, ora lo scrivo
-    if(write(log_fd, log_msg, log_bufsz) == -1) { // writen?
+    if(write(ds->log_fd, log_msg, log_bufsz) == -1) { // writen?
 	// errore nella scrittura
 	free(log_msg);
 	return -1;
     }
+     if(pthread_mutex_unlock(&(ds->mux_log)) == -1) {
+	perror("Unlock fallito");
+    }
+
     // libero il buffer
     free(log_msg);
 
