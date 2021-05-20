@@ -19,6 +19,10 @@
 
 // File contenente la gestione delle strutture dati del server
 
+// Converto una quantità positiva di Mbyte nei corrispondenti byte moltiplicando per 2^20
+// NOTA: il risultato dovrebbe essere memorizzato in un size_t per scongiurare l'assenza di
+// overflow (ragionevolmente) [calcoli?]
+#define MBYTE_TO_BYTE(MB) 1048576 * (MB)
 
 // Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
 // e riempe la struttura passata tramite puntatore
@@ -61,6 +65,23 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
         return -1;
     }
 
+    // Setto i limiti di numero di file e memoria e le quantità iniziali a zero
+    (*server_ds)->max_files = params->max_fcount;
+    (*server_ds)->curr_files = 0;
+    (*server_ds)->max_mem = MBYTE_TO_BYTE(params->max_memsz);
+    (*server_ds)->curr_mem = 0;
+
     // Tutte le strutture dati inizializzate con successo
     return 0;
+}
+
+void free_file(void *file) {
+    struct fs_filedata_t *f = (struct fs_filedata_t *)file;
+    if(f->data) {
+        free(f->data);
+    }
+    if(f->openedBy) {
+        free(f->openedBy);
+    }
+    free(f);
 }

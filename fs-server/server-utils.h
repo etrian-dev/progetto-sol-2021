@@ -56,9 +56,21 @@ struct fs_filedata_t {
     size_t nopened;
     int lockedBy;
 };
+// dichiaro anche la funzione per liberare la struttura
+void free_file(void *file);
 
-// Dichiaro qui tutte le strutture dati condivise
+// Dichiaro qui tutte le strutture dati condivise del server
 struct fs_ds_t {
+    // Massimo numero di file aperti in ogni istante nel server
+    size_t max_files;
+    // Numero di file aperti nel server
+    size_t curr_files;
+
+    // Massima capacità del server (in byte)
+    size_t max_mem;
+    // Quantità di memoria occupata
+    size_t curr_mem;
+
     // hash table condivisa nel server
     icl_hash_t *fs_table;
     // mutex per l'accesso alla ht
@@ -102,8 +114,15 @@ void *term_thread(void *params);
 
 //-----------------------------------------------------------------------------------
 // Operazioni sui file
-int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
-int readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
+int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+int api_appendToFile(
+    struct fs_ds_t *ds, const char *pathname, const int client_sock,
+    const size_t size, char *buf, const char *swpdir);
+
+// Funzione che implementa il rimpiazzamento nella cache: se diversa da NULL
+// salva i file nella directory dirname
+int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz); // TODO: implement
 
 //-----------------------------------------------------------------------------------
 //Gestione dei log

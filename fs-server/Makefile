@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -g -Wall -pedantic
-HEADERS = -I . -I .. -I ../icl_hash
+HEADERS = -I . -I .. -I ../icl_hash -I ../fs-api
 
 LIBPATH = -Wl,-rpath=./libs -L ../libs
 LIBS = -lfs-api -lutilities -licl_hash -lpthread

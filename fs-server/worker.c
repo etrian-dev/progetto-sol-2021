@@ -1,6 +1,7 @@
 // header progetto
 #include <utils.h>
 #include <server-utils.h>
+#include <fs-api.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
@@ -38,36 +39,53 @@ void *work(void *ds) {
         }
 
         int client_sock = elem->socket; // il socket è passato dal manager all'interno della struttura
-         struct request_t *request = (struct request_t *)elem->data;
+        struct request_t *request = (struct request_t *)elem->data;
 
         // Sulla base dell'operazione richiesta chiamo la corrispondente funzione del backend che la implementa
         switch(request->type) {
             case 'O': // operazione di apertura di un file
-                if(openFile(server_ds, request->pathname, client_sock, request->flags) == -1) {
+                // Se la richiesta è di creazione di un file controllo di non aver
+                // raggiunto il massimo numero di file memorizzabili contemporaneamente nel server
+                if(api_openFile(server_ds, request->path, client_sock, request->flags) == -1) {
                     // Operazione non consentita: logging
                     if(log(server_ds, errno, "openFile: Operazione non consentita") == -1) {
                         perror("openFile: Operazione non consentita");
                     }
                 }
-                // L'apertura del file ha avuto successo: logging
-                if(log(server_ds, errno, "openFile: Operazione riuscita") == -1) {
-                    perror("openFile: Operazione riuscita");
+                else {
+                    // L'apertura del file ha avuto successo: logging
+                    if(log(server_ds, errno, "openFile: Operazione riuscita") == -1) {
+                        perror("openFile: Operazione riuscita");
+                    }
                 }
                 break;
             case 'R': // operazione di lettura di un file
-                if(readFile(server_ds, request->pathname, client_sock) == -1) {
+                if(api_readFile(server_ds, request->path, client_sock) == -1) {
                     // Operazione non consentita: logging
                     if(log(server_ds, errno, "readFile: Operazione non consentita") == -1) {
                         perror("readFile: Operazione non consentita");
                     }
                 }
                 // La lettura del file ha avuto successo: logging
-                if(log(server_ds, errno, "readFile: Operazione riuscita") == -1) {
-                    perror("readFile: Operazione riuscita");
+                else {
+                    if(log(server_ds, errno, "readFile: Operazione riuscita") == -1) {
+                        perror("readFile: Operazione riuscita");
+                    }
                 }
                 break;
             case 'A': // operazione di append
-                if(appendToFile(request->pathname
+                if(api_appendToFile(server_ds, request->path, client_sock, request->buf_len, request->buf, request->dir_swp) == -1) {
+                    // Operazione non consentita: logging
+                    if(log(server_ds, errno, "appendToFile: Operazione non consentita") == -1) {
+                        perror("appendToFile: Operazione non consentita");
+                    }
+                }
+                else {
+                    // Append OK
+                    if(log(server_ds, errno, "appendFile: Operazione riuscita") == -1) {
+                        perror("appendFile: Operazione riuscita");
+                    }
+                }
                 break;
             case 'W':
             case 'L': // lock file
@@ -77,9 +95,8 @@ void *work(void *ds) {
                 break;
         }
 
-        printf("Aperto %s\n", path);
-
-        free(path);
+        free(request->path);
+        free(request);
 
         if(pthread_mutex_lock(&(server_ds->mux_feedback)) == -1) {
             if(log(server_ds, errno, "Fallito lock feedback") == -1) {

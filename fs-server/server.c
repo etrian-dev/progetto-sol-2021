@@ -51,11 +51,10 @@ int main(int argc, char **argv) {
 
     // stampo tutti i parametri del server
     printf("thread pool size: %ld\n", run_params.thread_pool);
-    printf("max memory size: %ld\n", run_params.max_memsz);
+    printf("max memory size: %ldMbyte\n", run_params.max_memsz);
     printf("max file count: %ld\n", run_params.max_fcount);
     printf("socket path: %s\n", run_params.sock_path);
     printf("log file path: %s\n", run_params.log_path);
-
 
     int logfile_fd;
     // parsing completato con successo: apro il file di log
@@ -263,10 +262,13 @@ int accept_connection(const int serv_sock) {
 int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
     // leggo richiesta
     struct request_t *req = NULL;
-    long int nread = 0;
-    if((nread = readn(client_fd, req + nread, sizeof(struct request_t))) < sizeof(struct request_t)) {
+    struct reply_t *reply = NULL;
+    if(readn(client_fd, req, sizeof(struct request_t)) != sizeof(struct request_t)) {
         if(errno != EINTR) {
-            // un altro errore
+           if((reply = newreply('N', 0, NULL)) == NULL) {
+                // errore allocazione risposta
+                puts("errore alloc risposta"); // TODO: log
+            }
             return -1;
         }
     }

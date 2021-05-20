@@ -131,49 +131,49 @@ struct request_t *newrequest(
     const size_t pathlen,
     const char *pathname,
     const size_t buflen,
-    const char *buf
-    const size_t swp_len
+    const char *buf,
+    const size_t swp_len,
     const char *swp)
     {
     struct request_t *req = malloc(sizeof(struct request_t));
     if(!req) {
 	return NULL;
     }
-    req->pathname = NULL;
+    req->path = NULL;
     req->buf = NULL;
-    req->swp = NULL;
+    req->dir_swp = NULL;
     if(pathname) {
-	req->pathname = strndup(pathname, pathlen);
+	req->path = strndup(pathname, pathlen);
     }
     if(buf) {
 	req->buf = strndup(buf, buflen);
     }
     if(swp) {
-	req->swp = strndup(swp, swp_len);
+	req->dir_swp = strndup(swp, swp_len);
     }
-    if((pathname && !(req->pathname)) || (buf && !(req->buf)) || (swp && !(req->swp))) {
+    if((pathname && !(req->path)) || (buf && !(req->buf)) || (swp && !(req->dir_swp))) {
 	// errore di duplicazione stringhe
 	free(req);
 	return NULL;
     }
     req->type = type;
     req->flags = flags;
-    req->pathlen = pathlen;
-    req->buflen = buflen;
+    req->path_len = pathlen;
+    req->buf_len = buflen;
     req->dir_swp_len = swp_len;
 
     return req;
 }
 
 struct reply_t *newreply(const char stat, const size_t len, const char *buf) {
-    struct request_t *rep = malloc(sizeof(struct request_t));
+    struct reply_t *rep = malloc(sizeof(struct reply_t));
     if(!rep) {
 	return NULL;
     }
     if(buf) {
 	rep->buf = strndup(buf, len);
     }
-    if(buf && !(req->buf)) {
+    if(buf && !(rep->buf)) {
 	// errore di duplicazione stringhe
 	free(rep);
 	return NULL;

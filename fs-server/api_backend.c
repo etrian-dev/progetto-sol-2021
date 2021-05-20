@@ -66,44 +66,111 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
     else {
         // Devo copiare i dati se il file non è vuoto
         //void *buf_cpy = malloc(size); [...]
+        ;
     }
 
+    void *res = NULL;
     // Adesso accedo alla ht in mutua esclusione ed inserisco la entry
     if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di lock
         return NULL;
     }
-    if(icl_hash_insert(ds->fs_table, path_cpy, newfile) == NULL) {
+    if((res = icl_hash_insert(ds->fs_table, path_cpy, newfile)) == NULL) {
         // errore nell'inserimento nella ht
         free(path_cpy);
         free(newfile->openedBy);
         free(newfile);
-        return NULL;
     }
     if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di unlock
         return NULL;
     }
+    if(!res) {
+        return NULL;
+    }
+
+    // Inserisco il pathname del file anche nella coda della cache
+    if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
+        // Fallita operazione di lock
+        return NULL;
+    }
+
+    int res2 = -1;
+    // non utilizzo il parametro socket, per cui lo posso settare ad un socket non valido
+    res2 = enqueue(ds->cache_q, path, strlen(path) + 1, -1);
+
+    if(pthread_mutex_unlock(&(ds->mux_cacheq)) == -1) {
+        // Fallita operazione di unlock
+        return NULL;
+    }
+    if(res2 == -1) {
+        return NULL;
+    }
+
     return newfile; // ritorno il puntatore al file inserito
+}
+
+int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz) {
+    // Se newsz == 0 e dirname == NULL allora sto aprendo un file, quindi butto via quello rimosso
+    if(newsz == 0 && !dirname) {
+        // Secondo la politica FIFO la vittima è la testa della coda cache_q
+        if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
+            // Fallita operazione di lock
+            return -1;
+        }
+
+        // ottengo il path in victim->data
+        struct node_t *victim = pop(ds->cache_q); // non dovrebbe ritornare NULL (ragionevolmente)
+        // Rimuove il file con questo pathname dalla ht
+        int res;
+        if((res = icl_hash_delete(ds->fs_table, victim->data, free, free_file)) != -1) {
+            // rimozione OK, decremento numero file
+            ds->curr_files--;
+        }
+        free(victim->data);
+        free(victim);
+
+        if(pthread_mutex_unlock(&(ds->mux_cacheq)) == -1) {
+            // Fallita operazione di unlock
+            return -1;
+        }
+        if(res == -1) {
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 // Apre il file con path pathname (se presente) per il client con le flag passate come parametro
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags) {
+int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags) {
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
+
     // Cerco il file nella tabella
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
         // file non trovato: se era stata specificata la flag di creazione lo creo
         if(flags & O_CREATE) {
+            // se necessario viene espulso al più un file dalla cache (perchè non posso avere capacity misses)
+            if(ds->curr_files == ds->max_files) {
+                cache_miss(ds, NULL, 0); // In questo caso viene buttato
+            }
+
             // inserisco un file vuoto (passando NULL come buffer) nella tabella
-            if(insert_file(ds, pathname, NULL, 0, client_sock)) {
-                // Inserimento OK
+            if(insert_file(ds, pathname, NULL, 0, client_sock) == NULL) {
+                if((reply = newreply('N', 0, NULL)) == NULL) {
+                    // errore allocazione risposta
+                    puts("errore alloc risposta"); // TODO: log
+                }
+                return -1;
+            }
+            else {
+                // Inserimento OK (num di file aperti aggiornato da insertFile)
                 if((reply = newreply('Y', 0, NULL)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
-                    return -1;
                 }
             }
         }
@@ -112,8 +179,8 @@ int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, in
             if((reply = newreply('N', 0, NULL)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
-                return -1;
             }
+            return -1;
         }
     }
     else {
@@ -131,8 +198,8 @@ int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, in
             if((reply = newreply('N', 0, NULL)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
-                return -1;
             }
+            return -1;
         }
         else {
             // Il File non era aperto da questo client: lo apro
@@ -143,8 +210,8 @@ int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, in
                 if((reply = newreply('N', 0, NULL)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
-                    return -1;
                 }
+                return -1;
 
             }
             else {
@@ -155,66 +222,148 @@ int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, in
                 if((reply = newreply('Y', 0, NULL)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
-                    return -1;
                 }
+                return -1;
             }
         }
     }
     return 0;
 }
 
-// Apre il file con path pathname (se presente) per il client con le flag passate come parametro
+// Legge il file con path pathname (se presente) per il client con le flag passate come parametro
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+    // conterrà la risposta del server
+    struct reply_t *reply = NULL;
+
     // Cerco il file nella tabella
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
         // chiave non trovata => restituire errore alla API
-        // TODO: reply error
-        ;
+        if((reply = newreply('N', 0, NULL)) == NULL) {
+            // errore allocazione risposta
+            puts("errore alloc risposta"); // TODO: log
+        }
+        return -1;
     }
-    // file trovato: cercare socket di questo client
+    // file trovato: guardo se era stato aperto da questo client
     else {
-       // if(lockedBy != -1 && lockedBy != client_sock) {
+        // if(lockedBy != -1 && lockedBy != client_sock) {
             // il file è lockato, ma non da questo client, quindi l'operazione fallisce
             // TODO: reply error
             // TODO: log fallimento
-            ;
-       // }
-
-            int i, isOpen, nexit;
-            i = isOpen = 0;
-            nexit = 1;
-            while(nexit && i < file->nopened) {
-                if(file->openedBy[i] == client_sock) {
-                    isOpen = 1; // aperto da questo client
-                    nexit = 0;
-                }
-                i++;
+            //;
+        // }
+        int i, isOpen, nexit;
+        i = isOpen = 0;
+        nexit = 1;
+        while(nexit && i < file->nopened) {
+            if(file->openedBy[i] == client_sock) {
+                isOpen = 1; // aperto da questo client
+                nexit = 0;
             }
+            i++;
+        }
+        // Se è aperto da questo client allora posso leggerlo
+        if(isOpen) {
+            // Ok, posso inviare il file al client lungo il socket
+            if((reply = newreply('Y', file->size, (char*)file->data)) == NULL) {
+                // errore allocazione risposta
+                puts("errore alloc risposta"); // TODO: log
+            }
+            return -1;
+        }
+        else {
+            // Operazione negata: il client non aveva aperto il file
+            if((reply = newreply('N', 0, NULL)) == NULL) {
+                // errore allocazione risposta
+                puts("errore alloc risposta"); // TODO: log
+            }
+            return -1;
+        }
+    }
 
-            // Se è aperto da questo client allora posso leggerlo
-            if(isOpen) {
-                // Ok, posso inviare il file al client lungo il socket
-                // uso la writen perché sto scrivendo su un socket e so quanti byte scrivere
-                if(writen(client_sock, file->data, file->size) != file->size) {
-                    // La scrittura non ha scritto tutto il file: riportare sul log del server
-                    // TODO: log errore
-                    ;
+    return 0;
+}
+
+// Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
+int api_appendToFile(
+    struct fs_ds_t *ds, const char *pathname, const int client_sock,
+    const size_t size, char *buf, const char *swpdir)
+    {
+    // conterrà la risposta del server
+    struct reply_t *reply = NULL;
+
+    // Cerco il file nella tabella
+    struct fs_filedata_t *file = find_file(ds, pathname);
+    if(file == NULL) {
+        // chiave non trovata => restituire errore alla API
+        if((reply = newreply('N', 0, NULL)) == NULL) {
+            // errore allocazione risposta
+            puts("errore alloc risposta"); // TODO: log
+        }
+        return -1;
+    }
+    // file trovato: guardo se era stato aperto da questo client
+    else {
+        // if(lockedBy != -1 && lockedBy != client_sock) {
+            // il file è lockato, ma non da questo client, quindi l'operazione fallisce
+            // TODO: reply error
+            // TODO: log fallimento
+            //;
+        // }
+        int i, isOpen, nexit;
+        i = isOpen = 0;
+        nexit = 1;
+        while(nexit && i < file->nopened) {
+            if(file->openedBy[i] == client_sock) {
+                isOpen = 1; // aperto da questo client
+                nexit = 0;
+            }
+            i++;
+        }
+        // Se è aperto da questo client allora posso modificarlo
+        if(isOpen) {
+            // Verifico se provoca miss per numero di file o capacità: se sì effettuo swap
+            if(ds->curr_files == ds->max_files || ds->curr_mem + size > ds->max_mem) {
+                cache_miss(ds, swpdir, ds->curr_mem + size);
+            }
+            // Viene aggiornata internamente anche la quantità di memoria occupata
+
+            // espando l'area di memoria del file per contenere buf
+            void *newptr = realloc(file->data, file->size + size);
+            if(!newptr) {
+                // errore nella realloc
+                if((reply = newreply('N', 0, NULL)) == NULL) {
+                    // errore allocazione risposta
+                    puts("errore alloc risposta"); // TODO: log
                 }
-                else {
-                    // La scrittura ha avuto successo
-                    // TODO: log successo
-                    ;
+                return -1;
+            }
+            else {
+                // riallocazione OK, concateno buf
+                strncat(file->data, buf, size);
+                // aggiorno la size del file
+                file->size += size;
+                // posso liberare buf
+                free(buf);
+
+                // l'operazione ha avuto successo
+                if((reply = newreply('Y', 0, NULL)) == NULL) {
+                    // errore allocazione risposta
+                    puts("errore alloc risposta"); // TODO: log
                 }
             }
-            else if(!isOpen) {
-                // Operazione negata: il file non è stato aperto dal client
-                // TODO: reply error
-                // TODO: log fallimento
-                ;
+        }
+        else {
+            // Operazione negata: il client non aveva aperto il file
+            if((reply = newreply('N', 0, NULL)) == NULL) {
+                // errore allocazione risposta
+                puts("errore alloc risposta"); // TODO: log
             }
-
+            return -1;
+        }
     }
 
     return 0;

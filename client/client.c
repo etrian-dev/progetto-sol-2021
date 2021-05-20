@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
     i = 0;
     char *file; size_t fsz;
     while(options->read_list[i]) {
-        if(readFile(options->read_list[i], &file, &fsz) == -1) {
+        if(readFile(options->read_list[i], (void**)&file, &fsz) == -1) {
             PRINT(options->prints_on, printf("Impossibile leggere il file %s\n", options->read_list[i]);)
         }
         else {

@@ -174,8 +174,8 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     // ottengo il suo socket
     int csock = clients_info->client_id[2 * pos];
 
-    // preparo la richiesta
-    struct request_t *request = newrequest('R', flags, strlen(pathname) + 1, pathname, 0, NULL, 0, NULL);
+    // preparo la richiesta (flags non sono utilizzate, quindi passo 0
+    struct request_t *request = newrequest('R', 0, strlen(pathname) + 1, pathname, 0, NULL, 0, NULL);
     if(!request) {
 	// errore di allocazione
 	return -1;
@@ -186,7 +186,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     }
 
     // attendo la risposta
-    struct reply_t *reply;
+    struct reply_t *reply = NULL;
     if(read(csock, reply, sizeof(struct reply_t)) == -1) {
 	// errore nella risposta
 	return -1;
@@ -199,7 +199,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     // lettura consentita
     *buf = reply->buf;
     // setto la sua size
-    *size = file_sz;
+    *size = reply->buflen;
 
     // File letto con successo
     return 0;
@@ -211,6 +211,16 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     if(!buf || size < 0) {
 	return -1;
     }
+
+    // controllo che questo client sia connesso
+    int pos = -1;
+    int pid = getpid(); // prendo il pid del client chiamante
+    if((pos = isConnected(pid)) == -1) {
+	// errore: client non connesso
+	return -1;
+    }
+    // ottengo il suo socket
+    int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta (flags non utilizzate)
     struct request_t *request = newrequest('A', 0, strlen(pathname) + 1, pathname, size, (char*)buf, strlen(dirname) + 1, dirname);
@@ -224,7 +234,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     }
 
     // attendo la risposta
-    struct reply_t *reply;
+    struct reply_t *reply = NULL;
     if(read(csock, reply, sizeof(struct reply_t)) == -1) {
 	// errore nella risposta
 	return -1;

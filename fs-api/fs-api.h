@@ -67,8 +67,8 @@ struct request_t *newrequest(
 	const size_t pathlen,
 	const char *pathname,
 	const size_t buflen,
-	const char *buf
-	const size_t swp_len
+	const char *buf,
+	const size_t swp_len,
 	const char *swp);
 
 // struttura che definisce il tipo delle risposte
