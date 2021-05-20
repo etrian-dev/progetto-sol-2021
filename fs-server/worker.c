@@ -38,23 +38,12 @@ void *work(void *ds) {
         }
 
         int client_sock = elem->socket; // il socket è passato dal manager all'interno della struttura
+         struct request_t *request = (struct request_t *)elem->data;
 
-        // persing della richiesta (dichiaro qui le variabili usate da tutti rami dello switch per comodità
-        char operation;
-        int flags = 0x0;
-        char *path = calloc(BUF_BASESZ, sizeof(char));
-        // Tento di estrarre l'operazione da fare, le eventuali flags ed il path
-        if(sscanf((char*)elem->data, "%c:%d:%[^:]", &operation, &flags, path) != 3) {
-            // errore nel parsing: la richiesta non rispetta il formato dato
-            //cleanup_worker(elem);
-            // TODO: reply error
-            printf("scanf error\n");
-        }
-        // Sulla base dell'operazione richiesta termino il suo parsing e poi chiamo
-        // la corrispondente funzione del backend che la implementa
-        switch(operation) {
+        // Sulla base dell'operazione richiesta chiamo la corrispondente funzione del backend che la implementa
+        switch(request->type) {
             case 'O': // operazione di apertura di un file
-                if(openFile(server_ds, path, client_sock, flags) == -1) {
+                if(openFile(server_ds, request->pathname, client_sock, request->flags) == -1) {
                     // Operazione non consentita: logging
                     if(log(server_ds, errno, "openFile: Operazione non consentita") == -1) {
                         perror("openFile: Operazione non consentita");
@@ -65,20 +54,22 @@ void *work(void *ds) {
                     perror("openFile: Operazione riuscita");
                 }
                 break;
-            case 'R': // operazione di lettura: il buffer contiene il pathname
-                if(readFile(server_ds, path, client_sock) == -1) {
+            case 'R': // operazione di lettura di un file
+                if(readFile(server_ds, request->pathname, client_sock) == -1) {
                     // Operazione non consentita: logging
                     if(log(server_ds, errno, "readFile: Operazione non consentita") == -1) {
                         perror("readFile: Operazione non consentita");
                     }
                 }
-                // L'apertura del file ha avuto successo: logging
+                // La lettura del file ha avuto successo: logging
                 if(log(server_ds, errno, "readFile: Operazione riuscita") == -1) {
                     perror("readFile: Operazione riuscita");
                 }
                 break;
+            case 'A': // operazione di append
+                if(appendToFile(request->pathname
+                break;
             case 'W':
-            case 'A': // append to file
             case 'L': // lock file
             case 'U': // unlock file
             case 'C': // remove file

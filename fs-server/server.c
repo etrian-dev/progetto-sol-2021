@@ -1,6 +1,7 @@
 // header progetto
 #include <utils.h>
 #include <server-utils.h>
+#include <fs-api.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
@@ -207,8 +208,8 @@ int main(int argc, char **argv) {
                 // leggo il socket servito
                 int sock = -1;
                 if(read(server_ds->feedback[0], (void*)&sock, sizeof(int)) == -1) {
-                    if(log(server_ds, errno, "Impossibile accettare connessione") == -1) {
-                        perror("Impossibile accettare connessione");
+                    if(log(server_ds, errno, "Impossibile leggere feedback") == -1) {
+                        perror("Impossibile leggere feedback");
                     }
                 }
                 printf("Servita richiesta del client %d\n", sock);
@@ -260,34 +261,14 @@ int accept_connection(const int serv_sock) {
 }
 
 int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
-    // prima leggo la lunghezza
-    int nbytes;
-    char *req = NULL;
-    if((req = malloc(BUF_BASESZ * sizeof(char))) == NULL) {
-        // errore di allocazione
-        return -1;
-    }
-    size_t req_sz = BUF_BASESZ; // mantiene la capacità del buffer
-    size_t buf_offt = 0; // mantiene l'offset nel buffer da cui scrivere (chiaramente parto con offset 0)
-    while((nbytes = read(client_fd, req + buf_offt, BUF_BASESZ)) == BUF_BASESZ) {
-        // Se ho letto esattamente quel numero di byte significa che la richiesta non è terminata
-        if(rialloca_buffer(&req, req_sz + BUF_BASESZ) == -1) {
-            // errore di (ri)allocazione
-            // TODO: fatale o non fatale?
-            if(log(server_ds, errno, "Errore di lettura della richiesta") == -1) {
-                perror("Errore di lettura della richiesta");
-            }
+    // leggo richiesta
+    struct request_t *req = NULL;
+    long int nread = 0;
+    if((nread = readn(client_fd, req + nread, sizeof(struct request_t))) < sizeof(struct request_t)) {
+        if(errno != EINTR) {
+            // un altro errore
             return -1;
         }
-        // aggiorno sia la size del buffer che l'offset in esso
-        req_sz += BUF_BASESZ;
-        buf_offt += BUF_BASESZ;
-    }
-    if(nbytes == -1) {
-        if(log(server_ds, errno, "Errore di lettura della richiesta") == -1) {
-            perror("Errore di lettura della richiesta");
-        }
-        return -1;
     }
 
     // Ora inserisco la richiesta nella coda (in ME)
@@ -297,7 +278,7 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
         }
     }
 
-    if(enqueue(server_ds->job_queue, req, strlen(req) + 1, client_fd) == -1) {
+    if(enqueue(server_ds->job_queue, req, sizeof(req), client_fd) == -1) {
         if(log(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
             perror("Fallito inserimento nella coda di richieste");
         }

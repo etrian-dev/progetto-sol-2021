@@ -129,115 +129,76 @@ int openFile(const char *pathname, int flags) {
     // pos ora contiene la posizione del client, per cui posso accedere a clients_info
     int csock = clients_info->client_id[2 * pos];
 
-    // preparo la stringa per fare la richiesta: "O:<flags>:<pathname>"
-    size_t req_len = strlen(pathname) + BUF_BASESZ; // impongo un upper bound alla lunghezza delle richeste
-
-    char *req = calloc(req_len, sizeof(char));
-    if(!req) {
+    // preparo la richiesta
+    struct request_t *request = newrequest('O', flags, strlen(pathname) + 1, pathname, 0, NULL, 0, NULL);
+    if(!request) {
 	// errore di allocazione
 	return -1;
     }
-    // non so esattamente quanti byte scrive, ma se ritorna <0 allora errore
-    int nbytes;
-    if((nbytes = snprintf(req, req_len, "%c:%1d:%s", OPEN_FILE, flags, pathname)) < 0) {
-	return -1;
-    }
-    // Nota: nbytes non comprende il terminatore di path, per cui devo aggiungere 1
-    nbytes++;
-
-    if(nbytes > strlen(pathname) + BUF_BASESZ) {
-	// richiesta troppo lunga: non può essere inviata
+    // Scrivo la richiesta sul socket
+    if(writen(csock, request, sizeof(struct request_t)) == -1) {
 	return -1;
     }
 
-    // la stringa contenente la richesta può essere scritta sul socket
-    if(writen(csock, req, nbytes) != nbytes) {
-	// errore nell'invio del la richiesta
-	return -1;
+    // Richiesta inviata: attendo risposta
+    struct reply_t *reply;
+    if(readn(csock, &reply, sizeof(struct reply_t)) == -1) {
+	// errore nella risposta (che non sia EINTR)
+	if(errno != EINTR) {
+	    return -1;
+	}
     }
-
-    // libero il buffer
-    free(req);
-
-    // Richiesta inviata: attendo risposta, che in questo caso è composta dalla stringa
-    // con formato <Y|N>:<0|-1>\0
-    char reply[5];
-    if(read(csock, &reply, 5) == -1) {
-	// errore nella risposta
-	return -1;
-    }
-    if(reply[0] != 'Y') {
+    if(reply->status != 'Y') {
 	// errore: la richiesta non è stata soddisfatta
 	return -1;
     }
+    free(reply); // il buffer in questo caso è sempre NULL
+
     // richiesta OK: file aperto
     return 0;
 }
 
 // Invia al server la richiesta di lettura del file pathname, ritornando un puntatore al buffer
 int readFile(const char *pathname, void **buf, size_t *size) {
-    // controllo che sia stato passato un buffer valido
+    // controllo che sia stato passato un indirizzo di buffer non nullo
     if(!buf) {
 	return -1;
     }
     // controllo che questo client sia connesso
-    int pos, pid = getpid();
+    int pos = -1;
+    int pid = getpid(); // prendo il pid del client chiamante
     if((pos = isConnected(pid)) == -1) {
-	// client non connesso
+	// errore: client non connesso
 	return -1;
     }
     // ottengo il suo socket
     int csock = clients_info->client_id[2 * pos];
 
-    // Scrivo sul socket la richiesta di lettura ed il pathname, poi attendo la risposta
-    size_t req_sz = strlen(pathname) + 3; // la richiesta ha il formato "R:<pathname>"
-    char *req_buf = NULL;
-    if((req_buf = malloc(req_sz * sizeof(char))) == NULL) {
+    // preparo la richiesta
+    struct request_t *request = newrequest('R', flags, strlen(pathname) + 1, pathname, 0, NULL, 0, NULL);
+    if(!request) {
 	// errore di allocazione
 	return -1;
     }
-    int nwritten = snprintf(req_buf, req_sz, "%c:%s", READ_FILE, pathname);
-    if(nwritten < 0 || nwritten > req_sz) {
-	// errore nella scrittura sul buffer
-	free(req_buf);
+    // Scrivo la richiesta sul socket
+    if(writen(csock, request, sizeof(struct request_t)) == -1) {
 	return -1;
     }
-    // scrivo la richiesta
-    if(writen(csock, req_buf, req_sz) != req_sz) {
-	// errore nella scrittura
-	free(req_buf);
-	return -1;
-    }
-    // posso liberare il buffer
-    free(req_buf); req_buf = NULL; req_sz = 0;
 
-    // attendo la risposta, che ha il formato <Y|N>:<size>:<buf|NULL>
-    size_t header_sz = 3 + sizeof(size_t); // abbastanza per '<Y'|'N'>:<size>:
-    char reply[header_sz];
-    if(read(csock, reply, header_sz) == -1) {
+    // attendo la risposta
+    struct reply_t *reply;
+    if(read(csock, reply, sizeof(struct reply_t)) == -1) {
 	// errore nella risposta
 	return -1;
     }
-    char ret; size_t file_sz;
-    if(sscanf(reply, "%c:%lu:", &ret, &file_sz) != 2) {
-	// errore nel formato della risposta
-	return -1;
-    }
-    if(ret != 'Y') {
+    if(reply->status != 'Y') {
 	// operazione negata
 	return -1;
     }
 
-    // Accesso consentito: alloco un buffer abbastanza grande e leggo il file
-    if((*buf = malloc(sizeof(char) * (file_sz))) == NULL) {
-	// errore di allocazione
-	return -1;
-    }
-    if(readn(csock, *buf, file_sz + 1) != file_sz) {
-	// errore di lettura
-	return -1;
-    }
-    // Ok, letto il file nel buffer: setto la sua size
+    // lettura consentita
+    *buf = reply->buf;
+    // setto la sua size
     *size = file_sz;
 
     // File letto con successo
@@ -246,5 +207,40 @@ int readFile(const char *pathname, void **buf, size_t *size) {
 
 // Scrive in append al file pathname il contenuto di buf
 int appendToFile(const char* pathname, void* buf, size_t size, const char* dirname) {
-    return -1;
+    // controllo che buf sia non nullo e size > 0
+    if(!buf || size < 0) {
+	return -1;
+    }
+
+    // preparo la richiesta (flags non utilizzate)
+    struct request_t *request = newrequest('A', 0, strlen(pathname) + 1, pathname, size, (char*)buf, strlen(dirname) + 1, dirname);
+    if(!request) {
+	// errore di allocazione
+	return -1;
+    }
+    // Scrivo la richiesta sul socket
+    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+	return -1;
+    }
+
+    // attendo la risposta
+    struct reply_t *reply;
+    if(read(csock, reply, sizeof(struct reply_t)) == -1) {
+	// errore nella risposta
+	return -1;
+    }
+    if(reply->status != 'Y') {
+	// operazione negata
+	return -1;
+    }
+
+    // append consentito: guardo se sono stati espulsi dei file (buf non nullo)
+    if(reply->buf) {
+	puts("Espulsi dei file");
+    }
+    else {
+	puts("Nessun file espulso");
+    }
+
+    return 0;
 }

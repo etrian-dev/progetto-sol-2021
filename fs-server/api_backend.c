@@ -2,6 +2,7 @@
 #include <utils.h>
 #include <icl_hash.h> // per hashtable
 #include <server-utils.h>
+#include <fs-api.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
@@ -89,9 +90,8 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
 // Apre il file con path pathname (se presente) per il client con le flag passate come parametro
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags) {
-    // Preparo stringa di risposta
-    char reply[BUF_BASESZ];
-    memset(reply, 0, BUF_BASESZ * sizeof(char));
+    // conterrà la risposta del server
+    struct reply_t *reply = NULL;
     // Cerco il file nella tabella
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
@@ -100,18 +100,24 @@ int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, in
             // inserisco un file vuoto (passando NULL come buffer) nella tabella
             if(insert_file(ds, pathname, NULL, 0, client_sock)) {
                 // Inserimento OK
-                snprintf(reply, BUF_BASESZ, "%c:%d", 'Y', 0);
-                writen(client_sock, reply, 4);
-                return 0;
+                if((reply = newreply('Y', 0, NULL)) == NULL) {
+                    // errore allocazione risposta
+                    puts("errore alloc risposta"); // TODO: log
+                    return -1;
+                }
             }
         }
         // Altrimenti restituisco un errore
-        snprintf(reply, BUF_BASESZ, "%c:%d", 'N', -1);
-        writen(client_sock, reply, 5);
-        return 0;
+        else {
+            if((reply = newreply('N', 0, NULL)) == NULL) {
+                // errore allocazione risposta
+                puts("errore alloc risposta"); // TODO: log
+                return -1;
+            }
+        }
     }
     else {
-        // File trovato nella tabella: devo vedere se è stato già aperto dal client
+        // File trovato nella tabella: devo verificare se è stato già aperto da questo client
         size_t i;
         int isOpen = 0;
         while(!isOpen && i < file->nopened) {
@@ -122,25 +128,37 @@ int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, in
         }
         if(isOpen) {
             // File già aperto da questo client: l'operazione di apertura fallisce
-            snprintf(reply, BUF_BASESZ, "%c:%d", 'N', -1);
-            writen(client_sock, reply, 5);
-            return -1;
+            if((reply = newreply('N', 0, NULL)) == NULL) {
+                // errore allocazione risposta
+                puts("errore alloc risposta"); // TODO: log
+                return -1;
+            }
         }
-        // Il File non era aperto da questo client: lo apro
-        // TODO: lock
-        int *newentry = realloc(file->openedBy, file->nopened + 1);
-        if(!newentry) {
-            // fallita allocazione nuovo spazio per fd
-            snprintf(reply, BUF_BASESZ, "%c:%d", 'N', -1);
-            writen(client_sock, reply, 5);
-            return -1;
+        else {
+            // Il File non era aperto da questo client: lo apro
+            // TODO: lock?
+            int *newentry = realloc(file->openedBy, file->nopened + 1);
+            if(!newentry) {
+                // fallita allocazione nuovo spazio per fd
+                if((reply = newreply('N', 0, NULL)) == NULL) {
+                    // errore allocazione risposta
+                    puts("errore alloc risposta"); // TODO: log
+                    return -1;
+                }
+
+            }
+            else {
+                // Apertura OK
+                newentry[file->nopened] = client_sock;
+                file->nopened++;
+                file->openedBy = newentry;
+                if((reply = newreply('Y', 0, NULL)) == NULL) {
+                    // errore allocazione risposta
+                    puts("errore alloc risposta"); // TODO: log
+                    return -1;
+                }
+            }
         }
-        // Apertura OK
-        newentry[file->nopened] = client_sock;
-        file->nopened++;
-        file->openedBy = newentry;
-        snprintf(reply, BUF_BASESZ, "%c:%d", 'Y', 0);
-        writen(client_sock, reply, 4);
     }
     return 0;
 }

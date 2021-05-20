@@ -79,6 +79,21 @@ int main(int argc, char **argv) {
         }
         i++;
     }
+    i = 0;
+    char *file; size_t fsz;
+    while(options->read_list[i]) {
+        if(readFile(options->read_list[i], &file, &fsz) == -1) {
+            PRINT(options->prints_on, printf("Impossibile leggere il file %s\n", options->read_list[i]);)
+        }
+        else {
+            PRINT(options->prints_on,
+                printf("File %s letto\n", options->read_list[i]);
+                printf("size:%lu\nfile\n=======\n%s\n", fsz, file);)
+            free(file);
+            file = NULL;
+        }
+        i++;
+    }
 
     // La connessione con il server viene chiusa
     if(closeConnection(options->fs_socket) == -1) {
