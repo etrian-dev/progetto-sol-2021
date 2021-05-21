@@ -98,8 +98,10 @@ int main(int argc, char **argv) {
         }
         else {
             PRINT(options->prints_on,
-                printf("File %s letto\n", options->read_list[i]);
-                printf("size:%lu\nfile\n=======\n%s\n", fsz, (char*)file);)
+                puts("=========================================================");
+                printf("File: %s\tSize: %lu\n", options->read_list[i], fsz);
+                write(1, file, fsz);
+                puts("\n=========================================================");)
             free(file);
             file = NULL;
         }

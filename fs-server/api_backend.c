@@ -363,7 +363,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
             else {
                 file->data = newptr;
                 // riallocazione OK, concateno buf
-                strncat(file->data, buf, size);
+                memcpy(file->data + file->size, buf, size);
                 // aggiorno la size del file
                 file->size += size;
                 // posso liberare buf
