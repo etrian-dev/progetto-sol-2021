@@ -43,10 +43,22 @@ void *work(void *ds) {
 
         // Sulla base dell'operazione richiesta chiamo la corrispondente funzione del backend che la implementa
         switch(request->type) {
-            case 'O': // operazione di apertura di un file
+            case 'O': { // operazione di apertura di un file
                 // Se la richiesta è di creazione di un file controllo di non aver
                 // raggiunto il massimo numero di file memorizzabili contemporaneamente nel server
-                if(api_openFile(server_ds, request->path, client_sock, request->flags) == -1) {
+
+                // leggo dal socket il path del file da aprire
+                char *path = malloc(request->path_len * sizeof(char));
+                if(!path) {
+                    // cleanup
+                    continue;
+                }
+                if(readn(client_sock, path, request->path_len) == -1) {
+                    // cleanup
+                    continue;
+                }
+
+                if(api_openFile(server_ds, path, client_sock, request->flags) == -1) {
                     // Operazione non consentita: logging
                     if(log(server_ds, errno, "openFile: Operazione non consentita") == -1) {
                         perror("openFile: Operazione non consentita");
@@ -59,8 +71,20 @@ void *work(void *ds) {
                     }
                 }
                 break;
-            case 'R': // operazione di lettura di un file
-                if(api_readFile(server_ds, request->path, client_sock) == -1) {
+            }
+            case 'R': { // operazione di lettura di un file
+                // leggo dal socket il path del file da leggere
+                char *path = malloc(request->path_len * sizeof(char));
+                if(!path) {
+                    // cleanup
+                    continue;
+                }
+                if(readn(client_sock, path, request->path_len) == -1) {
+                    // cleanup
+                    continue;
+                }
+
+                if(api_readFile(server_ds, path, client_sock) == -1) {
                     // Operazione non consentita: logging
                     if(log(server_ds, errno, "readFile: Operazione non consentita") == -1) {
                         perror("readFile: Operazione non consentita");
@@ -73,8 +97,30 @@ void *work(void *ds) {
                     }
                 }
                 break;
-            case 'A': // operazione di append
-                if(api_appendToFile(server_ds, request->path, client_sock, request->buf_len, request->buf, request->dir_swp) == -1) {
+            }
+            case 'A': {// operazione di append
+                // leggo dal socket il path del file da modificare
+                char *path = malloc(request->path_len * sizeof(char));
+                void *buf = malloc(request->buf_len);
+                char *swp = malloc(request->dir_swp_len * sizeof(char));
+                if(!path || !buf || !swp) {
+                    // cleanup
+                    continue;
+                }
+                if(readn(client_sock, path, request->path_len) == -1) {
+                    // cleanup
+                    continue;
+                }
+                if(readn(client_sock, buf, request->buf_len) == -1) {
+                    // cleanup
+                    continue;
+                }
+                if(readn(client_sock, swp, request->dir_swp_len) == -1) {
+                    // cleanup
+                    continue;
+                }
+
+                if(api_appendToFile(server_ds, path, client_sock, request->buf_len, buf, swp) == -1) {
                     // Operazione non consentita: logging
                     if(log(server_ds, errno, "appendToFile: Operazione non consentita") == -1) {
                         perror("appendToFile: Operazione non consentita");
@@ -87,6 +133,7 @@ void *work(void *ds) {
                     }
                 }
                 break;
+            }
             case 'W':
             case 'L': // lock file
             case 'U': // unlock file
@@ -95,7 +142,6 @@ void *work(void *ds) {
                 break;
         }
 
-        free(request->path);
         free(request);
 
         if(pthread_mutex_lock(&(server_ds->mux_feedback)) == -1) {

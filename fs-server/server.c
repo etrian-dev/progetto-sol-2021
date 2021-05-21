@@ -24,7 +24,7 @@
 
 // Accetta la connessione e restituisce il socket da usare (o -1 in caso di errore)
 int accept_connection(const int serv_sock);
-
+// Legge dal socket del client (client_fd) la richiesta e la inserisce nella coda per servirla
 int processRequest(struct fs_ds_t *server_ds, const int client_fd);
 
 // Funzione main del server multithreaded: effettua il ruolo di manager thread
@@ -196,7 +196,6 @@ int main(int argc, char **argv) {
                 // Invece, se è stata accettata, allora si può aggiungere
                 // il socket del client a quelli ascoltati da select
                 FD_SET(client_sock, &fd_read);
-                printf("Inserito client sul socket %d\n", client_sock);
                 // Se necessario devo aggiornare il massimo indice dei socket
                 if(new_maxfd < client_sock) {
                     new_maxfd = client_sock;
@@ -222,8 +221,12 @@ int main(int argc, char **argv) {
             // Se ho ricevuto una richiesta da un client devo inserirla nella coda di richieste
             else if(FD_ISSET(fd, &fd_read_cpy)) {
                 if(processRequest(server_ds, fd) == -1) {
-                    // errore nel processing della richiesta: lo riporto al client
-                    writen(fd, "N:-1", 5);
+                    // errore nel processing della richiesta
+                    struct reply_t *reply = NULL;
+                    if((reply = newreply('N', 0)) == NULL) {
+                        // errore allocazione risposta
+                        puts("errore alloc risposta"); // TODO: log
+                    }
                 }
                 // Poi tolgo il fd da quelli ascoltati
                 FD_CLR(fd, &fd_read);
@@ -261,15 +264,13 @@ int accept_connection(const int serv_sock) {
 
 int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
     // leggo richiesta
-    struct request_t *req = NULL;
-    struct reply_t *reply = NULL;
+    struct request_t *req = malloc(sizeof(struct request_t));
+    if(!req) {
+        return -1;
+    }
     if(readn(client_fd, req, sizeof(struct request_t)) != sizeof(struct request_t)) {
         if(errno != EINTR) {
-           if((reply = newreply('N', 0, NULL)) == NULL) {
-                // errore allocazione risposta
-                puts("errore alloc risposta"); // TODO: log
-            }
-            return -1;
+           return -1;
         }
     }
 
@@ -278,12 +279,14 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
         if(log(server_ds, errno, "Fallito lock coda di richieste") == -1) {
             perror("Fallito lock coda di richieste");
         }
+        return -1;
     }
 
-    if(enqueue(server_ds->job_queue, req, sizeof(req), client_fd) == -1) {
+    if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), client_fd) == -1) {
         if(log(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
             perror("Fallito inserimento nella coda di richieste");
         }
+        return -1;
     }
     // Quindi segnalo ai thread worker che vi è una nuova richiesta
     pthread_cond_signal(&(server_ds->new_job));
@@ -292,6 +295,7 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
         if(log(server_ds, errno, "Fallito unlock coda di richieste") == -1) {
             perror("Fallito unlock coda di richieste");
         }
+        return -1;
     }
 
     return 0;

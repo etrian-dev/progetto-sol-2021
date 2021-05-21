@@ -130,7 +130,7 @@ int openFile(const char *pathname, int flags) {
     int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta
-    struct request_t *request = newrequest('O', flags, strlen(pathname) + 1, pathname, 0, NULL, 0, NULL);
+    struct request_t *request = newrequest('O', flags, strlen(pathname) + 1, 0, 0);
     if(!request) {
 	// errore di allocazione
 	return -1;
@@ -139,10 +139,16 @@ int openFile(const char *pathname, int flags) {
     if(writen(csock, request, sizeof(struct request_t)) == -1) {
 	return -1;
     }
+    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+	return -1;
+    }
 
     // Richiesta inviata: attendo risposta
-    struct reply_t *reply;
-    if(readn(csock, &reply, sizeof(struct reply_t)) == -1) {
+    struct reply_t *reply = malloc(sizeof(struct reply_t));
+    if(!reply) {
+	return -1;
+    }
+    if(readn(csock, reply, sizeof(struct reply_t)) == -1) {
 	// errore nella risposta (che non sia EINTR)
 	if(errno != EINTR) {
 	    return -1;
@@ -175,7 +181,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta (flags non sono utilizzate, quindi passo 0
-    struct request_t *request = newrequest('R', 0, strlen(pathname) + 1, pathname, 0, NULL, 0, NULL);
+    struct request_t *request = newrequest('R', 0, strlen(pathname) + 1, 0, 0);
     if(!request) {
 	// errore di allocazione
 	return -1;
@@ -184,9 +190,15 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     if(writen(csock, request, sizeof(struct request_t)) == -1) {
 	return -1;
     }
+    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+	return -1;
+    }
 
     // attendo la risposta
-    struct reply_t *reply = NULL;
+    struct reply_t *reply = malloc(sizeof(struct reply_t));
+    if(!reply) {
+	return -1;
+    }
     if(read(csock, reply, sizeof(struct reply_t)) == -1) {
 	// errore nella risposta
 	return -1;
@@ -195,11 +207,16 @@ int readFile(const char *pathname, void **buf, size_t *size) {
 	// operazione negata
 	return -1;
     }
-
-    // lettura consentita
-    *buf = reply->buf;
-    // setto la sua size
-    *size = reply->buflen;
+    // altrimenti lettura consentita
+    *buf = malloc(reply->buflen);
+    if(!(*buf)) {
+	return -1;
+    }
+    if(readn(csock, *buf, reply->buflen) == -1) {
+	// errore nella risposta
+	return -1;
+    }
+    *size =reply->buflen;
 
     // File letto con successo
     return 0;
@@ -223,7 +240,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta (flags non utilizzate)
-    struct request_t *request = newrequest('A', 0, strlen(pathname) + 1, pathname, size, (char*)buf, strlen(dirname) + 1, dirname);
+    struct request_t *request = newrequest('A', 0, strlen(pathname) + 1, size, strlen(dirname) + 1);
     if(!request) {
 	// errore di allocazione
 	return -1;
@@ -232,9 +249,21 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     if(writen(csock, request, sizeof(struct request_t)) == -1) {
 	return -1;
     }
+    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+	return -1;
+    }
+    if(writen(csock, buf, size) == -1) {
+	return -1;
+    }
+    if(writen(csock, dirname, strlen(dirname) + 1) == -1) {
+	return -1;
+    }
 
     // attendo la risposta
-    struct reply_t *reply = NULL;
+     struct reply_t *reply = malloc(sizeof(struct reply_t));
+    if(!reply) {
+	return -1;
+    }
     if(read(csock, reply, sizeof(struct reply_t)) == -1) {
 	// errore nella risposta
 	return -1;
@@ -245,7 +274,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     }
 
     // append consentito: guardo se sono stati espulsi dei file (buf non nullo)
-    if(reply->buf) {
+    if(reply->buflen > 0) {
 	puts("Espulsi dei file");
     }
     else {

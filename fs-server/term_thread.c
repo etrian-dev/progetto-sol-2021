@@ -18,6 +18,16 @@
 #include <assert.h>
 
 void *term_thread(void *params) {
+    // ignoro SIGPIPE (process-wide)
+    struct sigaction ign_pipe;
+    memset(&ign_pipe, 0, sizeof(struct sigaction));
+    ign_pipe.sa_handler = SIG_IGN;
+    if(sigaction(SIGPIPE, &ign_pipe, NULL) == -1) {
+        // errore nell'installazione signal handler per ignorare SIGPIPE
+        // termino brutalmente il server, anche perché terminerebbe una volta che l'ultimo client si disconnette
+        pthread_kill(pthread_self(), SIGKILL);
+    }
+
     struct term_params_t *term_params = (struct term_params_t *)params;
 
     // preparo maschera per ascoltare segnali SIGHUP, SIGINT, SIGQUIT

@@ -4,6 +4,7 @@
 #ifndef FS_API_H_DEFINED
 #define FS_API_H_DEFINED
 
+#include <utils.h>
 #include <stddef.h> // per size_t
 #include <time.h>
 
@@ -52,11 +53,8 @@ struct request_t {
 	char type;              // tipo della richiesta: uno tra quelli definiti sopra
 	int flags;              // flags della richiesta: O_CREATE, O_LOCK oppure nessuna (0x0)
 	size_t path_len;        // lunghezza della stringa path (compreso terminatore)
-	char *path;             // stringa che indica il path del file
 	size_t buf_len;         // lunghezza della stringa buf: 0 se non utilizzata
-	char *buf;              // stringa da passare al server: NULL se non utilizzata
 	size_t dir_swp_len;     // lunghezza della stringa dir_swp: 0 se non utilizzata
-	char *dir_swp;          // directory dove mandare file in swapout: NULL se non utilizzata
 };
 
 // Funzione che alloca e setta i parametri di una richiesta: ritorna un puntatore ad essa
@@ -65,22 +63,17 @@ struct request_t *newrequest(
 	const char type,
 	const int flags,
 	const size_t pathlen,
-	const char *pathname,
 	const size_t buflen,
-	const char *buf,
-	const size_t swp_len,
-	const char *swp);
-
+	const size_t swp_len);
 // struttura che definisce il tipo delle risposte
 struct reply_t {
 	char status;
 	size_t buflen;
-	char *buf;
 };
 
 // Funzione che alloca e setta i parametri di una risposta: ritorna un puntatore ad essa
 // se ha successo, NULL altrimenti
-struct reply_t *newreply(const char stat, const size_t len, const char *buf);
+struct reply_t *newreply(const char stat, const size_t len);
 
 //-----------------------------------------------------------------------------------
 // Definizione delle operazioni
