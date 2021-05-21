@@ -80,15 +80,26 @@ int main(int argc, char **argv) {
         i++;
     }
     i = 0;
-    char *file; size_t fsz;
+    char buf[6] = "hello";
     while(options->read_list[i]) {
-        if(readFile(options->read_list[i], (void**)&file, &fsz) == -1) {
+        if(appendToFile(options->read_list[i], (void*)buf, 6, "something") == -1) {
+            PRINT(options->prints_on, printf("Impossibile appendere %s al file %s\n", buf, options->read_list[i]);)
+        }
+        else {
+            PRINT(options->prints_on, printf("Concatenato %s ad %s\n", buf, options->read_list[i]);)
+        }
+        i++;
+    }
+    i = 0;
+    void *file; size_t fsz;
+    while(options->read_list[i]) {
+        if(readFile(options->read_list[i], &file, &fsz) == -1) {
             PRINT(options->prints_on, printf("Impossibile leggere il file %s\n", options->read_list[i]);)
         }
         else {
             PRINT(options->prints_on,
                 printf("File %s letto\n", options->read_list[i]);
-                printf("size:%lu\nfile\n=======\n%s\n", fsz, file);)
+                printf("size:%lu\nfile\n=======\n%s\n", fsz, (char*)file);)
             free(file);
             file = NULL;
         }

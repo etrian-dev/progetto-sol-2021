@@ -8,10 +8,10 @@ LIBPATH = -L ./libs
 UTILS   = libs/libutilities.so
 HTABLE  = libs/libicl_hash.so
 
-.PHONY: all clean cleanall fs-api server client
+.PHONY: all clean cleanall
 
-all: $(UTILS) $(HTABLE) fs-api server
-	#crea (se non esistono) le directory per i file oggetto e le lib. condivise
+all: $(UTILS) $(HTABLE)
+	#crea (se non esistono) le directory per i file oggetto e le librerie condivise
 	-mkdir objs libs
 	$(MAKE) -C fs-api
 	$(MAKE) -C fs-server
@@ -31,5 +31,5 @@ icl_hash.o: icl_hash/icl_hash.c
 clean:
 	-rm -fr $(wildcard ./*.out)
 cleanall: clean
-	-rm $(wildcard libs/*.so) $(wildcard objs/*.o)
+	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o)
 

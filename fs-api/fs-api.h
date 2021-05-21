@@ -6,7 +6,7 @@
 
 #include <utils.h>
 #include <stddef.h> // per size_t
-#include <time.h>
+#include <time.h> // per struct timespec
 
 #define SOCK_PATH_MAXLEN 108 // per socket AF_UNIX è la massima lunghezza del path al socket
 
@@ -41,9 +41,9 @@ int isConnected(const int pid);
 // funzione di utilità per convertire msec in struct timespec
 void get_delay(const int msec, struct timespec *delay);
 
-
+// definizione delle operazioni implementate dalla API
 #define OPEN_FILE 'O'
-#define CREATE_FILE 'C'
+#define CLOSE_FILE 'C'
 #define READ_FILE 'R'
 #define WRITE_FILE 'W'
 #define APPEND_FILE 'A'
@@ -56,23 +56,25 @@ struct request_t {
 	size_t buf_len;         // lunghezza della stringa buf: 0 se non utilizzata
 	size_t dir_swp_len;     // lunghezza della stringa dir_swp: 0 se non utilizzata
 };
-
-// Funzione che alloca e setta i parametri di una richiesta: ritorna un puntatore ad essa
-// se ha successo, NULL altrimenti
+// Funzione che alloca e setta i parametri di una richiesta
+// Ritorna un puntatore ad essa se ha successo, NULL altrimenti
 struct request_t *newrequest(
 	const char type,
 	const int flags,
 	const size_t pathlen,
 	const size_t buflen,
 	const size_t swp_len);
+
+#define REPLY_YES 'Y'
+#define REPLY_NO 'N'
+
 // struttura che definisce il tipo delle risposte
 struct reply_t {
-	char status;
-	size_t buflen;
+	char status;            // stato della risposta: 'Y' o 'N'
+	size_t buflen;          // lunghezza del buffer restituito dal server: 0 se non utilizzata
 };
-
-// Funzione che alloca e setta i parametri di una risposta: ritorna un puntatore ad essa
-// se ha successo, NULL altrimenti
+// Funzione che alloca e setta i parametri di una risposta
+// Ritorna un puntatore ad essa se ha successo, NULL altrimenti
 struct reply_t *newreply(const char stat, const size_t len);
 
 //-----------------------------------------------------------------------------------
@@ -86,6 +88,9 @@ int closeConnection(const char *sockname);
 
 // apre il file pathname (se presente nel server e solo per il client che la invia)
 int openFile(const char *pathname, int flags);
+
+// invia al server la richiesta di chiusura del file pathname (solo per il client che la invia)
+int closeFile(const char *pathname);
 
 // invia al server la richiesta di lettura del file pathname, ritornando un puntatore al buffer
 int readFile(const char *pathname, void **buf, size_t *size);
@@ -101,9 +106,6 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
 
 // invia al server la richiesta di rilasciare la mutua esclusione sul file pathname
 //int unlockFile(const char *pathname);
-
-// invia al server la richiesta di chiusura del file pathname (solo per il client che la invia)
-//int closeFile(const char *pathname);
 
 // invia al server la richiesta di rimozione del file dal server (solo se ha la lock su tale file)
 //int removeFile(const char *pathname);

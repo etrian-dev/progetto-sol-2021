@@ -61,6 +61,9 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
         newfile->openedBy[0] = client; // setto il file come aperto da questo client
         newfile->nopened = 1;
         newfile->data = NULL; // non ho dati da inserire
+
+        // Incremento il numero di file aperti nel server
+        ds->curr_files++;
     }
     // Altrimenti devo troncare il file (sostituisco il buffer)
     else {
@@ -271,11 +274,10 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         // Se è aperto da questo client allora posso leggerlo
         if(isOpen) {
             // Ok, posso inviare il file al client lungo il socket
-            if(newreply('Y', file->size) == NULL) {
+            if((reply = newreply('Y', file->size)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
             }
-
         }
         else {
             // Operazione negata: il client non aveva aperto il file
@@ -292,6 +294,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     // Se la lettura è autorizzata allora invio il file sul socket
     if(success == 0) {
         if(writen(client_sock, file->data, file->size) == -1) {
+            perror("This error");
             success = -1;
         }
     }
@@ -336,14 +339,19 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
         }
         // Se è aperto da questo client allora posso modificarlo
         if(isOpen) {
-            // Verifico se provoca miss per numero di file o capacità: se sì effettuo swap
+            // Verifico se provoca miss per numero di file o capacità: se sì effettuo swapout
             if(ds->curr_files == ds->max_files || ds->curr_mem + size > ds->max_mem) {
                 cache_miss(ds, swpdir, ds->curr_mem + size);
             }
-            // Viene aggiornata internamente anche la quantità di memoria occupata
 
             // espando l'area di memoria del file per contenere buf
-            void *newptr = realloc(file->data, file->size + size);
+            void *newptr = NULL;
+            if(!(file->data)) {
+                newptr = malloc(size);
+            }
+            else {
+                newptr = realloc(file->data, file->size + size);
+            }
             if(!newptr) {
                 // errore nella realloc
                 if((reply = newreply('N', 0)) == NULL) {
@@ -353,6 +361,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                 success = -1;
             }
             else {
+                file->data = newptr;
                 // riallocazione OK, concateno buf
                 strncat(file->data, buf, size);
                 // aggiorno la size del file
@@ -365,6 +374,9 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
+
+                // devo aggiornare anche la quantità di memoria occupata
+                ds->curr_mem += size;
             }
         }
         else {

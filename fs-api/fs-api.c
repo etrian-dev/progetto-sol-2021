@@ -130,7 +130,7 @@ int openFile(const char *pathname, int flags) {
     int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta
-    struct request_t *request = newrequest('O', flags, strlen(pathname) + 1, 0, 0);
+    struct request_t *request = newrequest(OPEN_FILE, flags, strlen(pathname) + 1, 0, 0);
     if(!request) {
 	// errore di allocazione
 	return -1;
@@ -154,13 +154,60 @@ int openFile(const char *pathname, int flags) {
 	    return -1;
 	}
     }
-    if(reply->status != 'Y') {
+    if(reply->status != REPLY_YES) {
 	// errore: la richiesta non è stata soddisfatta
 	return -1;
     }
     free(reply); // il buffer in questo caso è sempre NULL
 
     // richiesta OK: file aperto
+    return 0;
+}
+
+// invia al server la richiesta di chiusura del file pathname (solo per il client che la invia)
+int closeFile(const char *pathname) {
+    // Verifico che questo client sia connesso
+    int cPID = getpid();
+    int pos;
+    if((pos = isConnected(cPID)) == -1) {
+	// errore: client non connesso
+	return -1;
+    }
+    // pos ora contiene la posizione del client, per cui posso accedere a clients_info
+    int csock = clients_info->client_id[2 * pos];
+
+    // preparo la richiesta
+    struct request_t *request = newrequest(CLOSE_FILE, 0, strlen(pathname) + 1, 0, 0);
+    if(!request) {
+	// errore di allocazione
+	return -1;
+    }
+    // Scrivo la richiesta sul socket
+    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+	return -1;
+    }
+    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+	return -1;
+    }
+
+    // Richiesta inviata: attendo risposta
+    struct reply_t *reply = malloc(sizeof(struct reply_t));
+    if(!reply) {
+	return -1;
+    }
+    if(readn(csock, reply, sizeof(struct reply_t)) == -1) {
+	// errore nella risposta (che non sia EINTR)
+	if(errno != EINTR) {
+	    return -1;
+	}
+    }
+    if(reply->status != REPLY_YES) {
+	// errore: la richiesta non è stata soddisfatta
+	return -1;
+    }
+    free(reply); // il buffer in questo caso è sempre NULL
+
+    // richiesta OK: file chiuso
     return 0;
 }
 
@@ -181,7 +228,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta (flags non sono utilizzate, quindi passo 0
-    struct request_t *request = newrequest('R', 0, strlen(pathname) + 1, 0, 0);
+    struct request_t *request = newrequest(READ_FILE, 0, strlen(pathname) + 1, 0, 0);
     if(!request) {
 	// errore di allocazione
 	return -1;
@@ -203,7 +250,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
 	// errore nella risposta
 	return -1;
     }
-    if(reply->status != 'Y') {
+    if(reply->status != REPLY_YES) {
 	// operazione negata
 	return -1;
     }
@@ -240,7 +287,8 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta (flags non utilizzate)
-    struct request_t *request = newrequest('A', 0, strlen(pathname) + 1, size, strlen(dirname) + 1);
+    size_t dirname_len = (dirname == NULL ? 0 : strlen(dirname) + 1);
+    struct request_t *request = newrequest(APPEND_FILE, 0, strlen(pathname) + 1, size, dirname_len);
     if(!request) {
 	// errore di allocazione
 	return -1;
@@ -255,12 +303,12 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     if(writen(csock, buf, size) == -1) {
 	return -1;
     }
-    if(writen(csock, dirname, strlen(dirname) + 1) == -1) {
+    if(writen(csock, dirname, dirname_len) == -1) {
 	return -1;
     }
 
     // attendo la risposta
-     struct reply_t *reply = malloc(sizeof(struct reply_t));
+    struct reply_t *reply = malloc(sizeof(struct reply_t));
     if(!reply) {
 	return -1;
     }
@@ -268,7 +316,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 	// errore nella risposta
 	return -1;
     }
-    if(reply->status != 'Y') {
+    if(reply->status != REPLY_YES) {
 	// operazione negata
 	return -1;
     }
