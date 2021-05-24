@@ -27,8 +27,20 @@ int accept_connection(const int serv_sock);
 // Legge dal socket del client (client_fd) la richiesta e la inserisce nella coda per servirla
 int processRequest(struct fs_ds_t *server_ds, const int client_fd);
 
+int should_term(struct term_params_t *tp, fd_set *select_set, const int maxsock, const int serv_sock);
+
 // Funzione main del server multithreaded: effettua il ruolo di manager thread
 int main(int argc, char **argv) {
+	// ignoro SIGPIPE (process-wide)
+    struct sigaction ign_pipe;
+    memset(&ign_pipe, 0, sizeof(ign_pipe));
+    ign_pipe.sa_handler = SIG_IGN;
+    if(sigaction(SIGPIPE, &ign_pipe, NULL) == -1) {
+        // errore nell'installazione signal handler per ignorare SIGPIPE
+        // termino brutalmente il server, anche perché terminerebbe una volta che l'ultimo client si disconnette
+        pthread_kill(pthread_self(), SIGKILL);
+    }
+
     // effettua il parsing del file di configurazione riempiendo i campi della struttura
     struct serv_params run_params;
     memset(&run_params, 0, sizeof(struct serv_params)); // per sicurezza azzero tutto
@@ -76,7 +88,6 @@ int main(int argc, char **argv) {
     // anche nei thread worker
     server_ds->log_fd = logfile_fd;
 
-
     // Creo il socket sul quale il server ascolta connessioni (e lo assegno)
     int listen_connections;
     if((listen_connections = sock_init(run_params.sock_path, strlen(run_params.sock_path))) == -1) {
@@ -86,9 +97,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    //-------------------------------------------------------------------------------
-    // Da qui in poi multithreaded
-
     // attributi per il thread di terminazione
     pthread_attr_t attrs;
     if(pthread_attr_init(&attrs) != 0 && pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED != 0)) {
@@ -97,15 +105,21 @@ int main(int argc, char **argv) {
         }
         return 1;
     }
-    // creo il thread che gestisce la terminazione
+    // Inizializzo la struttura dati che regola la terminazione
     struct term_params_t term_params;
+    // inizializzo mutex da usare per controllare terminazione
+    pthread_mutex_init(&(term_params.mux_term), NULL);
     term_params.fast_term = 0;
     term_params.slow_term = 0;
 
-    pthread_mutex_init(&(term_params.term_mux), NULL);
-    if(pthread_create(&(term_params.term_tid), &attrs, term_thread, &term_params) == -1) {
-        if(log(server_ds, errno, "Impossibile creare la thread di terminazione") == -1) {
-            perror("Impossibile creare la thread di terminazione");
+    //-------------------------------------------------------------------------------
+    // Da qui in poi multithreaded
+
+	// creo il thread che gestisce la terminazione
+    pthread_t term_tid;
+    if(pthread_create(&term_tid, &attrs, term_thread, &term_params) == -1) {
+        if(log(server_ds, errno, "Impossibile creare il thread di terminazione") == -1) {
+            perror("Impossibile creare il thread di terminazione");
         }
         return 2;
     }
@@ -157,17 +171,26 @@ int main(int argc, char **argv) {
     FD_SET(server_ds->feedback[0], &fd_read);
     // Devo mettere l'indice max che è il max tra i due
     int max_fd_idx = (listen_connections > server_ds->feedback[0] ? listen_connections : server_ds->feedback[0]);
-
     int fd;
-    int fast_term = 0;
-    int slow_term = 0;
-    while(!fast_term && !slow_term) {
+
+    // Questo è il loop del thread manager, che accetta connessioni ed inserisce nella coda
+    // le richieste per i thread worker, ricevendo poi il feedback
+    while(1) {
+        if(should_term(&term_params, &fd_read, max_fd_idx, listen_connections)) {
+            break;
+        }
+
         fd_read_cpy = fd_read;
         // Il server seleziona i file descriptor pronti
         if(select(max_fd_idx + 1, &fd_read_cpy, NULL, NULL, NULL) == -1) {
             if(errno == EINTR) {
                 // era stata interrotta da un segnale gestito (terminazione)
-                if(!fast_term && !slow_term) break;
+                if(should_term(&term_params, &fd_read, max_fd_idx, listen_connections)) {
+                    break;
+                }
+                else {
+                    fd_read_cpy = fd_read; // potrebbe aver modificato fd_read togliendo listen_connections
+                }
             }
             // un altro errore della select => provoca terminazione
             else {
@@ -210,7 +233,7 @@ int main(int argc, char **argv) {
                         perror("Impossibile leggere feedback");
                     }
                 }
-                printf("Servita richiesta del client %d\n", sock);
+                log(server_ds, errno, "Servita richiesta del client");
                 // Rimetto il client tra quelli che il server ascolta (cioè in fd_read)
                 FD_SET(sock, &fd_read);
                 // Se necessario devo aggiornare il massimo indice dei socket
@@ -227,6 +250,7 @@ int main(int argc, char **argv) {
                         // errore allocazione risposta
                         puts("errore alloc risposta"); // TODO: log
                     }
+                    writen(fd, reply, sizeof(struct reply_t));
                 }
                 // Poi tolgo il fd da quelli ascoltati
                 FD_CLR(fd, &fd_read);
@@ -296,6 +320,46 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
             perror("Fallito unlock coda di richieste");
         }
         return -1;
+    }
+
+    return 0;
+}
+
+int should_term(struct term_params_t *tp, fd_set *select_set, const int maxsock, const int serv_sock) {
+    // Prendo ME sulla struttura dati per la terminazione del server
+    if(pthread_mutex_lock(&(tp->mux_term)) == -1) {
+        perror("Fallita acquisizione ME su terminazione");
+        return 0;
+    }
+
+    int i;
+    // terminazione veloce: devono essere chiuse le connessioni esistenti
+    if(tp->fast_term) {
+        // chiudo tutti i socket su cui opera la select
+        for(i = 0; i <= maxsock; i++) {
+            if(FD_ISSET(i, select_set)) {
+                if(close(i) == -1) {
+                    perror("Impossibile chiudere il socket");
+                }
+            }
+        }
+        return 1; // solo in caso di fast_term esco immediatamente dal loop del server
+    }
+    // terminazione lenta: le connessioni esistenti rimangono aperte
+    // fino alla loro chiusura da parte del client
+    else if(tp->slow_term) {
+        // devo chiudere immediatamente solo il socket su cui il server accetta connessioni (serv_sock)
+        if(close(serv_sock) == -1) {
+            perror("Impossibile chiudere il socket del server");
+        }
+        // devono essere comunque servite le richieste dei client connessi, quindi tolgo
+        // solo serv_sock da quelli ascoltati dalla select
+        FD_CLR(serv_sock, select_set);
+    }
+
+    if(pthread_mutex_unlock(&(tp->mux_term)) == -1) {
+        perror("Fallito rilascio ME su terminazione");
+        return 0;
     }
 
     return 0;

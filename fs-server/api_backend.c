@@ -168,6 +168,9 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
+                if(log(ds, 0, "openFile: impossibile creare il file") == -1) {
+                    perror("openFile: impossibile creare il file");
+                }
                 success = -1;
             }
             else {
@@ -183,6 +186,10 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             if((reply = newreply('N', 0)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
+            }
+            // log dell'evento
+            if(log(ds, 0, "openFile: file non trovato") == -1) {
+                perror("openFile: file non trovato");
             }
             success = -1;
         }
@@ -203,6 +210,9 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
             }
+            if(log(ds, 0, "openFile: file già aperto dal client") == -1) {
+                perror("openFile: file già aperto dal client");
+            }
             success = -1;
         }
         else {
@@ -215,6 +225,9 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
+                if(log(ds, 0, "openFile: apertura file fallita") == -1) {
+                    perror("openFile: apertura file fallita");
+                }
                 success = -1;
 
             }
@@ -226,6 +239,9 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 if((reply = newreply('Y', 0)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
+                }
+                if(log(ds, 0, "openFile: successo") == -1) {
+                    perror("openFile: successo");
                 }
             }
         }
@@ -250,6 +266,9 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         if((reply = newreply('N', 0)) == NULL) {
             // errore allocazione risposta
             puts("errore alloc risposta"); // TODO: log
+        }
+        if(log(ds, 0, "readFile: file non trovato") == -1) {
+                perror("readFile: file non trovato");
         }
         success = -1;
     }
@@ -278,12 +297,18 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
             }
+            if(log(ds, 0, "readFile: successo") == -1) {
+                perror("readFile: successo");
+            }
         }
         else {
             // Operazione negata: il client non aveva aperto il file
             if((reply = newreply('N', 0)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
+            }
+            if(log(ds, 0, "readFile: il file non è stato aperto") == -1) {
+                perror("readFile: il file non è stato aperto");
             }
             success = -1;
         }
@@ -302,6 +327,17 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     return success;
 }
 
+// Legge n file e li salva in dirname. Se n<=0 allora legge tutti i file presenti nel server
+int api_readN(struct fs_ds_t *ds, const int n, const char *dirname, const int client_sock) {
+    // conterrà la risposta del server
+    struct reply_t *reply = NULL;
+    int success = 0;
+
+   // TODO: implementare distinguendo(?) due casi e icl_hash_foreach(?)
+
+    return success;
+}
+
 // Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, char *buf, const char *swpdir) {
@@ -315,7 +351,9 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
         // chiave non trovata => restituire errore alla API
         if((reply = newreply('N', 0)) == NULL) {
             // errore allocazione risposta
-            puts("errore alloc risposta"); // TODO: log
+            if(log(ds, 0, "appendToFile: file non trovato") == -1) {
+                perror("appendToFile: file non trovato");
+            }
         }
         success = -1;
     }
@@ -374,6 +412,9 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
+                if(log(ds, 0, "appendToFile: successo") == -1) {
+                    perror("appendToFile: successo");
+                }
 
                 // devo aggiornare anche la quantità di memoria occupata
                 ds->curr_mem += size;
@@ -384,6 +425,9 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
             if((reply = newreply('N', 0)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
+            }
+            if(log(ds, 0, "appendToFile: il file non era aperto") == -1) {
+                    perror("appendToFile: il file non era aperto");
             }
             success = -1;
         }

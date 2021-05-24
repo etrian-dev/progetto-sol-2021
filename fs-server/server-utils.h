@@ -103,8 +103,7 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds);
 //Gestione della terminazione
 
 struct term_params_t {
-    pthread_t term_tid;
-    pthread_mutex_t term_mux;
+    pthread_mutex_t mux_term;
     int slow_term;
     int fast_term;
 };
@@ -116,6 +115,7 @@ void *term_thread(void *params);
 // Operazioni sui file
 int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
 int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+int api_readN(struct fs_ds_t *ds, const int n, const char *dirname, const int client_sock);
 int api_appendToFile(
     struct fs_ds_t *ds, const char *pathname, const int client_sock,
     const size_t size, char *buf, const char *swpdir);

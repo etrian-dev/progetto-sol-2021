@@ -18,19 +18,9 @@
 #include <assert.h>
 
 void *term_thread(void *params) {
-    // ignoro SIGPIPE (process-wide)
-    struct sigaction ign_pipe;
-    memset(&ign_pipe, 0, sizeof(struct sigaction));
-    ign_pipe.sa_handler = SIG_IGN;
-    if(sigaction(SIGPIPE, &ign_pipe, NULL) == -1) {
-        // errore nell'installazione signal handler per ignorare SIGPIPE
-        // termino brutalmente il server, anche perché terminerebbe una volta che l'ultimo client si disconnette
-        pthread_kill(pthread_self(), SIGKILL);
-    }
+    struct term_params_t *tp = (struct term_params_t *)params;
 
-    struct term_params_t *term_params = (struct term_params_t *)params;
-
-    // preparo maschera per ascoltare segnali SIGHUP, SIGINT, SIGQUIT
+    // preparo maschera per apettare segnali SIGHUP, SIGINT, SIGQUIT
     sigset_t mask_term;
     if( sigemptyset(&mask_term)
         || sigaddset(&mask_term, SIGHUP) != 0
@@ -42,16 +32,28 @@ void *term_thread(void *params) {
         return (void*)1;
     }
 
-    // aspetto segnale di terminazione con sigwait
+    // aspetto un segnale di terminazione con sigwait
     int signal = -1;
     if(sigwait(&mask_term, &signal) != 0) {
+    	// Prendo ME sulla struttura dati per la terminazione del server
+    	if(pthread_mutex_lock(&(tp->mux_term)) == -1) {
+            perror("Fallita acquisizione ME su terminazione");
+            return (void*)1;
+        }
+
         // terminazione veloce: devono essere chiuse le connessioni esistenti
         if(signal == SIGINT || signal == SIGQUIT) {
-            term_params->fast_term = 1;
+            tp->fast_term = 1;
         }
         // terminazione lenta: le connessioni esistenti rimangono aperte
+        // fino alla loro chiusura da parte del client
         else if(signal == SIGHUP) {
-            term_params->slow_term = 1;
+            tp->slow_term = 1;
+        }
+
+        if(pthread_mutex_unlock(&(tp->mux_term)) == -1) {
+            perror("Fallito rilascio ME su terminazione");
+            return (void*)1;
         }
     }
 
