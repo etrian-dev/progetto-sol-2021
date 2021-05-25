@@ -63,7 +63,7 @@ int string_dup(char **dest, const char *src) {
     return 0;
 }
 
-// inizializza la coda
+// inizializza una coda (vuota): ritorna un puntatore ad essa se ha successo, NULL altrimenti
 struct Queue *queue_init(void) {
     struct Queue *q = malloc(sizeof(struct Queue));
     if(!q) {

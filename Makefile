@@ -8,7 +8,7 @@ LIBPATH = -L ./libs
 UTILS   = libs/libutilities.so
 HTABLE  = libs/libicl_hash.so
 
-.PHONY: all clean cleanall fs-api server client
+.PHONY: all clean test1 cleanall fs-api server client
 
 all: $(UTILS) $(HTABLE) fs-api server
 	#crea (se non esistono) le directory per i file oggetto e le lib. condivise
@@ -33,3 +33,6 @@ clean:
 cleanall: clean
 	-rm $(wildcard libs/*.so) $(wildcard objs/*.o)
 
+test1:
+	chmod +x test1.sh
+	./test1.sh

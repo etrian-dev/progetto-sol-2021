@@ -17,8 +17,9 @@
 #include <assert.h>
 #include <stddef.h>
 
+// macro usata per eseguire i comandi cmd solo se la flag è diversa da 0
 #define PRINT(flag, cmd) \
-    if((flag)) { cmd }
+    if((flag)) {cmd}
 
 // Funzione main del processo client
 int main(int argc, char **argv) {
@@ -27,7 +28,7 @@ int main(int argc, char **argv) {
     struct client_opts *options = malloc(sizeof(struct client_opts));
     memset(options, 0, sizeof(struct client_opts)); // azzero per sicurezza
 
-    errno = 0; // resetto errno per distinguere tra errori da syscall a errori logici
+    errno = 0; // resetto errno per distinguere tra errori da syscall a errori nelle opzioni
     if(get_client_options(argc, argv, options) == -1) {
         // errore nel processare la lista di argomenti
         if(errno != 0) {
@@ -48,9 +49,9 @@ int main(int argc, char **argv) {
         printf("Socket: %s\n", options->fs_socket);
         printf("Directory swapout: %s\n", options->dir_swapout);
         printf("Directory with files to write: %s\n", options->dir_write);
-        printf("Max #file written from %s: %ld\n", options->dir_write, options->max_write);
+        printf("Max #file written from %s: %ld\n", options->dir_write, options->nwrite);
         printf("Directory save reads: %s\n", options->dir_save_reads);
-        printf("Max #file read: %ld\n", options->max_read);)
+        printf("Max #file read: %ld\n", options->nread);)
 
     // Se è stato richiesto il messaggio di help stampa quello e poi esce
     if(options->help_on) {
@@ -58,26 +59,31 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    // Il client tenta di connettersi al server, tentando ogni rdelay millisecondi
+    // Dopo 5 secondi di tentativi falliti esce con errore e termina il client
     struct timespec fivesec;
     clock_gettime(CLOCK_REALTIME, &fivesec);
     fivesec.tv_sec += 5;
-    // In primo luogo il client apre la connessione con il server
     if(openConnection(options->fs_socket,options->rdelay, fivesec) == -1) {
         perror("Impossible connettersi al server");
+        free_client_opt(options);
         return 1;
     }
     PRINT(options->prints_on, printf("[%d] Connesso al server\n", getpid());)
 
-    // Apro i file richiesti in lettura o scrittura
-    int i = 0;
-    while(options->read_list[i]) {
-        if(openFile(options->read_list[i], O_CREATE) == -1) {
-            PRINT(options->prints_on, printf("Impossibile aprire il file %s\n", options->read_list[i]);)
+    // Apro i file richiesti in lettura
+    struct node_t *el;
+    struct node_t *file;
+    while((el = pop(options->read_list)) != NULL) {
+        while((file = pop((struct Queue *)el->data)) != NULL) {
+            if(openFile((char*)file->data, 0x0) == -1) { // i file da leggere non sono creati
+                PRINT(options->prints_on, printf("Impossibile aprire il file %s\n", (char*)file->data);)
+            }
+            else {
+                PRINT(options->prints_on, printf("File %s aperto\n", (char*)file->data);)
+            }
         }
-        else {
-            PRINT(options->prints_on, printf("File %s aperto\n", options->read_list[i]);)
-        }
-        i++;
+        file = NULL;
     }
 
     // La connessione con il server viene chiusa

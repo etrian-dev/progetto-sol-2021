@@ -25,17 +25,17 @@ struct serv_params {
 };
 
 // i field del file di configurazione sono stringhe definite a tempo di compilazione
-#define TPOOLSIZE "tpool"
+#define TPOOL "tpool"
 #define MAXMEM "maxmem"
 #define MAXFILES "maxfiles"
-#define SOCK_PATH "sock_basepath"
-#define LOG_PATH "log_basepath"
+#define SOCK_PATH "sock_path"
+#define LOG_PATH "log_path"
 // valori di default per i parametri
 #define TPOOL_DFL 10
 #define MAXMEM_DFL 1024
 #define MAXFILES_DFL 10
-#define SOCK_PATH_DFL "./fsserver.sock"
-#define LOG_PATH_DFL "./fsserver.log"
+#define SOCK_PATH_DFL "./server.sock"
+#define LOG_PATH_DFL "./server.log"
 // definisco anche un limite superiore (ragionevole) alla lunghezza dei path di default
 #define DFL_PATHLEN 50
 

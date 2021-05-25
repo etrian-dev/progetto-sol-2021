@@ -29,7 +29,7 @@ struct Queue {
     struct node_t *tail;
 };
 
-// inizializza la coda
+// inizializza una coda (vuota): ritorna un puntatore ad essa se ha successo, NULL altrimenti
 struct Queue *queue_init(void);
 
 // Inserisce data (di size bytes) nella coda; Se fallisce ritorna -1, altrimenti 0
