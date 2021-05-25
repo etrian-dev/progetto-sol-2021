@@ -2,6 +2,7 @@
 #ifndef CLIENT_H_INCLUDED
 #define CLIENT_H_INCLUDED
 
+#include <utils.h> // per il tipo Queue
 #include <stddef.h>
 
 // messaggio di help
@@ -22,25 +23,28 @@
 // definisco una struttura che conterrà i valori delle opzioni specificate
 struct client_opts {
     short int help_on;                // default: 0 (non stampa il messaggio di help)
+    short int prints_on;              // default: 0 (non stampa le operazioni su stdout)
     char *fs_socket;                  // default: NULL
     long int rdelay;                  // default: 0 (interpretato come numero di millisecondi)
-    char *dir_write;                  // default: NULL
-    long int max_write;               // default: 0 (interpretato come nessun limite)
-    char **write_list;                // default: NULL
-    char *dir_swapout;                // default: NULL
-    char **read_list;                 // default: NULL
-    long int max_read;                // default: 0 (interpretato come nessun limite)
+
+    long int nread;                   // default: 0 (interpretato come nessun limite)
+    long int nwrite;                  // default: 0 (interpretato come nessun limite)
+
     char *dir_save_reads;             // default: NULL
-    char **lock_list;                 // default: NULL
-    char **unlock_list;               // default: NULL
-    char **rm_list;                   // default: NULL
-    short int prints_on;              // default: 0 (non stampa le operazioni su stdout)
+    char *dir_write;                  // default: NULL
+    char *dir_swapout;                // default: NULL
+
+    struct Queue *read_list;          // default: NULL
+    struct Queue *write_list;         // default: NULL
+    struct Queue *lock_list;          // default: NULL
+    struct Queue *unlock_list;        // default: NULL
+    struct Queue *rm_list;            // default: NULL
 };
 
 // nargs è argc, args è argv del programma client: i parametri sono restituiti nella struttura
 int get_client_options(int nargs, char **args, struct client_opts *params);
 
-int process_filelist(char **files, char *arg);
+int process_filelist(struct Queue *q, char *arg);
 
 // Libera la struttura
 void free_client_opt(struct client_opts *options);

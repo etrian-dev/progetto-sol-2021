@@ -78,7 +78,7 @@ int parse_config(struct serv_params *params, const char *conf_fpath) {
 		char *stat = NULL;
 		char *token = strtok_r(buf, "\t", &stat); // i token sono separati da un tab
 		char *value = strtok_r(NULL, "\n", &stat);
-		if(value && strcmp(token, TPOOLSIZE) == 0) {
+		if(value && strcmp(token, TPOOL) == 0) {
 			// converto la stringa in un numero usando una funzione di utilità
 			long tpool;
 			if(isNumber(value, &tpool) == 0 && tpool > 0) {
@@ -132,13 +132,9 @@ int parse_config(struct serv_params *params, const char *conf_fpath) {
 				// safe, se assumo di aver definito bene le macro
 			}
 		}
-		else {
-			// campo non riconosciuto o valore non valido
-			// non ritorno un errore perché voglio continuare a leggere altri eventuali
-			// campi validi del file di configurazione
-			// TODO: scrittura nel file di log
-			;
-		}
+		// campo non riconosciuto o valore non valido
+		// non ritorno un errore perché voglio continuare a leggere altri eventuali
+		// campi validi del file di configurazione
 	}
 	// file di configurazione parsato senza errori e i campi sono stati scritti nella struttura
 
