@@ -247,7 +247,9 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
     }
 
-    writen(client_sock, reply, sizeof(*reply));
+    if(writen(client_sock, reply, sizeof(struct reply_t)) < sizeof(struct reply_t)) {
+        success = -1;
+    }
 
     return success;
 }

@@ -82,6 +82,18 @@ struct Queue *queue_init(void) {
     return q;
 }
 
+// Libera la coda puntata da q
+void free_Queue(struct Queue *q) {
+    struct node_t *a = NULL;
+    while((a = pop(q)) != NULL) {
+	free(a->data);
+	free(a);
+    }
+    free(q->head);
+    free(q->tail);
+    free(q);
+}
+
 // funzione per aggiungere alla coda un elemento
 int enqueue(struct Queue *q, const void *data_ptr, size_t size, const int csock) {
     // alloco un nuovo nodo della coda

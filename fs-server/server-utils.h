@@ -8,11 +8,12 @@
 #include <utils.h> // per la coda sincronizzata
 
 //-----------------------------------------------------------------------------------
-// Parsing del file di config
+// Parsing del file di configurazione
 
-// definisco il path di default del file di configurazione come macro
+// Definisco il path di default del file di configurazione
 #define CONF_PATH_DFL "./config.txt"
-// definisco i permessi del file di log se devo crearlo
+// Definisco i permessi del file di log se devo crearlo
+// Ha permesso di lettura/scrittura l'utente e lettura per tutti gli altri
 #define PERMS_ALL_READ S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH
 
 // struttura contenente i parametri del server
@@ -42,7 +43,7 @@ struct serv_params {
 // funzione per il parsing del file di configurazione
 int parse_config(struct serv_params *params, const char *conf_fpath);
 
-// SOCKET
+// Inizializza il socket su cui il server accetterà le connessioni da parte dei client
 int sock_init(const char *addr, const size_t len);
 
 //-----------------------------------------------------------------------------------
@@ -65,11 +66,15 @@ struct fs_ds_t {
     size_t max_files;
     // Numero di file aperti nel server
     size_t curr_files;
+    // Numero massimo di file memorizzati nel server durante la sua attività
+    size_t max_nfiles;
 
     // Massima capacità del server (in byte)
     size_t max_mem;
-    // Quantità di memoria occupata
+    // Quantità di memoria occupata in ogni istante dal server
     size_t curr_mem;
+    // Massima quantità di memoria occupata dai file nel server durante la sua attività
+    size_t max_used_mem;
 
     // hash table condivisa nel server
     icl_hash_t *fs_table;
@@ -88,28 +93,29 @@ struct fs_ds_t {
     pthread_mutex_t mux_cacheq;
     pthread_cond_t new_cacheq;
 
-    int feedback[2]; // pipe per il feedback dal worker al manager
+    // pipe per il feedback dal worker al manager
+    int feedback[2];
     pthread_mutex_t mux_feedback;
 
     int log_fd; // file descriptor del file di log
     pthread_mutex_t mux_log;
+
+    // Pipe per la gestione della terminazione
+    int termination[2];
+    pthread_mutex_t mux_term;
 };
 
 // Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
 // e riempe la struttura passata tramite puntatore
 int init_ds(struct serv_params *params, struct fs_ds_t **server_ds);
-
-//-----------------------------------------------------------------------------------
-//Gestione della terminazione
-
-struct term_params_t {
-    pthread_mutex_t mux_term;
-    int slow_term;
-    int fast_term;
-};
+// Funzione che libera la memoria allocata per la struttura dati
+void free_serv_ds(struct fs_ds_t *server_ds);
 
 // Funzione eseguita dal thread che gestisce la terminazione
 void *term_thread(void *params);
+
+// Funzione eseguita dal worker
+void *work(void *params);
 
 //-----------------------------------------------------------------------------------
 // Operazioni sui file
@@ -136,7 +142,5 @@ int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz); // TODO: 
 // -1 se riscontra un errore (settato errno)
 int log(struct fs_ds_t *ds, int errcode, char *message);
 
-// Funzione eseguita dal worker
-void *work(void *queue);
 
 #endif

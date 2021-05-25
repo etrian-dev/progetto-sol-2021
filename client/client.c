@@ -85,34 +85,6 @@ int main(int argc, char **argv) {
         }
         file = NULL;
     }
-    i = 0;
-    char buf[6] = "hello";
-    while(options->read_list[i]) {
-        if(appendToFile(options->read_list[i], (void*)buf, 6, "something") == -1) {
-            PRINT(options->prints_on, printf("Impossibile appendere %s al file %s\n", buf, options->read_list[i]);)
-        }
-        else {
-            PRINT(options->prints_on, printf("Concatenato %s ad %s\n", buf, options->read_list[i]);)
-        }
-        i++;
-    }
-    i = 0;
-    void *file; size_t fsz;
-    while(options->read_list[i]) {
-        if(readFile(options->read_list[i], &file, &fsz) == -1) {
-            PRINT(options->prints_on, printf("Impossibile leggere il file %s\n", options->read_list[i]);)
-        }
-        else {
-            PRINT(options->prints_on,
-                puts("=========================================================");
-                printf("File: %s\tSize: %lu\n", options->read_list[i], fsz);
-                write(1, file, fsz);
-                puts("\n=========================================================");)
-            free(file);
-            file = NULL;
-        }
-        i++;
-    }
 
     // La connessione con il server viene chiusa
     if(closeConnection(options->fs_socket) == -1) {

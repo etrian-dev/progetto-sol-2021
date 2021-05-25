@@ -1,7 +1,9 @@
 # ignora eseguibili, file di config, file oggetto, file odt etc...
 *.out
 *.o
+*.odt
 libs/*.so
 config.txt
+*.conf
 *.log
 *.sock

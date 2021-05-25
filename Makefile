@@ -31,8 +31,8 @@ icl_hash.o: icl_hash/icl_hash.c
 clean:
 	-rm -fr $(wildcard ./*.out)
 cleanall: clean
-	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o)
+	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o) $(wildcard *.conf)
 
-test1:
+test1: all
 	chmod +x test1.sh
 	./test1.sh
