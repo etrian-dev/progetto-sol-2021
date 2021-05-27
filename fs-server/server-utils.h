@@ -49,13 +49,13 @@ int sock_init(const char *addr, const size_t len);
 //-----------------------------------------------------------------------------------
 // Strutture dati del server per la memorizzazione dei file e gestione delle richieste della API
 
-// Struttura dati che contiene i dati e metadati di un file nel fileserver
+// Struttura dati che contiene i dati e metadati di un file nel fileserver, ma non il path
 struct fs_filedata_t {
-    void *data;
-    size_t size;
-    int *openedBy;
-    size_t nopened;
-    int lockedBy;
+    void *data;      // I dati contenuti nel file
+    size_t size;     // La dimensione in numero di byte del file
+    int *openedBy;   // Un array di socket dei client che hanno aperto questo file
+    int nopened;     // La dimensione (variabile) dell'array sopra
+    int lockedBy;    // Il client (al più uno) che ha la ME sul file
 };
 // dichiaro anche la funzione per liberare la struttura
 void free_file(void *file);
@@ -93,16 +93,17 @@ struct fs_ds_t {
     pthread_mutex_t mux_cacheq;
     pthread_cond_t new_cacheq;
 
+    // numero di volte che l'algoritmo di rimpiazzamento dei file è stato chiamato
+    size_t cache_triggered;
+
     // pipe per il feedback dal worker al manager
     int feedback[2];
-    pthread_mutex_t mux_feedback;
-
-    int log_fd; // file descriptor del file di log
-    pthread_mutex_t mux_log;
 
     // Pipe per la gestione della terminazione
     int termination[2];
-    pthread_mutex_t mux_term;
+
+    int log_fd; // file descriptor del file di log
+    pthread_mutex_t mux_log;
 };
 
 // Funzione che inizializza tutte le strutture dati: prende in input i parametri del server

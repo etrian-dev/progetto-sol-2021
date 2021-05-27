@@ -24,8 +24,10 @@
 int accept_connection(const int serv_sock);
 // Legge dal socket del client (client_fd) la richiesta e la inserisce nella coda per servirla
 int processRequest(struct fs_ds_t *server_ds, const int client_fd);
-
-void close_all_sockets(fd_set *set, const int maxsock);
+// Chiude tutti gli fd in set, tranne feedpipe e termpipe, rimuovendoli anche dal set
+void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const int maxsock);
+// Stampa su stdout delle statistiche di utilizzo del server
+void stats(struct fs_ds_t *ds);
 
 // Funzione main del server multithreaded: effettua il ruolo di manager thread
 int main(int argc, char **argv) {
@@ -133,12 +135,17 @@ int main(int argc, char **argv) {
     }
 
     // creo la thread pool
-    pthread_t worker;
+    pthread_t *workers = malloc(run_params.thread_pool*sizeof(pthread_t));
+    if(!workers) {
+        if(log(server_ds, errno, "Impossibile creare la threadpool") == -1) {
+                perror("Impossibile creare thread pool");
+        }
+        return 2;
+    }
     long int i;
     for(i = 0; i < run_params.thread_pool; i++) {
         // Il puntatore alle strutture dati e per la terminazione viene passato ad ogni worker thread come parametro
-        // Anche i thread worker sono in modalità detached per non dover fare il join alla terminazione del server
-        if(pthread_create(&worker, &attrs, work, server_ds) != 0) {
+        if(pthread_create(&(workers[i]), &attrs, work, server_ds) != 0) {
             if(log(server_ds, errno, "Impossibile creare la threadpool") == -1) {
                 perror("Impossibile creare thread pool");
             }
@@ -190,29 +197,32 @@ int main(int argc, char **argv) {
             if(fd == server_ds->termination[0] && FD_ISSET(fd, &fd_read_cpy)) {
                 // il server ha ricevuto un segnale che ne provoca la terminazione
                 // devo leggere dalla pipe per capire se è veloce o lenta
-                char x[1];
-                // Prendo ME sulla struttura dati per la terminazione del server
-                if(pthread_mutex_lock(&(server_ds->mux_term)) == -1) {
-                    perror("Fallita acquisizione ME su terminazione");
-                    exit(1);
-                }
-
-                if(read(server_ds->termination[0], x, 1) == -1) {
+                int term;
+                if(read(server_ds->termination[0], &term, sizeof(term)) == -1) {
                     perror("Impossibile leggere tipo di terminazione");
                     exit(1);
                 }
-
-                if(pthread_mutex_unlock(&(server_ds->mux_term)) == -1) {
-                    perror("Fallito rilascio ME su terminazione");
-                    exit(1);
-                }
-
-                if(*x == '1') {
+                if(term == 1) {
                     // in caso di terminazione veloce chiudo tutti i socket
-                    close_all_sockets(&fd_read, max_fd_idx + 1);
-                    goto fast_term;
+                    close_most_fd(&fd_read, server_ds->feedback[0], server_ds->termination[0], max_fd_idx + 1);
+
+                    // Prendo ME sulla coda
+                    if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
+                        // Fallita operazione di lock
+                        return 1;
+                    }
+                    // sostisuisco la coda di richieste con una vuota, poi libero quella originale
+                    struct Queue *qcpy = server_ds->job_queue;
+                    server_ds->job_queue = NULL; // pop su questa coda restituirà NULL
+                    free_Queue(qcpy);
+
+                    if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
+                        // Fallita operazione di unlock
+                        return 1;
+                    }
+                    goto fast_term; // salto fuori dal for e dal while
                 }
-                else if(*x == '2') {
+                else if(term == 2) {
                     // in caso di terminazione lenta chiudo solo il socket su cui si accettano connessioni
                     if(close(listen_connections) == -1) {
                         perror("Impossibile chiudere il socket del server");
@@ -223,7 +233,7 @@ int main(int argc, char **argv) {
                     break; // altri socket sono esaminati solo dopo aver aggiornato il set
                 }
                 else {
-                    printf("[SERVER] term = %c\n", *x);
+                    printf("[SERVER] term = %c\n", term);
                 }
             }
             // Se ci sono connessioni in attesa le accetta
@@ -284,6 +294,23 @@ int main(int argc, char **argv) {
     }
 
 fast_term:
+    printf("fast term...\n");
+    // Risveglio tutti i thread sospesi sulla variabile di condizione della coda di richieste
+    pthread_cond_broadcast(&(server_ds->new_job));
+    // Aspetto la terminazione dei worker thread (terminano da soli, ma necessario per deallocare risorse)
+    //for(i = 0; i < run_params.thread_pool; i++) {
+        //if(pthread_join(workers[i], NULL) != 0) {
+            //if(log(server_ds, errno, "Impossibile effettuare il join dei thread") == -1) {
+                //perror("Impossibile effettuare il join dei thread");
+            //}
+            //return 2;
+        //}
+    //}
+    free(workers);
+
+    // Stampo su stdout statistiche
+    stats(server_ds);
+
     // rimuovo il socket dal filesystem
     if(unlink(run_params.sock_path) == -1) {
         if(log(server_ds, errno, "Fallita rimozione socket") == -1) {
@@ -347,16 +374,29 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
     return 0;
 }
 
-void close_all_sockets(fd_set *set, const int maxsock) {
-    // chiudo tutti i socket su cui opera la select
+void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const int maxsock) {
+    // chiudo tutti i fd su cui opera la select tranne quelli di feedback e di terminazione
     int i;
     for(i = 0; i <= maxsock; i++) {
-        if(FD_ISSET(i, set)) {
+        if(!(i == feedpipe || i == termpipe) && FD_ISSET(i, set)) {
             if(close(i) == -1) {
-                perror("Impossibile chiudere il socket");
+                perror("Impossibile chiudere il fd");
             }
+            FD_CLR(i, set);
         }
     }
-    // Infine azzero la bitmap di socket ascoltati dalla select
-    FD_ZERO(set);
+}
+
+// Stampa su stdout delle statistiche di utilizzo del server
+void stats(struct fs_ds_t *ds) {
+    printf("Massimo numero di file aperti: %lu\n", ds->max_nfiles);
+    printf("Massima quantità di memoria occupata : %lu Mbyte (%lu byte)\n", ds->max_used_mem/1048576, ds->max_used_mem);
+    printf("Chiamate algoritmo di rimpiazzamento FIFO: %lu\n", ds->cache_triggered);
+    printf("File presenti nel server alla terminazione: ");
+    struct node_t *file = ds->cache_q->head;
+    while(file) {
+        printf("\"%s\", ", (char*)file->data);
+        file = file->next;
+    }
+    putchar('\n');
 }

@@ -9,6 +9,10 @@ SERVER:
 	Garantire atomicità della appendToFile
 	Logica di check per le operazioni precedenti
 	Finire implementazione algoritmo rimpiazzamento in cache
+api_backend.c:insertFile:
+	memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy, 
+	ma al fine di evitare bug difficili da rintracciare al momento ho preferito memmove
+	NOTA: https://stackoverflow.com/questions/4480098/memmove-doesnt-move
 API:
 	Implementare readNFiles (ci sarà lavoro da fare anche sul server per questa)
 	+ considerazioni relative alle lock (eventuali)

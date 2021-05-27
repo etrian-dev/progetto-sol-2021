@@ -35,27 +35,19 @@ void *term_thread(void *params) {
     // aspetto un segnale di terminazione con sigwait
     int signal = -1;
     if(sigwait(&mask_term, &signal) == 0) {
-    	// Prendo ME sulla struttura dati per la terminazione del server
-    	if(pthread_mutex_lock(&(ds->mux_term)) == -1) {
-            perror("Fallita acquisizione ME su terminazione");
-            return (void*)1;
-        }
-
+        int term = 0;
         // terminazione veloce: devono essere chiuse le connessioni esistenti
         if(signal == SIGINT || signal == SIGQUIT) {
             // per segnalare terminazione veloce scrivo 1 sulla pipe
-            write(ds->termination[1], "1", 1);
+            term = 1;
+            write(ds->termination[1], &term, sizeof(term));
         }
         // terminazione lenta: le connessioni esistenti rimangono aperte
         // fino alla loro chiusura da parte del client
         else if(signal == SIGHUP) {
             // per segnalare terminazione lenta scrivo 2 sulla pipe
-            write(ds->termination[1], "2", 1);
-        }
-
-        if(pthread_mutex_unlock(&(ds->mux_term)) == -1) {
-            perror("Fallito rilascio ME su terminazione");
-            return (void*)1;
+            term = 2;
+            write(ds->termination[1],  &term, sizeof(term));
         }
     }
 

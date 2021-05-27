@@ -69,13 +69,6 @@ struct Queue *queue_init(void) {
     if(!q) {
         return NULL;
     }
-    // alloco puntatori alla testa ed alla coda
-    q->head = malloc(sizeof(struct node_t));
-    q->tail = malloc(sizeof(struct node_t));
-    if(!(q->head && q->tail)) {
-        free(q);
-        return NULL;
-    }
     // La coda inizialmente è vuota!
     q->head = NULL;
     q->tail = NULL;

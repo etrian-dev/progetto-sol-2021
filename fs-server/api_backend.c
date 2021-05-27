@@ -19,10 +19,10 @@
 #include <errno.h>
 #include <assert.h>
 
-// Cerca il file con quel nome nel server: se lo trova ritorna un puntatore alla struttura
-// che lo contiene, altrimenti ritorna NULL
+// Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
+// Altrimenti ritorna NULL
 struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
-    // cerco il file nella tabella
+    // cerco il file nella tabella in ME
     if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di lock
         return NULL;
@@ -36,61 +36,96 @@ struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
 }
 
 // Inserisce nel fileserver il file path con contenuto buf, di dimensione size, proveniente dal socket client
-// Se l'inserimento riescie allora ritorna un puntatore ad esso, altrimenti NULL
+// Se l'inserimento riesce allora ritorna un puntatore al file originale e rimpiazza i dati con buf
+// Se buf == NULL allora crea un file vuoto, ritornando il file stesso
+// Se l'operazione fallisce ritorna NULL
 struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const void *buf, const size_t size, const int client) {
-    // Duplico il path da usare come chiave
+    // Duplico il path per usarlo come chiave
     char *path_cpy = strndup(path, strlen(path) + 1);
     if(!path_cpy) {
         // errore di allocazione
         return NULL;
     }
-    // Alloco la struttura del file
+
+    // newfile conterrà il file aggiornato
     struct fs_filedata_t *newfile = NULL;
-    if((newfile = calloc(1, sizeof(struct fs_filedata_t))) == NULL) {
-        // errore di allocazione
-        return NULL;
-    }
-    // Se buf è NULL allora significa che sto inserendo un nuovo file
+    // oldfile conterrà il file prima dell'aggiornamento
+    struct fs_filedata_t *oldfile = NULL;
+
+    // Se buf è NULL allora significa che sto inserendo un nuovo file (vuoto)
     if(!buf) {
-        newfile->size = 0; // un file appena creato avrà size 0
-        if((newfile->openedBy = malloc(sizeof(int))) == NULL) {
-            // errore di allocazione: libero newfile e ritorno
-            free(newfile);
+        // Alloco la struttura del file
+        if((oldfile = malloc(sizeof(struct fs_filedata_t))) == NULL) {
+            // errore di allocazione
+            free(path_cpy);
             return NULL;
         }
-        newfile->openedBy[0] = client; // setto il file come aperto da questo client
-        newfile->nopened = 1;
-        newfile->data = NULL; // non ho dati da inserire
+        if((oldfile->openedBy = malloc(sizeof(int))) == NULL) {
+            // errore di allocazione: libero memoria
+            free(path_cpy);
+            free_file(oldfile);
+            return NULL;
+        }
+        oldfile->size = 0;
+        oldfile->openedBy[0] = client; // setto il file come aperto da questo client
+        oldfile->nopened = 1; // il numero di client che ha il file aperto
+        oldfile->data = NULL; // non ho dati da inserire
 
         // Incremento il numero di file aperti nel server
         ds->curr_files++;
+        // Se necessario modifico il massimo numero di file aperti contemporaneamente
+        // durante l'uptime del server
+        if(ds->curr_files > ds->max_nfiles) {
+            ds->max_nfiles = ds->curr_files;
+        }
+
+        newfile = oldfile; // come da semantica
     }
     // Altrimenti devo troncare il file (sostituisco il buffer)
     else {
-        // Devo copiare i dati se il file non è vuoto
-        //void *buf_cpy = malloc(size); [...]
-        ;
+        // recupero il file
+        oldfile = find_file(ds, path);
+        if(oldfile) {
+            // copio i vecchi dati
+            if((newfile = malloc(sizeof(*oldfile))) == NULL) {
+                // errore di allocazione
+                return NULL;
+            }
+            memmove(newfile, oldfile, sizeof(*oldfile)); // nella remota eventualità di sovrapposizioni
+            // modifico il contenuto
+            free(newfile->data);
+            if((newfile->data = malloc(size)) == NULL) {
+                // errore di allocazione
+                free_file(newfile);
+                return NULL;
+            }
+            memmove(newfile->data, buf, size);
+        }
     }
 
     void *res = NULL;
     // Adesso accedo alla ht in mutua esclusione ed inserisco la entry
     if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
-        // Fallita operazione di lock
+        free(path_cpy);
+        if(oldfile) free_file(oldfile);
+        if(newfile) free_file(newfile);
         return NULL;
     }
-    if((res = icl_hash_insert(ds->fs_table, path_cpy, newfile)) == NULL) {
-        // errore nell'inserimento nella ht
-        free(path_cpy);
-        free(newfile->openedBy);
-        free(newfile);
-    }
+
+    res = icl_hash_insert(ds->fs_table, path_cpy, newfile);
+
     if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di unlock
-        return NULL;
+        res = NULL;
     }
     if(!res) {
+        free(path_cpy);
+        if(oldfile) free_file(oldfile);
+        if(newfile) free_file(newfile);
         return NULL;
     }
+
+    // ARRIVATO QUI
 
     // Inserisco il pathname del file anche nella coda della cache
     if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
@@ -114,6 +149,9 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
 }
 
 int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz) {
+    // aggiorno il numero di chiamate dell'algorimto di rimpiazzamento
+    ds->cache_triggered++;
+
     // Se newsz == 0 e dirname == NULL allora sto aprendo un file, quindi butto via quello rimosso
     if(newsz == 0 && !dirname) {
         // Secondo la politica FIFO la vittima è la testa della coda cache_q
@@ -250,6 +288,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     if(writen(client_sock, reply, sizeof(struct reply_t)) < sizeof(struct reply_t)) {
         success = -1;
     }
+    free(reply);
 
     return success;
 }
@@ -420,6 +459,10 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
 
                 // devo aggiornare anche la quantità di memoria occupata
                 ds->curr_mem += size;
+                // aggiorno se necessario anche il max
+                if(ds->curr_mem > ds->max_used_mem) {
+                    ds->max_used_mem = ds->curr_mem;
+                }
             }
         }
         else {

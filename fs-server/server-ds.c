@@ -58,9 +58,7 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     pthread_mutex_init(&((*server_ds)->mux_ht), NULL);
     pthread_mutex_init(&((*server_ds)->mux_jobq), NULL);
     pthread_mutex_init(&((*server_ds)->mux_cacheq), NULL);
-    pthread_mutex_init(&((*server_ds)->mux_feedback), NULL);
     pthread_mutex_init(&((*server_ds)->mux_log), NULL);
-    pthread_mutex_init(&((*server_ds)->mux_term), NULL);
     // inizializzo cond variables
     pthread_cond_init(&((*server_ds)->new_job), NULL);
     pthread_cond_init(&((*server_ds)->new_cacheq), NULL);
@@ -80,6 +78,7 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     (*server_ds)->max_mem = MBYTE_TO_BYTE(params->max_memsz);
     (*server_ds)->curr_mem = 0;
     (*server_ds)->max_used_mem = 0;
+    (*server_ds)->cache_triggered = 0;
 
     // Tutte le strutture dati inizializzate con successo
     return 0;
@@ -94,15 +93,16 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
             perror("Impossibile liberare ht");
         }
         // libero le code di job e di cache
-        free_Queue(server_ds->job_queue);
+        if(server_ds->job_queue) {
+            free_Queue(server_ds->job_queue);
+        }
         free_Queue(server_ds->cache_q);
 
         // chiudo le pipe
         if( close(server_ds->feedback[0]) == -1
             || close(server_ds->feedback[1]) == -1
             || close(server_ds->termination[0]) == -1
-            || close(server_ds->termination[1])
-            ) {
+            || close(server_ds->termination[1] == -1)) {
                 perror("Impossibile chiudere una pipe");
             }
 

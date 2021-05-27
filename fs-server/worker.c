@@ -26,6 +26,8 @@ void clean(void *p1, void *p2, void *p3) {
     if(p3) free(p3);
 }
 
+int term_worker(struct fs_ds_t *ds, fd_set *set, const int maxfd);
+
 // worker thread
 void *work(void *params) {
     struct fs_ds_t *ds = (struct fs_ds_t *)params;
@@ -35,49 +37,24 @@ void *work(void *params) {
     int client_sock = -1;
 
     // ascolto il spcket di terminazione
-    fd_set term_fd, term_fd_cpy;
+    fd_set term_fd;
     FD_ZERO(&term_fd);
     FD_SET(ds->termination[0], &term_fd);
     int nfd = ds->termination[0] + 1;
 
-    char term[1]; *term = '0';
-    while(term[0] == '0') {
-        term_fd_cpy = term_fd;
-        struct timeval timeout = {0, 1}; // aspetta per 1ms
-        // il valore di ritorno di select è il numero di file descriptor pronti
-        int retval = select(nfd, &term_fd_cpy, NULL, NULL, &timeout);
-        if(retval == -1) {
-            perror("Select worker fallita");
+    int term = 0;
+    while(term == 0) {
+
+        term = term_worker(ds, &term_fd, nfd);
+        if(term == -1) {
+            // errore della select interna
+            return (void*)1;
         }
-        else if(retval == 1) {
-            // Controllo se terminazione lenta o veloce
-            if(pthread_mutex_lock(&(ds->mux_term)) == -1) {
-                perror("Fallita acquisizione ME su terminazione");
-                exit(1);
-            }
-
-            if(read(ds->termination[0], term, 1) == -1) {
-                perror("Impossibile leggere tipo di terminazione");
-                exit(1);
-            }
-
-            if(pthread_mutex_unlock(&(ds->mux_term)) == -1) {
-                perror("Fallito rilascio ME su terminazione");
-                exit(1);
-            }
-
-            // terminazione veloce: non servo alcuna richiesta e termino il thread
-            if(term[0] == '1') {
-                break;
-            }
-            else if(term[0] != '2') {
-                printf("[WORKER] term = %c\n", term[0]);
-                break;
-            }
-            // terminazione lenta: finisco di servire questa richiesta, ma esco
-            // quando testo di nuovo la condizione del while
+        if(term == 1) {
+            // terminazione veloce: esco direttamente
+            break;
         }
-
+        // terminazione lenta o nessuna terminazione: leggo le richieste in coda
 
         // prendo mutex sulla coda di richieste
         if(pthread_mutex_lock(&(ds->mux_jobq)) == -1) {
@@ -86,6 +63,17 @@ void *work(void *params) {
         }
         // aspetto tramite la variabile di condizione che arrivi una richiesta
         while((elem = pop(ds->job_queue)) == NULL) {
+            // Controllo se ho terminazione lenta o veloce
+            term = term_worker(ds, &term_fd, nfd);
+            if(term == -1) {
+                // errore della select interna
+                return (void*)1;
+            }
+            if(term == 1 || term == 2) {
+                break;
+            }
+
+            // Altrimenti non devo terminare (term == 0) allora mi metto in attesa sulla coda
             pthread_cond_wait(&(ds->new_job), &(ds->mux_jobq));
         }
         if(pthread_mutex_unlock(&(ds->mux_jobq)) == -1) {
@@ -205,35 +193,39 @@ void *work(void *params) {
                 break;
         }
 
-        // libero la richiesta
-        free(elem->data);
-        free(elem);
-
-        if(pthread_mutex_lock(&(ds->mux_feedback)) == -1) {
-            if(log(ds, errno, "Fallito lock feedback") == -1) {
-                perror("Fallito lock feedback");
-            }
-        }
-
         // Quindi deposito il socket servito nella pipe di feedback
-        if(write(ds->feedback[1], (void*)&client_sock, 4) == -1) {
+        if(write(ds->feedback[1], &client_sock, sizeof(client_sock)) == -1) {
             if(log(ds, errno, "Fallito invio feedback al server") == -1) {
                 perror("Fallito invio feedback al server");
-            }
-        }
-
-        if(pthread_mutex_unlock(&(ds->mux_feedback)) == -1) {
-            if(log(ds, errno, "Fallito unlock feedback") == -1) {
-                perror("Fallito unlock feedback");
             }
         }
     }
 
     // libero la memoria allocata dal worker
-    free(request);
-    if(path) {
-        free(path);
-    }
+    if(request) free(request);
+    if(elem) free(elem);
+    if(path) free(path);
 
     return (void*)0;
+}
+
+int term_worker(struct fs_ds_t *ds, fd_set *set, const int maxfd) {
+    int term;
+    fd_set set_cpy = *set;
+    struct timeval timeout = {0, 1}; // aspetta per 1ms
+    // il valore di ritorno di select è il numero di file descriptor pronti
+    int retval = select(maxfd, &set_cpy, NULL, NULL, &timeout);
+    if(retval == -1) {
+        return -1;
+    }
+    else if(retval == 1) {
+        // Controllo se terminazione lenta o veloce
+        if(read(ds->termination[0], &term, sizeof(term)) == -1) {
+            perror("Impossibile leggere tipo di terminazione");
+            exit(1);
+        }
+        return term;
+    }
+    // non devo terminare
+    return 0;
 }
