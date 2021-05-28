@@ -127,12 +127,24 @@ int api_appendToFile(
     struct fs_ds_t *ds, const char *pathname, const int client_sock,
     const size_t size, char *buf, const char *swpdir);
 
-// Funzione che implementa il rimpiazzamento nella cache: se diversa da NULL
-// salva i file nella directory dirname
-int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz); // TODO: implement
+// Varie funzioni di utilità implementate in api_backend-utils.c
+
+// Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
+// Altrimenti ritorna NULL
+struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname);
+// Inserisce nel fileserver il file path con contenuto buf, di dimensione size, proveniente dal socket client
+// Se l'inserimento riesce allora ritorna un puntatore al file originale e rimpiazza i dati con buf
+// Se buf == NULL allora crea un file vuoto, ritornando il file stesso
+// Se l'operazione fallisce ritorna NULL
+struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const void *buf, const size_t size, const int client);
+// Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
+// newsz byte, in modo tale da avere una occupazione in memoria inferiore a ds->max_mem - newsz al termine
+// Se dirname non è NULL allora i file rimossi sono inviati in dirname, assegnando il path come nome del file
+// Ritorna 0 se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
+int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz);
 
 //-----------------------------------------------------------------------------------
-//Gestione dei log
+//Gestione del logging
 
 // Funzione per effettuare il logging: prende come parametri
 // 1) il file descriptor (deve essere già aperto in scrittura) del file di log
