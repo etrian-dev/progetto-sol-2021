@@ -17,7 +17,7 @@
 \t-p: stampa su stdout ogni operazione del client\n"
 
 // stringa delle opzioni per getopt
-#define CLIENT_OPSTRING ":hf:D:d:R:r:W:w:t:p"
+#define CLIENT_OPSTRING ":hf:D:d:R:r:W:w:A:a:t:p"
 // i due punti iniziali per distinguere tra opzione non riconosciuta e argomento mancante
 
 // definisco una struttura che conterrà i valori delle opzioni specificate
@@ -34,17 +34,18 @@ struct client_opts {
     char *dir_write;                  // default: NULL
     char *dir_swapout;                // default: NULL
 
-    struct Queue *read_list;          // default: NULL
-    struct Queue *write_list;         // default: NULL
-    struct Queue *lock_list;          // default: NULL
-    struct Queue *unlock_list;        // default: NULL
-    struct Queue *rm_list;            // default: NULL
+    struct Queue *oplist;             // default: NULL
+};
+// definisco una struttura che contiene l'operazione richiesta e la lista di file su cui effettuarla
+struct operation {
+    char type;
+    struct Queue *flist;
 };
 
 // nargs è argc, args è argv del programma client: i parametri sono restituiti nella struttura
 int get_client_options(int nargs, char **args, struct client_opts *params);
 
-int process_filelist(struct Queue *q, char *arg);
+int process_filelist(struct Queue *ops, char *arg);
 
 // Libera la struttura
 void free_client_opt(struct client_opts *options);

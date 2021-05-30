@@ -1,6 +1,7 @@
 // header client
 #include <utils.h>
 #include <client.h>
+#include <fs-api.h> // per le definizioni dei caratteri corrispondenti alle operazioni
 // system call headers
 #include <sys/types.h>
 #include <sys/un.h>
@@ -22,12 +23,8 @@ void init_params(struct client_opts *params) {
 	memset(params, 0, sizeof(*params));
 	// I valori numerici di default in questo caso sono tutti 0 => inutile settarli per via della memset
 	// alloco puntatori per file da leggere/scrivere etc riservando di default un certo numero di posizioni
-	params->read_list = calloc(1, sizeof(struct Queue));
-	params->write_list = calloc(1, sizeof(struct Queue));
-	params->lock_list = calloc(1, sizeof(struct Queue));
-	params->unlock_list = calloc(1, sizeof(struct Queue));
-	params->rm_list = calloc(1, sizeof(struct Queue));
-	// un eventuale errore di allocazione degli array non comporta errori fatali in quanto
+	params->oplist = calloc(1, sizeof(struct Queue));
+	// un eventuale errore di allocazione non comporta errori fatali in quanto
 	// rimangono comunque NULL i puntatori, per cui è necessario soltanto controllare
 	// di allocarli prima di usarli
     }
@@ -98,7 +95,7 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
 		    has_r = 1;
 		    break;
 		case 'r': // l'argomento dell'opzione -r è una lista di file (almeno 1)
-		    if(process_filelist(params->read_list, optarg) == -1) {
+		    if(process_filelist(params->oplist, optarg, READ_FILE) == -1) {
 			// errore da riportare su stderr, ma continuo a processare
 			fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
 		    }
@@ -106,7 +103,7 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
 		    has_r = 1;
 		    break;
 		case 'W': // l'argomento dell'opzione -W è una lista di file (almeno 1)
-		    if(process_filelist(params->write_list, optarg) == -1) {
+		    if(process_filelist(params->oplist, optarg, WRITE_FILE) == -1) {
 			// errore da riportare su stderr, ma continuo a processare
 			fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
 		    }
@@ -136,6 +133,18 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
 		    has_w = 1;
 		    break;
 		}
+		case 'A': // l'argomento dell'opzione -A è una lista di coppie dest, src
+		    if(process_filelist(params->oplist, optarg, APPEND_FILE) == -1) {
+			// errore da riportare su stderr, ma continuo a processare
+			fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+		    }
+		    break;
+		case 'a': // l'argomento dell'opzione -a è una lista di coppie dest, src
+		    if(process_filelist(params->oplist, optarg, APPEND_FILE) == -1) {
+			// errore da riportare su stderr, ma continuo a processare
+			fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+		    }
+		    break;
 		case 't': // l'argomento (intero, positivo) di -t è il delay tra le richieste
 		    retcode = isNumber(optarg, &(params->rdelay));
 		    if(retcode == 1) {
@@ -185,29 +194,37 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
     return 0;
 }
 
-int process_filelist(struct Queue *q, char *arg) {
+int process_filelist(struct Queue *ops, char *arg, char op_type) {
     // Se la lista di files non era stata allocata (quindi è NULL) provo ad allocarla adesso
-    if(!q) {
-	if((q = queue_init()) == NULL) {
+    if(!ops) {
+	if((ops = queue_init()) == NULL) {
 	    // errore di allocazione non recuperabile: ritorno -1
 	    return -1;
 	}
     }
 
-    // alloco una lista per i file
-    struct Queue *flist = queue_init();
-    if(!flist) {
+    // creo una nuova operazione, che aggiungerò in coda alla lista
+    struct operation *newop = malloc(sizeof(struct operation));
+    if(!newop) {
 	// errore di allocazione
 	return -1;
     }
+    // creo la lista di file
+    newop->flist = queue_init();
+    if(!(newop->flist)) {
+	// errore di allocazione
+	return -1;
+    }
+    // assegno il tipo di operazione
+    newop->type = op_type;
 
-    // parsing della lista arg, i cui elementi sono separati da ','
+    // parsing della stringa arg, i cui token sono separati da ','
     char *save_stat = NULL;
     char *token = strtok_r(arg, ",", &save_stat);
     while(token) {
 	// aggiungo il token alla coda
 	// non è rilevante memorizzare alcun socket, per cui l'ultimo argomento può essere ignorato
-	if(enqueue(flist, token, strlen(token) + 1, 0) == -1) {
+	if(enqueue(newop->flist, token, strlen(token) + 1, 0) == -1) {
 	    // fallito inserimento in coda di un file: notifico l'utente su stderr
 	    fprintf(stderr, "Fallito inserimento del file \"%s\" in coda\n", token);
 	}
@@ -215,8 +232,8 @@ int process_filelist(struct Queue *q, char *arg) {
 	token = strtok_r(NULL, ",", &save_stat);
     }
 
-    // Aggiungo la lista di file in coda a q
-    if(enqueue(q, flist, sizeof(struct Queue *), 0) == -1) {
+    // Aggiungo l'operazione in coda a ops
+    if(enqueue(ops, newop, sizeof(struct operation), 0) == -1) {
 	// fallito inserimento in coda di un file: notifico l'utente su stderr
 	fprintf(stderr, "Fallito inserimento della lista di file nella coda\n");
     }

@@ -49,50 +49,66 @@ int main(int argc, char **argv) {
         printf("Socket: %s\n", options->fs_socket);
         printf("Directory swapout: %s\n", options->dir_swapout);
         printf("Directory with files to write: %s\n", options->dir_write);
-        printf("Max #file written from %s: %ld\n", options->dir_write, options->nwrite);
         printf("Directory save reads: %s\n", options->dir_save_reads);
-        printf("Max #file read: %ld\n", options->nread);)
-
+    )
     // Se è stato richiesto il messaggio di help stampa quello e poi esce
     if(options->help_on) {
         printf(HELP_MSG, argv[0]);
-        return 0;
     }
+    else {
+        // Il client tenta di connettersi al server, tentando ogni rdelay millisecondi
+        // Dopo 5 secondi di tentativi falliti esce con errore e termina il client
+        struct timespec fivesec;
+        clock_gettime(CLOCK_REALTIME, &fivesec);
+        fivesec.tv_sec += 5;
+        if(openConnection(options->fs_socket,options->rdelay, fivesec) == -1) {
+            perror("Impossible connettersi al server");
+            free_client_opt(options);
+            return 1;
+        }
+        PRINT(options->prints_on, printf("[%d] Connesso al server\n", getpid());)
 
-    // Il client tenta di connettersi al server, tentando ogni rdelay millisecondi
-    // Dopo 5 secondi di tentativi falliti esce con errore e termina il client
-    struct timespec fivesec;
-    clock_gettime(CLOCK_REALTIME, &fivesec);
-    fivesec.tv_sec += 5;
-    if(openConnection(options->fs_socket,options->rdelay, fivesec) == -1) {
-        perror("Impossible connettersi al server");
-        free_client_opt(options);
-        return 1;
-    }
-    PRINT(options->prints_on, printf("[%d] Connesso al server\n", getpid());)
+        // Invio le richieste nell'ordine in cui sono state date al client
+        struct node_t *req = NULL;
+        struct node_t *filename = NULL;
+        while((req = pop(options->oplist)) != NULL) {
+            char oper = ((struct operation *)req)->type;
+            while((filename = pop(((struct operation *)req)->flist)) != NULL) {
+                switch(oper) {
+                    case READ_FILE: { // per leggere il file prima deve essere aperto
+                        if(openFile((char*)filename, 0) == -1) {
+                            // errore di apertura: log su stderr
+                            fprintf("[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), (char*)filename);
+                            perror("openFile");
+                        }
+                        // file aperto, ora lo leggo
+                        void *buf = NULL;
+                        size_t file_sz = 0;
+                        if(readFile((char*)filename, &buf, &file_sz) == -1) {
+                            // errore di lettura
+                            fprintf("[CLIENT %d]: Impossibile leggere il file \"%s\"\n", getpid(), (char*)filename);
+                            perror("readFile");
+                        }
+                        if(closeFile((char*)filename) == -1) {
+                            // errore di chiusura: log su stderr
+                            fprintf("[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), (char*)filename);
+                            perror("closeFile");
+                        }
+                        break;
+                    }
+                    case
 
-    // Apro i file richiesti in lettura
-    struct node_t *el;
-    struct node_t *file;
-    while((el = pop(options->read_list)) != NULL) {
-        while((file = pop((struct Queue *)el->data)) != NULL) {
-            if(openFile((char*)file->data, 0x0) == -1) { // i file da leggere non sono creati
-                PRINT(options->prints_on, printf("Impossibile aprire il file %s\n", (char*)file->data);)
-            }
-            else {
-                PRINT(options->prints_on, printf("File %s aperto\n", (char*)file->data);)
+                }
             }
         }
-        file = NULL;
-    }
 
-    // La connessione con il server viene chiusa
-    if(closeConnection(options->fs_socket) == -1) {
-        perror("Impossible disconnettersi dal server");
-        return 1;
+        // La connessione con il server viene chiusa
+        if(closeConnection(options->fs_socket) == -1) {
+            perror("Impossible disconnettersi dal server");
+            return 1;
+        }
+        PRINT(options->prints_on, printf("[%d] Disconnesso dal server\n", getpid());)
     }
-    PRINT(options->prints_on, printf("[%d] Disconnesso dal server\n", getpid());)
-
     // libera la struttra dati contenente le opzioni del client
     free_client_opt(options);
 
