@@ -9,7 +9,7 @@ SERVER = ../fs-server.out
 
 $(SERVER): server.o worker.o api_backend.o api_backend-utils.o term_thread.o sock_init.o server-ds.o parse_config.o logging.o
 	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -o $@ $^ $(LIBS)
-	-mv $(wildcard *.o ../objs)
+	-mv $(wildcard *.o) ../objs
 server.o: server.c
 	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -c -o $@ $<
 worker.o: worker.c
