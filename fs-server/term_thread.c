@@ -18,9 +18,9 @@
 #include <assert.h>
 
 void *term_thread(void *params) {
-    struct term_params_t *term_params = (struct term_params_t *)params;
+    struct fs_ds_t *ds = (struct fs_ds_t *)params;
 
-    // preparo maschera per ascoltare segnali SIGHUP, SIGINT, SIGQUIT
+    // preparo maschera per apettare segnali SIGHUP, SIGINT, SIGQUIT
     sigset_t mask_term;
     if( sigemptyset(&mask_term)
         || sigaddset(&mask_term, SIGHUP) != 0
@@ -32,16 +32,22 @@ void *term_thread(void *params) {
         return (void*)1;
     }
 
-    // aspetto segnale di terminazione con sigwait
+    // aspetto un segnale di terminazione con sigwait
     int signal = -1;
-    if(sigwait(&mask_term, &signal) != 0) {
+    if(sigwait(&mask_term, &signal) == 0) {
+        int term = 0;
         // terminazione veloce: devono essere chiuse le connessioni esistenti
         if(signal == SIGINT || signal == SIGQUIT) {
-            term_params->fast_term = 1;
+            // per segnalare terminazione veloce scrivo 1 sulla pipe
+            term = 1;
+            write(ds->termination[1], &term, sizeof(term));
         }
         // terminazione lenta: le connessioni esistenti rimangono aperte
+        // fino alla loro chiusura da parte del client
         else if(signal == SIGHUP) {
-            term_params->slow_term = 1;
+            // per segnalare terminazione lenta scrivo 2 sulla pipe
+            term = 2;
+            write(ds->termination[1],  &term, sizeof(term));
         }
     }
 

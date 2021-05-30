@@ -242,17 +242,13 @@ int process_filelist(struct Queue *ops, char *arg, char op_type) {
     return 0;
 }
 
-void free_lst(struct Queue *q) {
-    struct node_t *a = NULL;
-    struct node_t *b = NULL;
-    while((a = pop(q)) != NULL) {
-	while((b = pop(((struct Queue *)a->data))) != NULL) {
-	    free(b->data);
-	    free(b);
-	}
-	free(a->data);
-	free(a);
+// libera una coda di code
+void free_QQ(struct Queue *qq) {
+    struct node_t *el = NULL;
+    while((el = pop(qq)) != NULL) {
+	free_Queue((struct Queue *)el);
     }
+    free(qq);
 }
 
 void free_client_opt(struct client_opts *options) {
@@ -261,11 +257,11 @@ void free_client_opt(struct client_opts *options) {
     free(options->dir_save_reads);
     free(options->dir_swapout);
 
-    free_lst(options->write_list);
-    free_lst(options->read_list);
-    free_lst(options->lock_list);
-    free_lst(options->unlock_list);
-    free_lst(options->rm_list);
+    free_QQ(options->write_list);
+    free_QQ(options->read_list);
+    free_QQ(options->lock_list);
+    free_QQ(options->unlock_list);
+    free_QQ(options->rm_list);
 
     free(options);
 }

@@ -110,7 +110,6 @@ int isConnected(const int pid) {
     return -1;
 }
 
-
 // funzione di utilità per convertire msec in un delay specificato secondo timespec
 void get_delay(const int msec, struct timespec *delay) {
     // dato che il delay è specificato in ms devo convertirlo a ns per scriverlo in timespec
@@ -123,4 +122,32 @@ void get_delay(const int msec, struct timespec *delay) {
     else {
 	delay->tv_nsec = msec * 1000000;
     }
+}
+
+struct request_t *newrequest(const char type, const int flags, const size_t pathlen, const size_t buflen, const size_t swp_len) {
+
+    struct request_t *req = malloc(sizeof(struct request_t));
+    if(!req) {
+	return NULL;
+    }
+    memset(req, 0, sizeof(struct request_t));
+    req->type = type;
+    req->flags = flags;
+    req->path_len = pathlen;
+    req->buf_len = buflen;
+    req->dir_swp_len = swp_len;
+
+    return req;
+}
+
+struct reply_t *newreply(const char stat, const size_t len) {
+    struct reply_t *rep = malloc(sizeof(struct reply_t));
+    memset(rep, 0, sizeof(struct reply_t));
+    if(!rep) {
+	return NULL;
+    }
+    rep->status = stat;
+    rep->buflen = len;
+
+    return rep;
 }

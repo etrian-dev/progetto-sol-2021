@@ -1,19 +1,20 @@
 File di log: definire formato, scrivere funzione apposita
 logging.c: ammettere scritture parziali se non possibile recuperare errore con strerror
 logging.c: writen nella scrittura nel file di log? (legata alla precedente)
+Logging: fixare formato output per avere maggiori info sul client e operazione se rilevante
 
-Server: HT di strutture di file (dati, size, permessi/flag, ...) + LL di pathname per selez vittime
-	Potrei ad esempio togliere fare code di file lockati per evitare di toglierli dalla cache in risposta ad una W
-	Questo perché i file li accedo singolarmente, ma per mantenere la politica di espulsione FIFO è più efficiente una LL
-
-	Modificare la funzione di logging per passare formato e argomenti (tipo nel worker)
-Riguardo al file parse_config.c: salvataggio/ripristino di errno va fatto ogni volta oppure lo sposto in cleanup()?
-In realtà la decisione sopra la posso applicare a tutto
-
+SERVER:
+	Fix terminazione soft_term (SIGHUP) e fast_term (SIGINT, SIGQUIT)
+	alcune ulteriori mutex (ad esempio aggiornamento memoria e numero file)
+	Garantire atomicità della appendToFile
+	Logica di check per le operazioni precedenti
+	Finire implementazione algoritmo rimpiazzamento in cache
+api_backend.c:insertFile:
+	memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy, 
+	ma al fine di evitare bug difficili da rintracciare al momento ho preferito memmove
+	NOTA: https://stackoverflow.com/questions/4480098/memmove-doesnt-move
 API:
-	memorizza client con array di coppie (socket della connessione, PID del client chiamante)
-	Per efficienza potrei usare una HT per memorizzare le coppie, indicizzandole col PID, ma siccome mi aspetto di
-	avere al max ~100 client non guadagno molto in termini di efficienza (inoltre potrei adottare una politica di
-	resize dell'array che lo dimezzi quando #client connessi << capacità
-
-Modificare separatore da '/0' a ':'
+	Implementare readNFiles (ci sarà lavoro da fare anche sul server per questa)
+	+ considerazioni relative alle lock (eventuali)
+CLIENT:
+	Implementare logica di salvataggio dei file letti in directory se fornita con -d

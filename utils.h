@@ -31,6 +31,8 @@ struct Queue {
 
 // inizializza una coda (vuota): ritorna un puntatore ad essa se ha successo, NULL altrimenti
 struct Queue *queue_init(void);
+// Libera la coda puntata da q
+void free_Queue(struct Queue *q);
 
 // Inserisce data (di size bytes) nella coda; Se fallisce ritorna -1, altrimenti 0
 int enqueue(struct Queue *q, const void *data_ptr, size_t size, const int csock);

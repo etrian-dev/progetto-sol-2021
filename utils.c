@@ -69,17 +69,22 @@ struct Queue *queue_init(void) {
     if(!q) {
         return NULL;
     }
-    // alloco puntatori alla testa ed alla coda
-    q->head = malloc(sizeof(struct node_t));
-    q->tail = malloc(sizeof(struct node_t));
-    if(!(q->head && q->tail)) {
-        free(q);
-        return NULL;
-    }
     // La coda inizialmente è vuota!
     q->head = NULL;
     q->tail = NULL;
     return q;
+}
+
+// Libera la coda puntata da q
+void free_Queue(struct Queue *q) {
+    struct node_t *a = NULL;
+    while((a = pop(q)) != NULL) {
+	free(a->data);
+	free(a);
+    }
+    free(q->head);
+    free(q->tail);
+    free(q);
 }
 
 // funzione per aggiungere alla coda un elemento

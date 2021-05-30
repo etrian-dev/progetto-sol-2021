@@ -13,7 +13,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 #include <time.h> // per stampare l'orario nel log
 
 // File contenente l'implementazione della funzione per effettuare il logging delle operazioni
@@ -69,10 +68,12 @@ int log(struct fs_ds_t *ds, int errcode, char *message) {
 	// errore nella scrittura della data
 	return -1;
     }
-    // ctime inserisce anche '\n' ed io lo sostituisco con ']'
+    // ctime inserisce '\n' alla fine della stringa ed io lo sostituisco con ']'
     char *end_date = strrchr(log_msg, '\n');
-    if(!end_date) {
+    if(end_date) {
 	*end_date = ']';
+	*(end_date + 1) = ' ';
+	*(end_date + 2) = '\0';
     }
 
     // resize del buffer se necessario
@@ -91,7 +92,7 @@ int log(struct fs_ds_t *ds, int errcode, char *message) {
 	log_bufsz = log_bufsz * 2;
     }
     // adesso concateno il messaggio
-    if(strncat(log_msg, message, message_len + 1)) {
+    if(strncat(log_msg, message, message_len + 1) == NULL) {
 	// errore nella concatenazione
 	free(log_msg);
 	return -1;
@@ -99,8 +100,13 @@ int log(struct fs_ds_t *ds, int errcode, char *message) {
 
     // anche se non ho modo di ottenere la stringa di errore scrivo comunque il resto del log
     char *error_str = NULL;
-    get_errorstr(errcode, &error_str);
+    // Ottengo la stringa solo se ho avuto un errore
+    if(errcode != 0) {
+	get_errorstr(errcode, &error_str);
+    }
     if(error_str) {
+	log_msg[strlen(log_msg)] = ':';
+	log_msg[strlen(log_msg) + 1] = '\0';
 	// ha avuto successo la funzione, per cui la concateno
 	// resize del buffer se necessario
 	size_t error_len = strlen(error_str);
@@ -127,13 +133,17 @@ int log(struct fs_ds_t *ds, int errcode, char *message) {
 	// libero questa stringa, dato che è stata concatenata
 	free(error_str);
     }
+    else {
+	log_msg[strlen(log_msg)] = '\n';
+	log_msg[strlen(log_msg) + 1] = '\0';
+    }
 
     if(pthread_mutex_lock(&(ds->mux_log)) == -1) {
 	perror("Lock fallito");
     }
 
     // messaggio di log preparato, ora lo scrivo
-    if(write(ds->log_fd, log_msg, log_bufsz) == -1) { // writen?
+    if(write(ds->log_fd, log_msg, strlen(log_msg)) == -1) { // writen?
 	// errore nella scrittura
 	free(log_msg);
 	return -1;

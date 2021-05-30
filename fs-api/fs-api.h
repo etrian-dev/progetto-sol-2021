@@ -4,10 +4,14 @@
 #ifndef FS_API_H_DEFINED
 #define FS_API_H_DEFINED
 
+#include <utils.h>
 #include <stddef.h> // per size_t
-#include <time.h>
+#include <time.h> // per struct timespec
 
 #define SOCK_PATH_MAXLEN 108 // per socket AF_UNIX è la massima lunghezza del path al socket
+
+//-----------------------------------------------------------------------------------
+// Struttura dati utilizzata dalla API
 
 // La API mantiene una struttura dati interna per associare ad ogni client il proprio socket
 struct conn_info {
@@ -22,18 +26,22 @@ struct conn_info {
 
 extern struct conn_info *clients_info;
 
+//-----------------------------------------------------------------------------------
+// Funzioni di utilità della API, implementate in fs-api-utils.c
+
 // Inizializza la struttura dati della API con il socket passato come argomento
 int init_api(const char *sname);
+// Funzione che aggiunge un nuovo client a quelli connessi (di cui tiene traccia la API)
 int add_client(const int conn_fd, const int pid);
+// Funzione che rimuove un client da quelli connessi
 int rm_client(const int pid);
+// Funzione che ritorna la posizione del client con PID passato come parametro se esso
+// è connesso al server attraverso la API, -1 altrimenti
 int isConnected(const int pid);
-
-// funzione di utilità per convertire msec in un delay specificato secondo timespec
+// funzione di utilità per convertire msec in struct timespec
 void get_delay(const int msec, struct timespec *delay);
 
-//-----------------------------------------------------------------------------------
-
-// definisco i tipi di operazioni
+// definizione delle operazioni implementate dalla API
 #define OPEN_FILE 'O'
 #define CLOSE_FILE 'Q'
 #define CREATE_FILE 'C'
@@ -43,6 +51,38 @@ void get_delay(const int msec, struct timespec *delay);
 #define WRITE_FILE 'W'
 #define APPEND_FILE 'A'
 #define REMOVE_FILE 'X'
+
+// struttura che definisce il tipo delle richieste
+struct request_t {
+	char type;              // tipo della richiesta: uno tra quelli definiti sopra
+	int flags;              // flags della richiesta: O_CREATE, O_LOCK oppure nessuna (0x0)
+	size_t path_len;        // lunghezza della stringa path (compreso terminatore)
+	size_t buf_len;         // lunghezza della stringa buf: 0 se non utilizzata
+	size_t dir_swp_len;     // lunghezza della stringa dir_swp: 0 se non utilizzata
+};
+// Funzione che alloca e setta i parametri di una richiesta
+// Ritorna un puntatore ad essa se ha successo, NULL altrimenti
+struct request_t *newrequest(
+	const char type,
+	const int flags,
+	const size_t pathlen,
+	const size_t buflen,
+	const size_t swp_len);
+
+#define REPLY_YES 'Y'
+#define REPLY_NO 'N'
+
+// struttura che definisce il tipo delle risposte
+struct reply_t {
+	char status;            // stato della risposta: 'Y' o 'N'
+	size_t buflen;          // lunghezza del buffer restituito dal server: 0 se non utilizzata
+};
+// Funzione che alloca e setta i parametri di una risposta
+// Ritorna un puntatore ad essa se ha successo, NULL altrimenti
+struct reply_t *newreply(const char stat, const size_t len);
+
+//-----------------------------------------------------------------------------------
+// Definizione delle operazioni
 
 // apre la connessione al socket sockname, su cui il server sta ascoltando
 int openConnection(const char *sockname, int msec, const struct timespec abstime);
@@ -63,7 +103,7 @@ int readFile(const char *pathname, void **buf, size_t *size);
 int writeFile(const char *pathname, const char *dirname);
 
 // invia al server la richiesta di concatenare al file il buffer buf
-//int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
+int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
 
 // invia al server la richiesta di acquisire la mutua esclusione sul file pathname
 //int lockFile(const char *pathname);

@@ -8,11 +8,12 @@
 #include <utils.h> // per la coda sincronizzata
 
 //-----------------------------------------------------------------------------------
-// Parsing del file di config
+// Parsing del file di configurazione
 
-// definisco il path di default del file di configurazione come macro
+// Definisco il path di default del file di configurazione
 #define CONF_PATH_DFL "./config.txt"
-// definisco i permessi del file di log se devo crearlo
+// Definisco i permessi del file di log se devo crearlo
+// Ha permesso di lettura/scrittura l'utente e lettura per tutti gli altri
 #define PERMS_ALL_READ S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH
 
 // struttura contenente i parametri del server
@@ -42,23 +43,39 @@ struct serv_params {
 // funzione per il parsing del file di configurazione
 int parse_config(struct serv_params *params, const char *conf_fpath);
 
-// SOCKET
+// Inizializza il socket su cui il server accetterà le connessioni da parte dei client
 int sock_init(const char *addr, const size_t len);
 
 //-----------------------------------------------------------------------------------
 // Strutture dati del server per la memorizzazione dei file e gestione delle richieste della API
 
-// Struttura dati che contiene i dati e metadati di un file nel fileserver
+// Struttura dati che contiene i dati e metadati di un file nel fileserver, ma non il path
 struct fs_filedata_t {
-    void *data;
-    size_t size;
-    int *openedBy;
-    size_t nopened;
-    int lockedBy;
+    void *data;      // I dati contenuti nel file
+    size_t size;     // La dimensione in numero di byte del file
+    int *openedBy;   // Un array di socket dei client che hanno aperto questo file
+    int nopened;     // La dimensione (variabile) dell'array sopra
+    int lockedBy;    // Il client (al più uno) che ha la ME sul file
 };
+// dichiaro anche la funzione per liberare la struttura
+void free_file(void *file);
 
-// Dichiaro qui tutte le strutture dati condivise
+// Dichiaro qui tutte le strutture dati condivise del server
 struct fs_ds_t {
+    // Massimo numero di file aperti in ogni istante nel server
+    size_t max_files;
+    // Numero di file aperti nel server
+    size_t curr_files;
+    // Numero massimo di file memorizzati nel server durante la sua attività
+    size_t max_nfiles;
+
+    // Massima capacità del server (in byte)
+    size_t max_mem;
+    // Quantità di memoria occupata in ogni istante dal server
+    size_t curr_mem;
+    // Massima quantità di memoria occupata dai file nel server durante la sua attività
+    size_t max_used_mem;
+
     // hash table condivisa nel server
     icl_hash_t *fs_table;
     // mutex per l'accesso alla ht
@@ -76,8 +93,14 @@ struct fs_ds_t {
     pthread_mutex_t mux_cacheq;
     pthread_cond_t new_cacheq;
 
-    int feedback[2]; // pipe per il feedback dal worker al manager
-    pthread_mutex_t mux_feedback;
+    // numero di volte che l'algoritmo di rimpiazzamento dei file è stato chiamato
+    size_t cache_triggered;
+
+    // pipe per il feedback dal worker al manager
+    int feedback[2];
+
+    // Pipe per la gestione della terminazione
+    int termination[2];
 
     int log_fd; // file descriptor del file di log
     pthread_mutex_t mux_log;
@@ -86,27 +109,42 @@ struct fs_ds_t {
 // Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
 // e riempe la struttura passata tramite puntatore
 int init_ds(struct serv_params *params, struct fs_ds_t **server_ds);
-
-//-----------------------------------------------------------------------------------
-//Gestione della terminazione
-
-struct term_params_t {
-    pthread_t term_tid;
-    pthread_mutex_t term_mux;
-    int slow_term;
-    int fast_term;
-};
+// Funzione che libera la memoria allocata per la struttura dati
+void free_serv_ds(struct fs_ds_t *server_ds);
 
 // Funzione eseguita dal thread che gestisce la terminazione
 void *term_thread(void *params);
 
-//-----------------------------------------------------------------------------------
-// Operazioni sui file
-int openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
-int readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+// Funzione eseguita dal worker
+void *work(void *params);
 
 //-----------------------------------------------------------------------------------
-//Gestione dei log
+// Operazioni sui file
+int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
+int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+int api_readN(struct fs_ds_t *ds, const int n, const int client_sock);
+int api_appendToFile(
+    struct fs_ds_t *ds, const char *pathname, const int client_sock,
+    const size_t size, char *buf, const char *swpdir);
+
+// Varie funzioni di utilità implementate in api_backend-utils.c
+
+// Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
+// Altrimenti ritorna NULL
+struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname);
+// Inserisce nel fileserver il file path con contenuto buf, di dimensione size, proveniente dal socket client
+// Se l'inserimento riesce allora ritorna un puntatore al file originale e rimpiazza i dati con buf
+// Se buf == NULL allora crea un file vuoto, ritornando il file stesso
+// Se l'operazione fallisce ritorna NULL
+struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const void *buf, const size_t size, const int client);
+// Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
+// newsz byte, in modo tale da avere una occupazione in memoria inferiore a ds->max_mem - newsz al termine
+// Se dirname non è NULL allora i file rimossi sono inviati in dirname, assegnando il path come nome del file
+// Ritorna 0 se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
+int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz);
+
+//-----------------------------------------------------------------------------------
+//Gestione del logging
 
 // Funzione per effettuare il logging: prende come parametri
 // 1) il file descriptor (deve essere già aperto in scrittura) del file di log
@@ -117,7 +155,5 @@ int readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
 // -1 se riscontra un errore (settato errno)
 int log(struct fs_ds_t *ds, int errcode, char *message);
 
-// Funzione eseguita dal worker
-void *work(void *queue);
 
 #endif
