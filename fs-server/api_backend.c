@@ -33,7 +33,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         if(flags & O_CREATE) {
             // se necessario viene espulso al più un file dalla cache (perchè non posso avere capacity misses)
             if(ds->curr_files == ds->max_files) {
-                cache_miss(ds, NULL, 0); // In questo caso viene buttato
+                cache_miss(ds, NULL, 0); // In questo caso il file viene buttato via
             }
 
             // inserisco un file vuoto (passando NULL come buffer) nella tabella
@@ -55,7 +55,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 }
             }
         }
-        // Altrimenti restituisco un errore
+        // Se un file non è presente nel fileserver e non deve essere creato allora restituisco errore
         else {
             if((reply = newreply('N', 0)) == NULL) {
                 // errore allocazione risposta
@@ -121,25 +121,26 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
     }
 
+    // Invio la risposta al client lungo il socket
     if(writen(client_sock, reply, sizeof(struct reply_t)) < sizeof(struct reply_t)) {
         success = -1;
     }
     free(reply);
 
-    return success;
+    return success; // 0 se successo, -1 altrimenti
 }
 
-// Legge il file con path pathname (se presente) per il client con le flag passate come parametro
+// Legge il file con path pathname (se presente) e lo invia al client client_sock
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
     int success = 0;
 
-    // Cerco il file nella tabella
+    // Cerco il file nella ht
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
-        // chiave non trovata => restituire errore alla API
+        // chiave non trovata => ritorna errore
         if((reply = newreply('N', 0)) == NULL) {
             // errore allocazione risposta
             puts("errore alloc risposta"); // TODO: log
@@ -151,25 +152,19 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     }
     // file trovato: guardo se era stato aperto da questo client
     else {
-        // if(lockedBy != -1 && lockedBy != client_sock) {
-            // il file è lockato, ma non da questo client, quindi l'operazione fallisce
-            // TODO: reply error
-            // TODO: log fallimento
-            //;
-        // }
-        int i, isOpen, nexit;
+        // TODO: lock?
+        int i, isOpen;
         i = isOpen = 0;
-        nexit = 1;
-        while(nexit && i < file->nopened) {
+        while(!isOpen && i < file->nopened) {
             if(file->openedBy[i] == client_sock) {
                 isOpen = 1; // aperto da questo client
-                nexit = 0;
             }
             i++;
         }
-        // Se è aperto da questo client allora posso leggerlo
+        // Se è stato aperto da questo client allora posso leggerlo
         if(isOpen) {
-            // Ok, posso inviare il file al client lungo il socket
+            // Nella risposta includo la dimensione del file da inviare, in modo da consentire al
+            // client di preparare un buffer della dimensione giusta
             if((reply = newreply('Y', file->size)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
@@ -195,22 +190,59 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     writen(client_sock, reply, sizeof(*reply));
     // Se la lettura è autorizzata allora invio il file sul socket
     if(success == 0) {
-        if(writen(client_sock, file->data, file->size) == -1) {
-            perror("This error");
-            success = -1;
+        size_t tot = file->size;
+        int bytes;
+        while(success != -1 && tot > 0) {
+            if((bytes = writen(client_sock, file->data + file->size - tot, tot)) == -1) {
+                perror("write error");
+                success = -1;
+            }
+            else {
+                tot -= bytes;
+            }
         }
     }
 
     return success;
 }
 
-// Legge n file e li salva in dirname. Se n<=0 allora legge tutti i file presenti nel server
-int api_readN(struct fs_ds_t *ds, const int n, const char *dirname, const int client_sock) {
-    // conterrà la risposta del server
-    struct reply_t *reply = NULL;
+// Legge n file e li invia al client. Se n<=0 allora legge tutti i file presenti nel server
+int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
     int success = 0;
 
-   // TODO: implementare distinguendo(?) due casi e icl_hash_foreach(?)
+   // Utilizzo la coda della cache per avere i path dei file
+   // Quindi leggo i file meno recenti nel server per rendere l'operazione efficiente (non è una lista doppia)
+    int i = 0;
+    struct node_t *curr = ds->cache_q->head;
+    struct fs_filedata_t *file = NULL;
+    while(i < n && curr) { // Se n<=0 allora leggo tutti i file perché i < n sempre vero se incremento i
+        file = find_file(ds, (char*)curr->data);
+
+        // Unione di client_sock al set di socket che hanno aperto questo file
+        // per permetterne la lettura usando api_readFile
+        file->nopened++;
+        realloc(file->openedBy, file->nopened);
+        file->openedBy[file->nopened - 1] = client_sock;
+
+        if(api_readFile(ds, (char *)curr->data, client_sock) == -1) {
+            if(log(ds, errno, "api_readN: Fallita lettura") == -1) {
+                perror("api_readN: Fallita lettura");
+            }
+            success = -1;
+            break; // al primo insuccesso nella lettura di un file esce
+        }
+        // ripristino lo stato originale del file
+        file->nopened--;
+        realloc(file->openedBy, file->nopened);
+
+        curr = curr->next;
+        i++;
+    }
+    if(success == 0) {
+        if(log(ds, errno, "api_readN: Lettura OK") == -1) {
+            perror("api_readN: Lettura OK");
+        }
+    }
 
     return success;
 }
@@ -228,76 +260,68 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
         // chiave non trovata => restituire errore alla API
         if((reply = newreply('N', 0)) == NULL) {
             // errore allocazione risposta
-            if(log(ds, 0, "appendToFile: file non trovato") == -1) {
-                perror("appendToFile: file non trovato");
+            if(log(ds, 0, "api_appendToFile: file non trovato") == -1) {
+                perror("api_appendToFile: file non trovato");
             }
         }
         success = -1;
     }
     // file trovato: guardo se era stato aperto da questo client
     else {
-        // if(lockedBy != -1 && lockedBy != client_sock) {
-            // il file è lockato, ma non da questo client, quindi l'operazione fallisce
-            // TODO: reply error
-            // TODO: log fallimento
-            //;
-        // }
-        int i, isOpen, nexit;
+        int i, isOpen;
         i = isOpen = 0;
-        nexit = 1;
-        while(nexit && i < file->nopened) {
+        while(!isOpen && i < file->nopened) {
             if(file->openedBy[i] == client_sock) {
                 isOpen = 1; // aperto da questo client
-                nexit = 0;
             }
             i++;
         }
         // Se è aperto da questo client allora posso modificarlo
         if(isOpen) {
-            // Verifico se provoca miss per numero di file o capacità: se sì effettuo swapout
+            // Verifico se la scrittura provochi un capacity miss (per numero file o memoria)
             if(ds->curr_files == ds->max_files || ds->curr_mem + size > ds->max_mem) {
-                cache_miss(ds, swpdir, ds->curr_mem + size);
+                cache_miss(ds, swpdir, ds->curr_mem + size); // i file espulsi sono inviati in swpdir
             }
 
             // espando l'area di memoria del file per contenere buf
             void *newptr = NULL;
             if(!(file->data)) {
-                newptr = malloc(size);
+                newptr = malloc(size); // il file era vuoto
             }
             else {
-                newptr = realloc(file->data, file->size + size);
+                newptr = realloc(file->data, file->size + size); // il file non era vuoto
             }
             if(!newptr) {
-                // errore nella realloc
+                // errore allocazione memoria
                 if((reply = newreply('N', 0)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
                 success = -1;
             }
-            else {
+            else { // Aggiorno il file con i nuovi dati
                 file->data = newptr;
-                // riallocazione OK, concateno buf
+                // copio soltanto la porzione aggiuntiva di dati
                 memcpy(file->data + file->size, buf, size);
                 // aggiorno la size del file
                 file->size += size;
                 // posso liberare buf
                 free(buf);
 
+                // devo aggiornare anche la quantità di memoria occupata
+                ds->curr_mem += size;
+                // aggiorno se necessario anche la massima quantità di memoria occupata
+                if(ds->curr_mem > ds->max_used_mem) {
+                    ds->max_used_mem = ds->curr_mem;
+                }
+
                 // l'operazione ha avuto successo
                 if((reply = newreply('Y', 0)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
-                if(log(ds, 0, "appendToFile: successo") == -1) {
-                    perror("appendToFile: successo");
-                }
-
-                // devo aggiornare anche la quantità di memoria occupata
-                ds->curr_mem += size;
-                // aggiorno se necessario anche il max
-                if(ds->curr_mem > ds->max_used_mem) {
-                    ds->max_used_mem = ds->curr_mem;
+                if(log(ds, 0, "api_appendToFile: successo") == -1) {
+                    perror("api_appendToFile: successo");
                 }
             }
         }
@@ -307,13 +331,14 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
             }
-            if(log(ds, 0, "appendToFile: il file non era aperto") == -1) {
-                    perror("appendToFile: il file non era aperto");
+            if(log(ds, 0, "api_appendToFile: il file non era aperto") == -1) {
+                    perror("api_appendToFile: il file non era aperto");
             }
             success = -1;
         }
     }
 
+    // scrivo la risposta sul socket del client
     writen(client_sock, reply, sizeof(*reply));
 
     return success;
