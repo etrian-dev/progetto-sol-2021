@@ -13,6 +13,7 @@
 \t-r <file1> [, <filen>]: specifica una lista di file da leggere nel server\n\
 \t-R [n=0]: specifica un numero massimo di file da leggere (se <= 0 prova a leggere tutti i file nel server\n\
 \t-d <dirname>: specifica la directory in cui salvare eventuali file letti dal server\n\
+\t-a dest:scr [, destN:srcN]: specifica il file su cui fare append e il file/la stringa da concatenare\n\
 \t-t <time >= 0>: delay tra le richeste al server (in msec)\n\
 \t-p: stampa su stdout ogni operazione del client\n"
 
