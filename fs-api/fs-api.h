@@ -99,6 +99,9 @@ int closeFile(const char *pathname);
 // invia al server la richiesta di lettura del file pathname, ritornando un puntatore al buffer
 int readFile(const char *pathname, void **buf, size_t *size);
 
+// legge n files qualsiasi dal server (nessun limite se n<=0) e se non è nullo allora li salva in dirname
+int readNFiles(int N, const char *dirname);
+
 // invia al server la richiesta di scrittura del file pathname
 int writeFile(const char *pathname, const char *dirname);
 

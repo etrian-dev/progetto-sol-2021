@@ -17,7 +17,7 @@
 \t-p: stampa su stdout ogni operazione del client\n"
 
 // stringa delle opzioni per getopt
-#define CLIENT_OPSTRING ":hf:D:d:R:r:W:w:A:a:t:p"
+#define CLIENT_OPSTRING ":hf:D:d:R:r:W:w:a:t:p"
 // i due punti iniziali per distinguere tra opzione non riconosciuta e argomento mancante
 
 // definisco una struttura che conterrà i valori delle opzioni specificate
@@ -27,7 +27,8 @@ struct client_opts {
     char *fs_socket;                  // default: NULL
     long int rdelay;                  // default: 0 (interpretato come numero di millisecondi)
 
-    long int nread;                   // default: 0 (interpretato come nessun limite)
+    long int nread;                   // default: -1 (interpretato come opzione non settata)
+    // nread == 0 invece è interpretato come nessun limite superiore al numero di file da leggere
     long int nwrite;                  // default: 0 (interpretato come nessun limite)
 
     char *dir_save_reads;             // default: NULL
@@ -45,9 +46,13 @@ struct operation {
 // nargs è argc, args è argv del programma client: i parametri sono restituiti nella struttura
 int get_client_options(int nargs, char **args, struct client_opts *params);
 
-int process_filelist(struct Queue *ops, char *arg);
+int process_filelist(struct Queue *ops, char *arg, char op_type);
 
 // Libera la struttura
 void free_client_opt(struct client_opts *options);
+
+// funzione per visitare ricorsivamente a partire da options->write_dir al più nleft files
+// I file trovati sono inseriti nella coda q ed il loro numero è ritornato (o -1 per errore)
+long int visit_dir(struct Queue *q, const char *basedir, long int nleft);
 
 #endif

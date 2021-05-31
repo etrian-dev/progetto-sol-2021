@@ -4,8 +4,10 @@
 #include <fs-api.h> // per le definizioni dei caratteri corrispondenti alle operazioni
 // system call headers
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/socket.h>
+#include <dirent.h> // per visita directory
 #include <unistd.h>
 // headers libreria standard
 #include <stdio.h>
@@ -21,15 +23,14 @@ void init_params(struct client_opts *params) {
     if(params) {
 	// prima resetto tutto a zero
 	memset(params, 0, sizeof(*params));
-	// I valori numerici di default in questo caso sono tutti 0 => inutile settarli per via della memset
-	// alloco puntatori per file da leggere/scrivere etc riservando di default un certo numero di posizioni
+	params->nread = -1;
+
 	params->oplist = calloc(1, sizeof(struct Queue));
 	// un eventuale errore di allocazione non comporta errori fatali in quanto
 	// rimangono comunque NULL i puntatori, per cui è necessario soltanto controllare
 	// di allocarli prima di usarli
     }
 }
-
 
 // Funzione che processa argv per ottenere le opzioni passate al client (usa la funzione getopt)
 // Ritorna 0 se ha successo (e riempie i campi della struttura params)
@@ -74,7 +75,7 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
 		    }
 		    break;
 		case 'R': // l'argomento di -R è il numero massimo di file da leggere
-		    // Se l'argomento non è fornito (optarg NULL) rimane al valore di default (0)
+		    // Se l'argomento non è fornito (optarg NULL) rimane al valore di default (-1)
 		    retcode = isNumber(optarg, &(params->nread));
 		    if(retcode == 1) {
 			// optarg non è un numero intero
@@ -133,12 +134,6 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
 		    has_w = 1;
 		    break;
 		}
-		case 'A': // l'argomento dell'opzione -A è una lista di coppie dest, src
-		    if(process_filelist(params->oplist, optarg, APPEND_FILE) == -1) {
-			// errore da riportare su stderr, ma continuo a processare
-			fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
-		    }
-		    break;
 		case 'a': // l'argomento dell'opzione -a è una lista di coppie dest, src
 		    if(process_filelist(params->oplist, optarg, APPEND_FILE) == -1) {
 			// errore da riportare su stderr, ma continuo a processare
@@ -256,12 +251,85 @@ void free_client_opt(struct client_opts *options) {
     free(options->dir_write);
     free(options->dir_save_reads);
     free(options->dir_swapout);
-
-    free_QQ(options->write_list);
-    free_QQ(options->read_list);
-    free_QQ(options->lock_list);
-    free_QQ(options->unlock_list);
-    free_QQ(options->rm_list);
-
     free(options);
+}
+
+long int visit_dir(struct Queue *q, const char *basedir, long int nleft) {
+    long int i = 0; // contatore del numero di file visitati
+    char *path = NULL;
+    struct dirent *entry;
+    struct stat info;
+    // Provo ad aprire la directory specificata
+    DIR *dw = opendir(basedir);
+    if(!dw) {
+        // errore
+        return -1;
+    }
+    else {
+        do {
+            // Resetto errno per discriminare errore di lettura
+            errno = 0;
+            entry = readdir(dw); // WARNING: MT-unsafe
+            // se errno cambia allora ho avuto un errore di lettura
+            if(!entry && errno != 0) {
+                // errore
+                return -1;
+            }
+            // Ignoro le entry "." e ".."
+            else if(strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0){
+                // Se entry è a sua volta una directory devo visitarla ricorsivamente
+                // Per determinare ciò potrei usare un campo di dirent non-POSIX, oppure stat
+                if(stat(entry->d_name, &info) == -1) {
+                    // errore
+                    return -1;
+                }
+                if(S_ISDIR(info.st_mode)) {
+                    // Allora ricorsivamente visito la directory
+
+		    // Devo concatenare il path base con il nome della directory
+		    char *fpath = get_fullpath(basedir, entry->d_name);
+		    if(!fpath) {
+			// impossibile ottenere path assoluto
+			return -1;
+		    }
+
+                    long int left = (nleft <= 0 ? nleft : nleft - i);
+                    long int res = visit_dir(q, fpath, left);
+                    if(res != -1) {
+			free(fpath);
+			i += res; // aggiorno il numero di file letti
+		    }
+		    // Se res era -1 c'è stato un errore nella chiamata
+		    // ricorsiva, ma posso continuare la visita della directory
+                }
+                else {
+                    // Altrimenti è il path di un file, per cui lo inserisco in coda
+		    char *fpath = get_fullpath(basedir, entry->d_name);
+		    if(!fpath) {
+			// impossibile ottenere path assoluto
+			return -1;
+		    }
+
+                    int res = enqueue(q, fpath, strlen(fpath) + 1, -1);
+		    // Se ritorna errore non esco con -1, ma continuo a leggere la directory
+		    // TEMP
+		    if(res == -1) {
+			printf("Fallito enqueue di %s\n", fpath);
+		    }
+		    free(fpath);
+
+		    // Incremento il numero di file processati
+		    i++;
+		}
+            }
+        } while(entry && i < nleft); // se entry è NULL allora ho terminato la visita (ricorsiva) della directory
+
+	// quindi chiudo la directory
+	if(closedir(dw) == -1) {
+	    // errore di chiusura della directory
+	    return -1;
+	}
+    }
+
+    return i; // ritorno il numero di file trovati e messi in coda
 }

@@ -34,6 +34,18 @@ int rialloca_buffer(char **buf, size_t newsz) {
     return 0;
 }
 
+char *get_fullpath(const char *base, const char *name) {
+    size_t path_sz = strlen(base) + strlen(name) + 2;
+    char *full_path = calloc(path_sz, sizeof(char));
+    if(!full_path) {
+	return NULL;
+    }
+    strncat(full_path, base, path_sz);
+    strncat(full_path, "/", 2);
+    strncat(full_path, name, path_sz);
+    return full_path;
+}
+
 // Funzione per convertire una stringa s in un long int
 // isNumber ritorna
 //	0: ok

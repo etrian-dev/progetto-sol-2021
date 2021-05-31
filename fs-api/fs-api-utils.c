@@ -13,6 +13,7 @@
 #include <string.h>
 
 // Implementazione di alcune funzioni di utilità per l'API
+struct conn_info *clients_info;
 
 // inizializza la struttura dati della API per la connessione al socket so sname
 int init_api(const char *sname) {

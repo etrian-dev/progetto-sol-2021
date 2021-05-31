@@ -9,7 +9,7 @@ CLIENT = ../client.out
 
 $(CLIENT): client.o client-utils.o
 	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -o $@ $^ $(LIBS)
-	mv $^ ../objs
+	-mv $^ ../objs
 client.o: client.c
 	$(CC) $(CFLAGS) $(HEADERS) -c -o $@ $<
 client-utils.o: client-utils.c
