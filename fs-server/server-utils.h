@@ -12,9 +12,6 @@
 
 // Definisco il path di default del file di configurazione
 #define CONF_PATH_DFL "./config.txt"
-// Definisco i permessi del file di log se devo crearlo
-// Ha permesso di lettura/scrittura l'utente e lettura per tutti gli altri
-#define PERMS_ALL_READ S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH
 
 // struttura contenente i parametri del server
 struct serv_params {

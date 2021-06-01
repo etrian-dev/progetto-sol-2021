@@ -86,7 +86,7 @@ void *work(void *params) {
 
         // Sulla base dell'operazione richiesta chiamo la corrispondente funzione del backend che la implementa
         switch(request->type) {
-            case 'O': { // operazione di apertura di un file
+            case OPEN_FILE: { // operazione di apertura di un file
                 // Se la richiesta è di creazione di un file controllo di non aver
                 // raggiunto il massimo numero di file memorizzabili contemporaneamente nel server
 
@@ -116,7 +116,7 @@ void *work(void *params) {
                 free(path);
                 break;
             }
-            case 'R': { // operazione di lettura di un file
+            case READ_FILE: { // operazione di lettura di un file
                 // leggo dal socket il path del file da leggere
                 path = malloc(request->path_len * sizeof(char));
                 if(!path) {
@@ -144,7 +144,7 @@ void *work(void *params) {
                 free(path);
                 break;
             }
-            case 'A': {// operazione di append
+            case APPEND_FILE: { // operazione di append
                 // leggo dal socket il path del file da modificare
                 path = malloc(request->path_len * sizeof(char));
                 void *buf = malloc(request->buf_len);
@@ -183,6 +183,15 @@ void *work(void *params) {
                     }
                 }
                 clean(path, buf, swp);
+                break;
+            }
+            case READ_N_FILES: {
+                if(api_readN(ds, request->flags, client_sock) == -1) {
+                    // Operazione non consentita: logging
+                    if(log(ds, errno, "readNFiles: Operazione non consentita") == -1) {
+                        perror("readNFiles: Operazione non consentita");
+                    }
+                }
                 break;
             }
             case 'W':

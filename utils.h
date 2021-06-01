@@ -8,6 +8,9 @@
 // definisco una dimensione base dei buffer
 #define BUF_BASESZ 512
 
+// Permessi di lettura/scrittura per l'utente e lettura per tutti gli altri
+#define PERMS_ALL_READ S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH
+
 // funzione di riallocazione del buffer a newsz.
 // Ritorna 0 se ha successo, -1 se fallisce
 int rialloca_buffer(char **buf, size_t newsz);
@@ -43,9 +46,5 @@ struct node_t *pop(struct Queue *q);
 int readn(int fd, void *ptr, size_t n);
 // Scrive esattamente n bytes nel fd
 int writen(int fd, void *ptr, size_t n);
-
-// definisco flags dei file nel fileserver
-extern int O_CREATE;
-// extern int O_LOCK;
 
 #endif

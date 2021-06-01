@@ -44,10 +44,10 @@ void get_delay(const int msec, struct timespec *delay);
 // definizione delle operazioni implementate dalla API
 #define OPEN_FILE 'O'
 #define CLOSE_FILE 'Q'
-#define CREATE_FILE 'C'
 #define LOCK_FILE 'L'
 #define UNLOCK_FILE 'U'
 #define READ_FILE 'R'
+#define READ_N_FILES 'N'
 #define WRITE_FILE 'W'
 #define APPEND_FILE 'A'
 #define REMOVE_FILE 'X'
@@ -57,32 +57,35 @@ struct request_t {
 	char type;              // tipo della richiesta: uno tra quelli definiti sopra
 	int flags;              // flags della richiesta: O_CREATE, O_LOCK oppure nessuna (0x0)
 	size_t path_len;        // lunghezza della stringa path (compreso terminatore)
-	size_t buf_len;         // lunghezza della stringa buf: 0 se non utilizzata
-	size_t dir_swp_len;     // lunghezza della stringa dir_swp: 0 se non utilizzata
+	size_t buf_len;         // lunghezza del buffer buf: 0 se non utilizzata
 };
 // Funzione che alloca e setta i parametri di una richiesta
 // Ritorna un puntatore ad essa se ha successo, NULL altrimenti
-struct request_t *newrequest(
-	const char type,
-	const int flags,
-	const size_t pathlen,
-	const size_t buflen,
-	const size_t swp_len);
+struct request_t *newrequest(const char type, const int flags, const size_t pathlen, const size_t buflen);
 
 #define REPLY_YES 'Y'
 #define REPLY_NO 'N'
 
 // struttura che definisce il tipo delle risposte
 struct reply_t {
-	char status;            // stato della risposta: 'Y' o 'N'
-	size_t buflen;          // lunghezza del buffer restituito dal server: 0 se non utilizzata
+	char status;          // stato della risposta: 'Y' o 'N'
+	int nbuffers;         // il numero di file (buffer) restituiti: un numero >= 0
+	size_t *buflen;       // lunghezza di ciascun buffer restituito dal server
+	char **fname;          // pathname di ciascun file restituito (se rilevante)
 };
 // Funzione che alloca e setta i parametri di una risposta
 // Ritorna un puntatore ad essa se ha successo, NULL altrimenti
-struct reply_t *newreply(const char stat, const size_t len);
+struct reply_t *newreply(const char stat, const int nbuf, size_t *lenghts, const char **names);
+
+// Funzione per leggere dal server dei file ed opzionalmente scriverli nella directory dir
+int write_swp(const int server, const char *dir, struct reply_t *rep);
 
 //-----------------------------------------------------------------------------------
 // Definizione delle operazioni
+
+// definisco flags per le operazioni nel fileserver
+#define O_CREATEFILE 0x1
+#define O_LOCKFILE 0x10
 
 // apre la connessione al socket sockname, su cui il server sta ascoltando
 int openConnection(const char *sockname, int msec, const struct timespec abstime);
@@ -99,14 +102,14 @@ int closeFile(const char *pathname);
 // invia al server la richiesta di lettura del file pathname, ritornando un puntatore al buffer
 int readFile(const char *pathname, void **buf, size_t *size);
 
-// legge n files qualsiasi dal server (nessun limite se n<=0) e se non è nullo allora li salva in dirname
+// legge n files qualsiasi dal server (nessun limite se n<=0) e se dirname non è NULL allora li salva in dirname
 int readNFiles(int N, const char *dirname);
-
-// invia al server la richiesta di scrittura del file pathname
-int writeFile(const char *pathname, const char *dirname);
 
 // invia al server la richiesta di concatenare al file il buffer buf
 int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
+
+// invia al server la richiesta di scrittura del file pathname
+int writeFile(const char *pathname, const char *dirname);
 
 // invia al server la richiesta di acquisire la mutua esclusione sul file pathname
 //int lockFile(const char *pathname);

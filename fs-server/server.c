@@ -277,7 +277,7 @@ int main(int argc, char **argv) {
                 if(processRequest(server_ds, fd) == -1) {
                     // errore nel processing della richiesta
                     struct reply_t *reply = NULL;
-                    if((reply = newreply('N', 0)) == NULL) {
+                    if((reply = newreply('N', 0, NULL, NULL)) == NULL) {
                         // errore allocazione risposta
                         puts("errore alloc risposta"); // TODO: log
                     }

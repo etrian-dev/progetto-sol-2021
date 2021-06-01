@@ -1,11 +1,16 @@
 // header api
 #include <fs-api.h>
+#include <utils.h>
 // syscall headers
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <fcntl.h>
+#include <dirent.h>
 #include <unistd.h>
 // std headers
+#include <errno.h>
+#include <stdio.h>
 #include <time.h>
 #include <string.h>
 #include <errno.h>
@@ -125,7 +130,7 @@ void get_delay(const int msec, struct timespec *delay) {
     }
 }
 
-struct request_t *newrequest(const char type, const int flags, const size_t pathlen, const size_t buflen, const size_t swp_len) {
+struct request_t *newrequest(const char type, const int flags, const size_t pathlen, const size_t buflen) {
 
     struct request_t *req = malloc(sizeof(struct request_t));
     if(!req) {
@@ -136,19 +141,126 @@ struct request_t *newrequest(const char type, const int flags, const size_t path
     req->flags = flags;
     req->path_len = pathlen;
     req->buf_len = buflen;
-    req->dir_swp_len = swp_len;
 
     return req;
 }
 
-struct reply_t *newreply(const char stat, const size_t len) {
+struct reply_t *newreply(const char stat, const int nbuf, size_t *lenghts, const char **names) {
+    if(nbuf < 0) {
+	// deve essere un numero di buffer >= 0
+	return NULL;
+    }
+
     struct reply_t *rep = malloc(sizeof(struct reply_t));
-    memset(rep, 0, sizeof(struct reply_t));
     if(!rep) {
 	return NULL;
     }
+    rep->buflen = malloc(nbuf * sizeof(size_t));
+    if(!(rep->buflen)) {
+	free(rep);
+	return NULL;
+    }
+
     rep->status = stat;
-    rep->buflen = len;
+    rep->nbuffers = nbuf;
+
+    int no_alloc = 0;
+    // duplico nomi file e scrivo loro lunghezza
+    int i;
+    for(i = 0; i < nbuf; i++) {
+	rep->buflen[i] = lenghts[i];
+	rep->fname[i] = strndup(names[i], strlen(names[i]) + 1);
+	if(!(rep->fname[i])) {
+	    no_alloc = 1;
+	}
+    }
+    if(no_alloc) {
+	// qualche errore di allocazione
+	for(i = 0; i < nbuf; i++) {
+	    if(rep->fname[i]) free(rep->fname[i]);
+	}
+	free(rep);
+	return NULL;
+    }
 
     return rep;
+}
+
+// Funzione per leggere dal server dei file ed opzionalmente scriverli nella directory dir
+int write_swp(const int server, const char *dir, struct reply_t *rep) {
+    // determino la directory corrente (assumo limite superiore alla lughezza del path)
+    char *orig = malloc(BUF_BASESZ * sizeof(char));
+    if(!orig) {
+	return -1;
+    }
+    if(!getcwd(orig, BUF_BASESZ)) {
+	free(orig);
+	return -1;
+    }
+
+    // Apro dir per salvarli su disco
+    int is_dir = 1;
+    int dir_fd;
+    if((dir_fd = open(dir, O_CREATEFILE)) == -1) {
+	// errore di apertura/creazione directory
+	is_dir = 0;
+    }
+    // cambio directory a quella specificata da dirname per cui i path dei file
+    // che creo sono relativi a questa directory
+    if(is_dir && fchdir(dir_fd) == -1) {
+	// errore nel cambio di directory
+	close(dir_fd);
+	return -1;
+    }
+
+    // La risposta contiene il numero di file inviati dal server nel campo nbuffers
+    int i = 0;
+    while(i < rep->nbuffers) {
+	// Leggo l'i-esimo file inviato dal server
+	void *data = malloc(rep->buflen[i]);
+	if(!data) {
+	    // fallita allocazione buffer
+	    break;
+	}
+
+	if(readn(server, data, rep->buflen[i]) == -1) {
+	    free(data);
+	    break;
+	}
+
+	// Se era stata fornito il path ed aperta la directory per salvare i file
+	// allora devo creare il file (opero su path relativi alla directory dirname)
+	if(is_dir) {
+	    int file_fd;
+	    if((file_fd = creat(rep->fname[i], PERMS_ALL_READ)) == -1) {
+		// fallita creazione file
+		break;
+	    }
+	    if(writen(file_fd, data, rep->buflen[i]) == -1) {
+		// fallita scrittura file
+		close(file_fd);
+		break;
+	    }
+	    close(file_fd);
+	    file_fd = -1;
+	}
+	free(data);
+
+	i++; // aumento il numero di file ricevuti correttamente dalla api
+    }
+
+    // Se era stata aperta allora chiudo il descrittore della directory di swapout
+    if(is_dir) {
+	close(dir_fd);
+    }
+
+    // ripristino la directory originale
+    if(chdir(orig) == -1) {
+	// errore nel cambio di directory
+	perror("Errore ripristino directory");
+	i = -1;
+    }
+    free(orig);
+
+    return i;
 }
