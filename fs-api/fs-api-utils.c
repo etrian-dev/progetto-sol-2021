@@ -160,27 +160,14 @@ struct reply_t *newreply(const char stat, const int nbuf, size_t *lenghts, const
 	free(rep);
 	return NULL;
     }
-
     rep->status = stat;
     rep->nbuffers = nbuf;
-
-    int no_alloc = 0;
-    // duplico nomi file e scrivo loro lunghezza
-    int i;
+    rep->paths_sz = 0;
     for(i = 0; i < nbuf; i++) {
 	rep->buflen[i] = lenghts[i];
-	rep->fname[i] = strndup(names[i], strlen(names[i]) + 1);
-	if(!(rep->fname[i])) {
-	    no_alloc = 1;
+	if(names[i]) {
+	    rep->paths_sz += strlen(names[i]) + 1;
 	}
-    }
-    if(no_alloc) {
-	// qualche errore di allocazione
-	for(i = 0; i < nbuf; i++) {
-	    if(rep->fname[i]) free(rep->fname[i]);
-	}
-	free(rep);
-	return NULL;
     }
 
     return rep;

@@ -20,10 +20,9 @@
 #include <errno.h>
 #include <assert.h>
 
-void clean(void *p1, void *p2, void *p3) {
+void clean(void *p1, void *p2) {
     if(p1) free(p1);
     if(p2) free(p2);
-    if(p3) free(p3);
 }
 
 int term_worker(struct fs_ds_t *ds, fd_set *set, const int maxfd);
@@ -36,7 +35,7 @@ void *work(void *params) {
     char *path = NULL;
     int client_sock = -1;
 
-    // ascolto il spcket di terminazione
+    // ascolto il socket di terminazione
     fd_set term_fd;
     FD_ZERO(&term_fd);
     FD_SET(ds->termination[0], &term_fd);
@@ -81,34 +80,36 @@ void *work(void *params) {
             return NULL;
         }
 
-        client_sock = elem->socket; // il socket è passato dal manager all'interno della struttura
-        request = (struct request_t *)elem->data;
+        client_sock = elem->socket; // il socket del client da servire
+        request = (struct request_t *)elem->data; // la richiesta inviata dal client
 
-        // Sulla base dell'operazione richiesta chiamo la corrispondente funzione del backend che la implementa
+        // A seconda dell'operazione richiesta chiama la funzione che la implementa
+        // e si occupa di fare tutto l'I/O ed i controlli internamente
         switch(request->type) {
             case OPEN_FILE: { // operazione di apertura di un file
-                // Se la richiesta è di creazione di un file controllo di non aver
-                // raggiunto il massimo numero di file memorizzabili contemporaneamente nel server
-
                 // leggo dal socket il path del file da aprire
                 path = malloc(request->path_len * sizeof(char));
                 if(!path) {
-                    // cleanup
-                    continue;
+                    if(log(ds, errno, "openFile: Fallita allocazione path") == -1) {
+                        perror("openFile: Fallita allocazione path");
+                    }
+                    break;
                 }
                 if(readn(client_sock, path, request->path_len) == -1) {
-                    // cleanup
-                    continue;
+                    if(log(ds, errno, "openFile: Fallita lettura path") == -1) {
+                        perror("openFile: Fallita lettura path");
+                    }
+                    break;
                 }
-
+                // chiamo api_openfile con il path appena letto e le flag che erano state settate nella richiesta
                 if(api_openFile(ds, path, client_sock, request->flags) == -1) {
-                    // Operazione non consentita: logging
+                    // Operazione non consentita: effettuo il log
                     if(log(ds, errno, "openFile: Operazione non consentita") == -1) {
                         perror("openFile: Operazione non consentita");
                     }
                 }
                 else {
-                    // L'apertura del file ha avuto successo: logging
+                    // L'apertura del file ha avuto successo: effettuo il log
                     if(log(ds, errno, "openFile: Operazione riuscita") == -1) {
                         perror("openFile: Operazione riuscita");
                     }
@@ -120,15 +121,18 @@ void *work(void *params) {
                 // leggo dal socket il path del file da leggere
                 path = malloc(request->path_len * sizeof(char));
                 if(!path) {
-                    // cleanup non necessario
-                    continue;
+                    if(log(ds, errno, "readFile: Fallita allocazione path") == -1) {
+                        perror("readFile: Fallita allocazione path");
+                    }
+                    break;
                 }
                 if(readn(client_sock, path, request->path_len) == -1) {
-                    // cleanup
-                    clean(path, NULL, NULL);
-                    continue;
+                    if(log(ds, errno, "openFile: Fallita lettura path") == -1) {
+                        perror("readFile: Fallita lettura path");
+                    }
+                    break;
                 }
-
+                // leggo dalla ht (se presente) il file path, inviandolo lungo il socket fornito
                 if(api_readFile(ds, path, client_sock) == -1) {
                     // Operazione non consentita: logging
                     if(log(ds, errno, "readFile: Operazione non consentita") == -1) {
@@ -144,33 +148,46 @@ void *work(void *params) {
                 free(path);
                 break;
             }
+            case READ_N_FILES: { // lettura di n files qualsiasi dal server
+                // Il campo flags della richiesta al server è usato per specificare il numero di file da leggere
+                if(api_readN(ds, request->flags, client_sock) == -1) {
+                    // Operazione non consentita: logging
+                    if(log(ds, errno, "readNFiles: Operazione non consentita") == -1) {
+                        perror("readNFiles: Operazione non consentita");
+                    }
+                }
+                break;
+            }
             case APPEND_FILE: { // operazione di append
-                // leggo dal socket il path del file da modificare
+                // leggo dal socket il path del file da modificare ed i dati da ricevere
                 path = malloc(request->path_len * sizeof(char));
                 void *buf = malloc(request->buf_len);
-                char *swp = malloc(request->dir_swp_len * sizeof(char));
-                if(!path || !buf || !swp) {
+                if(!path || !buf) {
+                    if(log(ds, errno, "appendToFile: Fallita allocazione path o buffer dati") == -1) {
+                        perror("appendToFile: Fallita allocazione path o buffer dati");
+                    }
                     // cleanup
-                    clean(path, buf, swp);
-                    continue;
+                    clean(path, buf);
+                    break;;
                 }
                 if(readn(client_sock, path, request->path_len) == -1) {
+                    if(log(ds, errno, "appendToFile: Fallita lettura path") == -1) {
+                        perror("appendToFile: Fallita lettura path");
+                    }
                     // cleanup
-                    clean(path, buf, swp);
-                    continue;
+                    clean(path, buf);
+                    break;
                 }
                 if(readn(client_sock, buf, request->buf_len) == -1) {
+                    if(log(ds, errno, "appendToFile: Fallita lettura dati") == -1) {
+                        perror("appendToFile: Fallita lettura dati");
+                    }
                     // cleanup
-                    clean(path, buf, swp);
-                    continue;
+                    clean(path, buf);
+                    break;
                 }
-                if(readn(client_sock, swp, request->dir_swp_len) == -1) {
-                    // cleanup
-                    clean(path, buf, swp);
-                    continue;
-                }
-
-                if(api_appendToFile(ds, path, client_sock, request->buf_len, buf, swp) == -1) {
+                // scrivo i dati contenuti in buf alla fine del file path (se presente)
+                if(api_appendToFile(ds, path, client_sock, request->buf_len, buf) == -1) {
                     // Operazione non consentita: logging
                     if(log(ds, errno, "appendToFile: Operazione non consentita") == -1) {
                         perror("appendToFile: Operazione non consentita");
@@ -182,16 +199,7 @@ void *work(void *params) {
                         perror("appendFile: Operazione riuscita");
                     }
                 }
-                clean(path, buf, swp);
-                break;
-            }
-            case READ_N_FILES: {
-                if(api_readN(ds, request->flags, client_sock) == -1) {
-                    // Operazione non consentita: logging
-                    if(log(ds, errno, "readNFiles: Operazione non consentita") == -1) {
-                        perror("readNFiles: Operazione non consentita");
-                    }
-                }
+                clean(path, buf);
                 break;
             }
             case 'W':

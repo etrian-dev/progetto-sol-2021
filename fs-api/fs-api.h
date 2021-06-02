@@ -71,7 +71,9 @@ struct reply_t {
 	char status;          // stato della risposta: 'Y' o 'N'
 	int nbuffers;         // il numero di file (buffer) restituiti: un numero >= 0
 	size_t *buflen;       // lunghezza di ciascun buffer restituito dal server
-	char **fname;          // pathname di ciascun file restituito (se rilevante)
+	size_t paths_sz;         // lunghezza della stringa di path da leggere (se rilevante)
+	// Il formato della stringa di path da leggere è il seguente: ciascun path è scritto nell'ordine
+	// dato dall'indice nell'array buflen del file ed i path sono separati da '\0'
 };
 // Funzione che alloca e setta i parametri di una risposta
 // Ritorna un puntatore ad essa se ha successo, NULL altrimenti

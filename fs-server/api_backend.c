@@ -38,7 +38,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
 
             // inserisco un file vuoto (passando NULL come buffer) nella tabella
             if(insert_file(ds, pathname, NULL, 0, client_sock) == NULL) {
-                if((reply = newreply('N', 0)) == NULL) {
+                if((reply = newreply('N', 0, 0, NULL)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
@@ -49,7 +49,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             }
             else {
                 // Inserimento OK (num di file aperti aggiornato da insertFile)
-                if((reply = newreply('Y', 0)) == NULL) {
+                if((reply = newreply('Y', 0, 0, NULL)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
@@ -57,7 +57,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
         // Se un file non è presente nel fileserver e non deve essere creato allora restituisco errore
         else {
-            if((reply = newreply('N', 0)) == NULL) {
+            if((reply = newreply('N', 0, 0, NULL)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
             }
@@ -80,7 +80,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
         if(isOpen) {
             // File già aperto da questo client: l'operazione di apertura fallisce
-            if((reply = newreply('N', 0)) == NULL) {
+            if((reply = newreply('N', 0, 0, NULL)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
             }
@@ -95,7 +95,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             int *newentry = realloc(file->openedBy, file->nopened + 1);
             if(!newentry) {
                 // fallita allocazione nuovo spazio per fd
-                if((reply = newreply('N', 0)) == NULL) {
+                if((reply = newreply('N', 0, 0, NULL)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
@@ -110,7 +110,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 newentry[file->nopened] = client_sock;
                 file->nopened++;
                 file->openedBy = newentry;
-                if((reply = newreply('Y', 0)) == NULL) {
+                if((reply = newreply('Y', 0, 0, NULL)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
                 }
@@ -141,7 +141,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
         // chiave non trovata => ritorna errore
-        if((reply = newreply('N', 0)) == NULL) {
+        if((reply = newreply('N', 0, 0, NULL)) == NULL) {
             // errore allocazione risposta
             puts("errore alloc risposta"); // TODO: log
         }
@@ -165,7 +165,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         if(isOpen) {
             // Nella risposta includo la dimensione del file da inviare, in modo da consentire al
             // client di preparare un buffer della dimensione giusta
-            if((reply = newreply('Y', file->size)) == NULL) {
+            if((reply = newreply('Y', 1, file->size, NULL)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
             }
@@ -175,7 +175,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
         else {
             // Operazione negata: il client non aveva aperto il file
-            if((reply = newreply('N', 0)) == NULL) {
+            if((reply = newreply('N', 0, 0, NULL)) == NULL) {
                 // errore allocazione risposta
                 puts("errore alloc risposta"); // TODO: log
             }
@@ -210,16 +210,44 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
 int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
     int success = 0;
 
-   // Utilizzo la coda della cache per avere i path dei file
-   // Quindi leggo i file meno recenti nel server per rendere l'operazione efficiente (non è una lista doppia)
-    int i = 0;
-    struct node_t *curr = ds->cache_q->head;
-    struct fs_filedata_t *file = NULL;
-    while(i < n && curr) { // Se n<=0 allora leggo tutti i file perché i < n sempre vero se incremento i
-        file = find_file(ds, (char*)curr->data);
+    // Utilizzo la coda di path per ottenere dei file da inviare. Di conseguenza invio
+    // sempre al client i file meno recenti nel server (per una maggiore efficienza,
+    // dato che è una lista concatenata con il solo forward pointer)
 
-        // Unione di client_sock al set di socket che hanno aperto questo file
-        // per permetterne la lettura usando api_readFile
+    // Determino il numero di file che invierò, in modo da renderlo noto alla API
+    int num_sent = 0;
+    struct node_t *curr = ds->cache_q->head; // l'indirizzo del nodo contenente il primo path
+    while((n <= 0 || num_sent < n) && curr) {
+        curr = curr->next;
+        num_sent++;
+    }
+    size_t *sizes = malloc(num_sent * sizeof(size_t)); // le dimensioni dei file
+    char **paths = malloc(num_sent * sizeof(char*)); // i path dei file
+    struct fs_filedata_t *file = NULL;
+    curr = ds->cache_q->head;
+    int i;
+    for(i = 0; < num_sent; i++) {
+        // Trovo il file indicato dal path in curr
+        file = find_file(ds, (char*)curr->data);
+        // Di tale file devo avere la dimensione
+        sizes[i] = file->size;
+        // E devo anche copiarne il path (in realtà basta il puntatore)
+        paths[i] = (char*)curr->data;
+        curr = curr->next;
+    }
+
+
+    // Invio la risposta contenente il numero di file, i loro path e la loro dimensione alla api
+    struct reply_t *rep = newreply(REPLY_YES, num_sent, sizes, paths);
+
+
+
+    // Se n<=0 allora leggo tutti i file presenti perché i < n sempre vero se incremento i ad ogni passo
+    // curr scorre la lista, perciò se ho esaurito i file da mandare esco dal ciclo
+    while(i <= n) {
+
+
+        // Simulo una apertura del file per questo client e poi lo leggo con readFile
         file->nopened++;
         realloc(file->openedBy, file->nopened);
         file->openedBy[file->nopened - 1] = client_sock;

@@ -1,20 +1,21 @@
-File di log: definire formato, scrivere funzione apposita
-logging.c: ammettere scritture parziali se non possibile recuperare errore con strerror
-logging.c: writen nella scrittura nel file di log? (legata alla precedente)
-Logging: fixare formato output per avere maggiori info sul client e operazione se rilevante
+Logging server: definire funzione con stringa di formato in modo da poter passare nome file
+su cui effettuo operazioni
 
 SERVER:
 	Fix terminazione soft_term (SIGHUP) e fast_term (SIGINT, SIGQUIT)
-	alcune ulteriori mutex (ad esempio aggiornamento memoria e numero file)
+	(?) Alcune ulteriori mutex (ad esempio aggiornamento memoria e numero file)
 	Garantire atomicità della appendToFile
 	Logica di check per le operazioni precedenti
-	Finire implementazione algoritmo rimpiazzamento in cache
+	Testare algoritmo rimpiazzamento cache
+api_readN:
+	Completare scrittura di tutti i pathname sul socket
 api_backend.c:insertFile:
 	memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy, 
 	ma al fine di evitare bug difficili da rintracciare al momento ho preferito memmove
 	NOTA: https://stackoverflow.com/questions/4480098/memmove-doesnt-move
 API:
-	Implementare readNFiles (ci sarà lavoro da fare anche sul server per questa)
-	+ considerazioni relative alle lock (eventuali)
+	implementare writeFile
 CLIENT:
-	Implementare logica di salvataggio dei file letti in directory se fornita con -d
+	Testing?
+
+Fixare newreply in tutti i posti dove compare
