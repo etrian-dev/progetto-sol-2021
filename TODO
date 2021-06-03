@@ -1,21 +1,23 @@
-Logging server: definire funzione con stringa di formato in modo da poter passare nome file
+Logging server:
+definire funzione con stringa di formato in modo da poter passare nome file
 su cui effettuo operazioni
 
 SERVER:
-	Fix terminazione soft_term (SIGHUP) e fast_term (SIGINT, SIGQUIT)
-	(?) Alcune ulteriori mutex (ad esempio aggiornamento memoria e numero file)
-	Garantire atomicità della appendToFile
-	Logica di check per le operazioni precedenti
-	Testare algoritmo rimpiazzamento cache
+Fix terminazione soft_term (SIGHUP) e fast_term (SIGINT, SIGQUIT)
+(?) Alcune ulteriori mutex (ad esempio aggiornamento memoria e numero file)
+Garantire atomicità della appendToFile
+Logica di check per le operazioni precedenti
+Testare algoritmo rimpiazzamento cache
 api_readN:
-	Completare scrittura di tutti i pathname sul socket
-api_backend.c:insertFile:
-	memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy, 
-	ma al fine di evitare bug difficili da rintracciare al momento ho preferito memmove
-	NOTA: https://stackoverflow.com/questions/4480098/memmove-doesnt-move
-API:
-	implementare writeFile
-CLIENT:
-	Testing?
+Completare scrittura di tutti i pathname sul socket
+api_backend.c:
+insertFile:
+memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy,
+        ma al fine di evitare bug difficili da rintracciare al momento ho preferito memmove
+        NOTA: https://stackoverflow.com/questions/4480098/memmove-doesnt-move
+        API:
+        implementare writeFile
+        CLIENT:
+        Testing?
 
-Fixare newreply in tutti i posti dove compare
+        Fixare newreply in tutti i posti dove compare

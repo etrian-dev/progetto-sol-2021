@@ -45,14 +45,14 @@ int main(int argc, char **argv) {
 
     // stampo le opzioni riconosciute
     PRINT(options->prints_on,
-        printf("Help: %s\n", (options->help_on ? "ON" : "OFF"));
-        printf("Stdout prints: %s\n", (options->prints_on ? "ON" : "OFF"));
-        printf("Delay: %ldms\n", options->rdelay);
-        printf("Socket: %s\n", options->fs_socket);
-        printf("Directory swapout: %s\n", options->dir_swapout);
-        printf("Directory with files to write: %s\n", options->dir_write);
-        printf("Directory save reads: %s\n", options->dir_save_reads);
-    )
+          printf("Help: %s\n", (options->help_on ? "ON" : "OFF"));
+          printf("Stdout prints: %s\n", (options->prints_on ? "ON" : "OFF"));
+          printf("Delay: %ldms\n", options->rdelay);
+          printf("Socket: %s\n", options->fs_socket);
+          printf("Directory swapout: %s\n", options->dir_swapout);
+          printf("Directory with files to write: %s\n", options->dir_write);
+          printf("Directory save reads: %s\n", options->dir_save_reads);
+         )
     // Se è stato richiesto il messaggio di help stampa quello e poi esce
     // Vi sono altre condizioni  di seguito
     if(options->help_on || argc == 1 || options->fs_socket == NULL) {
@@ -91,9 +91,9 @@ int main(int argc, char **argv) {
                     if(openFile(path, 0) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
-                            perror("openFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
+                              perror("openFile");
+                             )
                         break;
                     }
                     // file aperto, ora lo leggo
@@ -102,9 +102,9 @@ int main(int argc, char **argv) {
                     if(readFile(path, &buf, &file_sz) == -1) {
                         // errore di lettura
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile leggere il file \"%s\"\n", getpid(), path);
-                            perror("readFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile leggere il file \"%s\"\n", getpid(), path);
+                              perror("readFile");
+                             )
                         break;
                     }
 
@@ -115,21 +115,21 @@ int main(int argc, char **argv) {
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                            perror("closeFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
+                              perror("closeFile");
+                             )
                     }
                     break;
                 }
                 case WRITE_FILE: {
                     // apro il file con la flag per crearlo
                     // TODO: OR con O_LOCK?
-                    if(openFile(path, O_CREATE) == -1) {
+                    if(openFile(path, O_CREATEFILE) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
-                            perror("openFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
+                              perror("openFile");
+                             )
                         break;
                     }
                     // File aperto: scrivo il file e fornisco la cartella dove salvare eventuali file espulsi
@@ -137,17 +137,17 @@ int main(int argc, char **argv) {
                     if(writeFile(path, options->dir_swapout) == -1) {
                         // errore di lettura
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
-                            perror("writeFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
+                              perror("writeFile");
+                             )
                         break;
                     }
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                            perror("closeFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
+                              perror("closeFile");
+                             )
                     }
                     break;
                 }
@@ -170,9 +170,9 @@ int main(int argc, char **argv) {
                         if(!buf) {
                             // errore nella duplicazione della stringa
                             PRINT(options->prints_on,
-                                fprintf(stderr, "[CLIENT %d]: Impossibile duplicare \"%s\"\n", getpid(), src);
-                                perror("strndup");
-                            )
+                                  fprintf(stderr, "[CLIENT %d]: Impossibile duplicare \"%s\"\n", getpid(), src);
+                                  perror("strndup");
+                                 )
                             break;
                         }
                     }
@@ -184,9 +184,9 @@ int main(int argc, char **argv) {
                         if(fstat(file_fd, &info) == -1) {
                             // impossibile ottenere informazioni
                             PRINT(options->prints_on,
-                                fprintf(stderr, "[CLIENT %d]: Impossibile ottenere info sul file \"%s\"\n", getpid(), src);
-                                perror("fstat");
-                            )
+                                  fprintf(stderr, "[CLIENT %d]: Impossibile ottenere info sul file \"%s\"\n", getpid(), src);
+                                  perror("fstat");
+                                 )
                             break;
                         }
                         // Controllo che sia un file regolare: se lo è ne prendo la dimensione e lo leggo in un buffer
@@ -195,9 +195,9 @@ int main(int argc, char **argv) {
                             if((buf = malloc(file_sz)) == NULL) {
                                 // impossibile allocare il buffer per il file da concatenare
                                 PRINT(options->prints_on,
-                                    fprintf(stderr, "[CLIENT %d]: Allocazione buffer fallita\n", getpid());
-                                    perror("malloc");
-                                )
+                                      fprintf(stderr, "[CLIENT %d]: Allocazione buffer fallita\n", getpid());
+                                      perror("malloc");
+                                     )
                                 break;
                             }
                             // leggo il file nel buffer
@@ -210,9 +210,9 @@ int main(int argc, char **argv) {
                             if(written == -1) {
                                 // impossibile leggere il file
                                 PRINT(options->prints_on,
-                                    fprintf(stderr, "[CLIENT %d]: Lettura file fallita\n", getpid());
-                                    perror("read");
-                                )
+                                      fprintf(stderr, "[CLIENT %d]: Lettura file fallita\n", getpid());
+                                      perror("read");
+                                     )
                                 free(buf);
                                 break;
                             }
@@ -232,9 +232,9 @@ int main(int argc, char **argv) {
                     if(openFile(dest, 0) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), dest);
-                            perror("openFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), dest);
+                              perror("openFile");
+                             )
                         break;
                     }
 
@@ -242,17 +242,17 @@ int main(int argc, char **argv) {
                     if(appendToFile(dest, buf, file_sz, options->dir_swapout) == -1) {
                         // errore di append
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), dest);
-                            perror("appendToFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), dest);
+                              perror("appendToFile");
+                             )
                         break;
                     }
                     if(closeFile(dest) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), dest);
-                            perror("closeFile");
-                        )
+                              fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), dest);
+                              perror("closeFile");
+                             )
                     }
                     break;
                 }
@@ -284,7 +284,7 @@ int main(int argc, char **argv) {
                 path = (char*)elem->data;
                 // apro il file con la flag per crearlo
                 // TODO: OR con O_LOCK?
-                if(openFile(path, O_CREATE) == -1) {
+                if(openFile(path, O_CREATEFILE) == -1) {
                     // errore di apertura: log su stderr
                     PRINT(options->prints_on,
                           fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
@@ -304,9 +304,9 @@ int main(int argc, char **argv) {
                 if(closeFile(path) == -1) {
                     // errore di chiusura: log su stderr
                     PRINT(options->prints_on,
-                        fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                        perror("closeFile");
-                    );
+                          fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
+                          perror("closeFile");
+                         );
                 }
 
                 // libero la memoria dell'elemento della coda
@@ -329,14 +329,14 @@ int main(int argc, char **argv) {
             if(readNFiles(options->nread, options->dir_save_reads) == -1) {
                 // errore di lettura
                 PRINT(options->prints_on,
-                    if(options->nread == 0) {
-                        fprintf(stderr, "[CLIENT %d]: Impossibile leggere files\n", getpid());
-                    }
-                    else {
-                        fprintf(stderr, "[CLIENT %d]: Impossibile leggere %ld files\n", getpid(), options->nread);
-                    }
-                    perror("readNFiles");
-                );
+                if(options->nread == 0) {
+                fprintf(stderr, "[CLIENT %d]: Impossibile leggere files\n", getpid());
+                }
+                else {
+                    fprintf(stderr, "[CLIENT %d]: Impossibile leggere %ld files\n", getpid(), options->nread);
+                }
+                perror("readNFiles");
+                     );
             }
         }
 

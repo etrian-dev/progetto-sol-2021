@@ -15,11 +15,11 @@
 
 // La API mantiene una struttura dati interna per associare ad ogni client il proprio socket
 struct conn_info {
-	char *sockname;     // nome del socket (supposto univoco per tutta la sessione)
-	int *client_id;     // array di coppie (socket fd, client PID) allocato in modo contiguo
-	// NOTA: la regola è di mettere prima il fd del socket, poi il PID del client
-	size_t capacity;    // mantiene la capacità dell'array sovrastante
-	size_t count;       // conta il numero di client connessi in questo momento
+    char *sockname;     // nome del socket (supposto univoco per tutta la sessione)
+    int *client_id;     // array di coppie (socket fd, client PID) allocato in modo contiguo
+    // NOTA: la regola è di mettere prima il fd del socket, poi il PID del client
+    size_t capacity;    // mantiene la capacità dell'array sovrastante
+    size_t count;       // conta il numero di client connessi in questo momento
 };
 
 #define NCLIENTS_DFL 10 // il numero di slot preallocati per clients
@@ -54,10 +54,10 @@ void get_delay(const int msec, struct timespec *delay);
 
 // struttura che definisce il tipo delle richieste
 struct request_t {
-	char type;              // tipo della richiesta: uno tra quelli definiti sopra
-	int flags;              // flags della richiesta: O_CREATE, O_LOCK oppure nessuna (0x0)
-	size_t path_len;        // lunghezza della stringa path (compreso terminatore)
-	size_t buf_len;         // lunghezza del buffer buf: 0 se non utilizzata
+    char type;              // tipo della richiesta: uno tra quelli definiti sopra
+    int flags;              // flags della richiesta: O_CREATE, O_LOCK oppure nessuna (0x0)
+    size_t path_len;        // lunghezza della stringa path (compreso terminatore)
+    size_t buf_len;         // lunghezza del buffer buf: 0 se non utilizzata
 };
 // Funzione che alloca e setta i parametri di una richiesta
 // Ritorna un puntatore ad essa se ha successo, NULL altrimenti
@@ -68,19 +68,19 @@ struct request_t *newrequest(const char type, const int flags, const size_t path
 
 // struttura che definisce il tipo delle risposte
 struct reply_t {
-	char status;          // stato della risposta: 'Y' o 'N'
-	int nbuffers;         // il numero di file (buffer) restituiti: un numero >= 0
-	size_t *buflen;       // lunghezza di ciascun buffer restituito dal server
-	size_t paths_sz;         // lunghezza della stringa di path da leggere (se rilevante)
-	// Il formato della stringa di path da leggere è il seguente: ciascun path è scritto nell'ordine
-	// dato dall'indice nell'array buflen del file ed i path sono separati da '\0'
+    char status;          // stato della risposta: 'Y' o 'N'
+    int nbuffers;         // il numero di file (buffer) restituiti: un numero >= 0
+    size_t *buflen;       // lunghezza di ciascun buffer restituito dal server
+    size_t paths_sz;      // lunghezza della stringa di path da leggere (se rilevante)
+    // Il formato della stringa di path è il seguente: ciascun path è scritto nell'ordine
+    // dato dall'indice nell'array buflen del file ed i path sono separati da '\n'
 };
 // Funzione che alloca e setta i parametri di una risposta
 // Ritorna un puntatore ad essa se ha successo, NULL altrimenti
 struct reply_t *newreply(const char stat, const int nbuf, size_t *lenghts, const char **names);
 
 // Funzione per leggere dal server dei file ed opzionalmente scriverli nella directory dir
-int write_swp(const int server, const char *dir, struct reply_t *rep);
+int write_swp(const int server, const char *dir, struct reply_t *rep, const char *paths);
 
 //-----------------------------------------------------------------------------------
 // Definizione delle operazioni

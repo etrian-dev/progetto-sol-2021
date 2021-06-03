@@ -33,18 +33,18 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     }
 
     *server_ds = malloc(sizeof(struct fs_ds_t));
-	if(!(*server_ds)) {
-		return -1;
-	}
+    if(!(*server_ds)) {
+        return -1;
+    }
 
     // creo la pipe per il feedback tra thread worker e manager
-	if(pipe((*server_ds)->feedback) == -1) {
-		return -1;
-	}
+    if(pipe((*server_ds)->feedback) == -1) {
+        return -1;
+    }
     // creo la pipe per la terminazione: l'unico thread che scrive è quello che gestisce la terminazione
     if(pipe((*server_ds)->termination) == -1) {
-		return -1;
-	}
+        return -1;
+    }
 
     // creo la ht per la memorizzazione dei file
     // Alloco preventivamente slot per il massimo numero di file che possono essere
@@ -100,11 +100,11 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
 
         // chiudo le pipe
         if( close(server_ds->feedback[0]) == -1
-            || close(server_ds->feedback[1]) == -1
-            || close(server_ds->termination[0]) == -1
-            || close(server_ds->termination[1] == -1)) {
-                perror("Impossibile chiudere una pipe");
-            }
+                || close(server_ds->feedback[1]) == -1
+                || close(server_ds->termination[0]) == -1
+                || close(server_ds->termination[1] == -1)) {
+            perror("Impossibile chiudere una pipe");
+        }
 
         free(server_ds);
     }

@@ -122,7 +122,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
 int api_readN(struct fs_ds_t *ds, const int n, const int client_sock);
 int api_appendToFile(
     struct fs_ds_t *ds, const char *pathname, const int client_sock,
-    const size_t size, char *buf, const char *swpdir);
+    const size_t size, char *buf);
 
 // Varie funzioni di utilità implementate in api_backend-utils.c
 
@@ -134,11 +134,14 @@ struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname);
 // Se buf == NULL allora crea un file vuoto, ritornando il file stesso
 // Se l'operazione fallisce ritorna NULL
 struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const void *buf, const size_t size, const int client);
+
 // Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
 // newsz byte, in modo tale da avere una occupazione in memoria inferiore a ds->max_mem - newsz al termine
-// Se dirname non è NULL allora i file rimossi sono inviati in dirname, assegnando il path come nome del file
-// Ritorna 0 se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
-int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz);
+// Ritorna il numero di file espulsi (>0) se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
+// Se la funzione ha successo inizializza e riempe con i file espulsi ed i loro path le due code passate come 
+// parametro alla funzione, altrimenti se l'algoritmo di rimpiazzamento fallisce
+// esse non sono allocate e comunque lasciate in uno stato inconsistente
+int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files);
 
 //-----------------------------------------------------------------------------------
 //Gestione del logging
@@ -150,7 +153,7 @@ int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz);
 // La funzione ritorna:
 // 0 se ha successo
 // -1 se riscontra un errore (settato errno)
-int log(struct fs_ds_t *ds, int errcode, char *message);
+int logging(struct fs_ds_t *ds, int errcode, char *message);
 
 
 #endif

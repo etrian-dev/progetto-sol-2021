@@ -86,133 +86,133 @@ void *work(void *params) {
         // A seconda dell'operazione richiesta chiama la funzione che la implementa
         // e si occupa di fare tutto l'I/O ed i controlli internamente
         switch(request->type) {
-            case OPEN_FILE: { // operazione di apertura di un file
-                // leggo dal socket il path del file da aprire
-                path = malloc(request->path_len * sizeof(char));
-                if(!path) {
-                    if(log(ds, errno, "openFile: Fallita allocazione path") == -1) {
-                        perror("openFile: Fallita allocazione path");
-                    }
-                    break;
-                }
-                if(readn(client_sock, path, request->path_len) == -1) {
-                    if(log(ds, errno, "openFile: Fallita lettura path") == -1) {
-                        perror("openFile: Fallita lettura path");
-                    }
-                    break;
-                }
-                // chiamo api_openfile con il path appena letto e le flag che erano state settate nella richiesta
-                if(api_openFile(ds, path, client_sock, request->flags) == -1) {
-                    // Operazione non consentita: effettuo il log
-                    if(log(ds, errno, "openFile: Operazione non consentita") == -1) {
-                        perror("openFile: Operazione non consentita");
-                    }
-                }
-                else {
-                    // L'apertura del file ha avuto successo: effettuo il log
-                    if(log(ds, errno, "openFile: Operazione riuscita") == -1) {
-                        perror("openFile: Operazione riuscita");
-                    }
-                }
-                free(path);
-                break;
-            }
-            case READ_FILE: { // operazione di lettura di un file
-                // leggo dal socket il path del file da leggere
-                path = malloc(request->path_len * sizeof(char));
-                if(!path) {
-                    if(log(ds, errno, "readFile: Fallita allocazione path") == -1) {
-                        perror("readFile: Fallita allocazione path");
-                    }
-                    break;
-                }
-                if(readn(client_sock, path, request->path_len) == -1) {
-                    if(log(ds, errno, "openFile: Fallita lettura path") == -1) {
-                        perror("readFile: Fallita lettura path");
-                    }
-                    break;
-                }
-                // leggo dalla ht (se presente) il file path, inviandolo lungo il socket fornito
-                if(api_readFile(ds, path, client_sock) == -1) {
-                    // Operazione non consentita: logging
-                    if(log(ds, errno, "readFile: Operazione non consentita") == -1) {
-                        perror("readFile: Operazione non consentita");
-                    }
-                }
-                // La lettura del file ha avuto successo: logging
-                else {
-                    if(log(ds, errno, "readFile: Operazione riuscita") == -1) {
-                        perror("readFile: Operazione riuscita");
-                    }
-                }
-                free(path);
-                break;
-            }
-            case READ_N_FILES: { // lettura di n files qualsiasi dal server
-                // Il campo flags della richiesta al server è usato per specificare il numero di file da leggere
-                if(api_readN(ds, request->flags, client_sock) == -1) {
-                    // Operazione non consentita: logging
-                    if(log(ds, errno, "readNFiles: Operazione non consentita") == -1) {
-                        perror("readNFiles: Operazione non consentita");
-                    }
+        case OPEN_FILE: { // operazione di apertura di un file
+            // leggo dal socket il path del file da aprire
+            path = malloc(request->path_len * sizeof(char));
+            if(!path) {
+                if(logging(ds, errno, "openFile: Fallita allocazione path") == -1) {
+                    perror("openFile: Fallita allocazione path");
                 }
                 break;
             }
-            case APPEND_FILE: { // operazione di append
-                // leggo dal socket il path del file da modificare ed i dati da ricevere
-                path = malloc(request->path_len * sizeof(char));
-                void *buf = malloc(request->buf_len);
-                if(!path || !buf) {
-                    if(log(ds, errno, "appendToFile: Fallita allocazione path o buffer dati") == -1) {
-                        perror("appendToFile: Fallita allocazione path o buffer dati");
-                    }
-                    // cleanup
-                    clean(path, buf);
-                    break;;
+            if(readn(client_sock, path, request->path_len) == -1) {
+                if(logging(ds, errno, "openFile: Fallita lettura path") == -1) {
+                    perror("openFile: Fallita lettura path");
                 }
-                if(readn(client_sock, path, request->path_len) == -1) {
-                    if(log(ds, errno, "appendToFile: Fallita lettura path") == -1) {
-                        perror("appendToFile: Fallita lettura path");
-                    }
-                    // cleanup
-                    clean(path, buf);
-                    break;
+                break;
+            }
+            // chiamo api_openfile con il path appena letto e le flag che erano state settate nella richiesta
+            if(api_openFile(ds, path, client_sock, request->flags) == -1) {
+                // Operazione non consentita: effettuo il log
+                if(logging(ds, errno, "openFile: Operazione non consentita") == -1) {
+                    perror("openFile: Operazione non consentita");
                 }
-                if(readn(client_sock, buf, request->buf_len) == -1) {
-                    if(log(ds, errno, "appendToFile: Fallita lettura dati") == -1) {
-                        perror("appendToFile: Fallita lettura dati");
-                    }
-                    // cleanup
-                    clean(path, buf);
-                    break;
+            }
+            else {
+                // L'apertura del file ha avuto successo: effettuo il log
+                if(logging(ds, errno, "openFile: Operazione riuscita") == -1) {
+                    perror("openFile: Operazione riuscita");
                 }
-                // scrivo i dati contenuti in buf alla fine del file path (se presente)
-                if(api_appendToFile(ds, path, client_sock, request->buf_len, buf) == -1) {
-                    // Operazione non consentita: logging
-                    if(log(ds, errno, "appendToFile: Operazione non consentita") == -1) {
-                        perror("appendToFile: Operazione non consentita");
-                    }
+            }
+            free(path);
+            break;
+        }
+        case READ_FILE: { // operazione di lettura di un file
+            // leggo dal socket il path del file da leggere
+            path = malloc(request->path_len * sizeof(char));
+            if(!path) {
+                if(logging(ds, errno, "readFile: Fallita allocazione path") == -1) {
+                    perror("readFile: Fallita allocazione path");
                 }
-                else {
-                    // Append OK
-                    if(log(ds, errno, "appendFile: Operazione riuscita") == -1) {
-                        perror("appendFile: Operazione riuscita");
-                    }
+                break;
+            }
+            if(readn(client_sock, path, request->path_len) == -1) {
+                if(logging(ds, errno, "openFile: Fallita lettura path") == -1) {
+                    perror("readFile: Fallita lettura path");
                 }
+                break;
+            }
+            // leggo dalla ht (se presente) il file path, inviandolo lungo il socket fornito
+            if(api_readFile(ds, path, client_sock) == -1) {
+                // Operazione non consentita: logging
+                if(logging(ds, errno, "readFile: Operazione non consentita") == -1) {
+                    perror("readFile: Operazione non consentita");
+                }
+            }
+            // La lettura del file ha avuto successo: logging
+            else {
+                if(logging(ds, errno, "readFile: Operazione riuscita") == -1) {
+                    perror("readFile: Operazione riuscita");
+                }
+            }
+            free(path);
+            break;
+        }
+        case READ_N_FILES: { // lettura di n files qualsiasi dal server
+            // Il campo flags della richiesta al server è usato per specificare il numero di file da leggere
+            if(api_readN(ds, request->flags, client_sock) == -1) {
+                // Operazione non consentita: logging
+                if(logging(ds, errno, "readNFiles: Operazione non consentita") == -1) {
+                    perror("readNFiles: Operazione non consentita");
+                }
+            }
+            break;
+        }
+        case APPEND_FILE: { // operazione di append
+            // leggo dal socket il path del file da modificare ed i dati da ricevere
+            path = malloc(request->path_len * sizeof(char));
+            void *buf = malloc(request->buf_len);
+            if(!path || !buf) {
+                if(logging(ds, errno, "appendToFile: Fallita allocazione path o buffer dati") == -1) {
+                    perror("appendToFile: Fallita allocazione path o buffer dati");
+                }
+                // cleanup
+                clean(path, buf);
+                break;;
+            }
+            if(readn(client_sock, path, request->path_len) == -1) {
+                if(logging(ds, errno, "appendToFile: Fallita lettura path") == -1) {
+                    perror("appendToFile: Fallita lettura path");
+                }
+                // cleanup
                 clean(path, buf);
                 break;
             }
-            case 'W':
-            case 'L': // lock file
-            case 'U': // unlock file
-            case 'C': // remove file
-            default:
+            if(readn(client_sock, buf, request->buf_len) == -1) {
+                if(logging(ds, errno, "appendToFile: Fallita lettura dati") == -1) {
+                    perror("appendToFile: Fallita lettura dati");
+                }
+                // cleanup
+                clean(path, buf);
                 break;
+            }
+            // scrivo i dati contenuti in buf alla fine del file path (se presente)
+            if(api_appendToFile(ds, path, client_sock, request->buf_len, buf) == -1) {
+                // Operazione non consentita: logging
+                if(logging(ds, errno, "appendToFile: Operazione non consentita") == -1) {
+                    perror("appendToFile: Operazione non consentita");
+                }
+            }
+            else {
+                // Append OK
+                if(logging(ds, errno, "appendFile: Operazione riuscita") == -1) {
+                    perror("appendFile: Operazione riuscita");
+                }
+            }
+            clean(path, buf);
+            break;
+        }
+        case 'W':
+        case 'L': // lock file
+        case 'U': // unlock file
+        case 'C': // remove file
+        default:
+            break;
         }
 
         // Quindi deposito il socket servito nella pipe di feedback
         if(write(ds->feedback[1], &client_sock, sizeof(client_sock)) == -1) {
-            if(log(ds, errno, "Fallito invio feedback al server") == -1) {
+            if(logging(ds, errno, "Fallito invio feedback al server") == -1) {
                 perror("Fallito invio feedback al server");
             }
         }

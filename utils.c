@@ -38,7 +38,7 @@ char *get_fullpath(const char *base, const char *name) {
     size_t path_sz = strlen(base) + strlen(name) + 2;
     char *full_path = calloc(path_sz, sizeof(char));
     if(!full_path) {
-	return NULL;
+        return NULL;
     }
     strncat(full_path, base, path_sz);
     strncat(full_path, "/", 2);
@@ -91,8 +91,8 @@ struct Queue *queue_init(void) {
 void free_Queue(struct Queue *q) {
     struct node_t *a = NULL;
     while((a = pop(q)) != NULL) {
-	free(a->data);
-	free(a);
+        free(a->data);
+        free(a);
     }
     free(q->head);
     free(q->tail);
@@ -144,31 +144,31 @@ struct node_t *pop(struct Queue *q) {
 }
 
 int readn(int fd, void *ptr, size_t n) {
-	size_t nleft;
-	int nread;
-	nleft = n;
-	while (nleft > 0) {
-		if((nread = read(fd, ptr, nleft)) < 0) {
-			if (nleft == n) return -1; /* error, return -1 */
-			else break; /* error, return amount read so far */
-		} else if (nread == 0) break; /* EOF */
-		nleft -= nread;
-		ptr += nread;
-	}
-	return(n - nleft); /* return >= 0 */
+    size_t nleft;
+    int nread;
+    nleft = n;
+    while (nleft > 0) {
+        if((nread = read(fd, ptr, nleft)) < 0) {
+            if (nleft == n) return -1; /* error, return -1 */
+            else break; /* error, return amount read so far */
+        } else if (nread == 0) break; /* EOF */
+        nleft -= nread;
+        ptr += nread;
+    }
+    return(n - nleft); /* return >= 0 */
 }
 
 int writen(int fd, void *ptr, size_t n) {
-	size_t nleft;
-	int nwritten;
-	nleft = n;
-	while (nleft > 0) {
-		if((nwritten = write(fd, ptr, nleft)) < 0) {
-			if (nleft == n) return -1; /* error, return -1 */
-			else break; /* error, return amount written so far */
-		} else if (nwritten == 0) break;
-		nleft -= nwritten;
-		ptr += nwritten;
-	}
-	return(n - nleft); /* return >= 0 */
+    size_t nleft;
+    int nwritten;
+    nleft = n;
+    while (nleft > 0) {
+        if((nwritten = write(fd, ptr, nleft)) < 0) {
+            if (nleft == n) return -1; /* error, return -1 */
+            else break; /* error, return amount written so far */
+        } else if (nwritten == 0) break;
+        nleft -= nwritten;
+        ptr += nwritten;
+    }
+    return(n - nleft); /* return >= 0 */
 }

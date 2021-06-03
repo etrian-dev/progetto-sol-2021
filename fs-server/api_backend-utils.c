@@ -154,123 +154,116 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
 
 // Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
 // newsz byte, in modo tale da avere una occupazione in memoria inferiore a ds->max_mem - newsz al termine
-// Se dirname non è NULL allora i file rimossi sono inviati in dirname, assegnando il path come nome del file
-// Ritorna 0 se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
-int cache_miss(struct fs_ds_t *ds, const char *dirname, size_t newsz) {
-    int res = 0; // conterrà il valore di ritorno
+// Ritorna il numero di file espulsi (>0) se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
+// Se la funzione ha successo inizializza e riempe con i file espulsi ed i loro path le due code passate come 
+// parametro alla funzione, altrimenti se l'algoritmo di rimpiazzamento fallisce
+// esse non sono allocate e comunque lasciate in uno stato inconsistente
+int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files) {
+    int success = 0; // conterrà il valore di ritorno
 
-    // È possibile che il file non possa rientrare nel quantitativo di memoria del server
-    // In tal caso l'algoritmo fallisce (e qualunque operazione collegata)
+    // È possibile che il file possa non entrare nel quantitativo di memoria 
+    // assegnato al server all'avvio. In tal caso l'algoritmo fallisce (e qualunque operazione collegata)
     if(newsz > ds->max_mem) {
         return -1;
     }
-
-    res = 0;
-    int errno_saved = 0;
-    if(dirname) {
-        int dir;
-        if((dir = chdir(dirname)) == -1) {
-            return -1;
-        }
+    
+    // creo le tre code
+    *paths = queue_init();
+    if(!(*paths)) {
+        // fallita alloc coda
+        return -1;
     }
-
-    // Almeno un file deve essere espulso (se è per il numero di file presenti allora newsz == 0
-    // perciò il ciclo viene eseguito una sola volta)
+    *files = queue_init();
+    if(!(*files)) {
+        // fallita alloc coda
+        free_Queue(*paths);
+        return -1;
+    }
+    
+    int errno_saved = 0;
+   
+    // Almeno un file deve essere espulso se chiamo l'algoritmo, perciò uso un do-while
     do {
         // Secondo la politica FIFO la vittima è la testa della coda cache_q
         if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
             // Fallita operazione di lock
+            free_Queue(*paths);
+            free_Queue(*files);
             return -1;
         }
 
-        // ottengo il path in victim->data
+        // ottengo il path del file da togliere in victim->data
         struct node_t *victim = pop(ds->cache_q); // non dovrebbe ritornare NULL (ragionevolmente)
 
         if(pthread_mutex_unlock(&(ds->mux_cacheq)) == -1) {
             // Fallita operazione di unlock
+            free_Queue(*paths);
+            free_Queue(*files);
             return -1;
         }
         if(!victim) {
             // pop ha ritornato NULL per qualche motivo
+            free_Queue(*paths);
+            free_Queue(*files);
             return -1;
         }
 
         // Rimuove il file con questo pathname dalla ht
+        // prima devo cercarlo per sapere la sua size (mutex interna a find_file)
+        struct fs_filedata_t *fptr = find_file(ds, victim->data);
+        size_t sz = fptr->size;
+        
         if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
             free(victim->data);
             free(victim);
             return -1;
         }
 
-        // prima devo cercarlo per sapere la sua size
-        struct fs_filedata_t *file = find_file(ds, victim->data);
-        size_t sz = file->size;
-
-        res = 0;
-        // Notare che la memoria occupata dal file non viene liberata e mantengo un puntatore al file
-        // Libero invece la memoria occupata dal path, dato che lo conosco già
-        if((res = icl_hash_delete(ds->fs_table, victim->data, free, NULL)) != -1) {
+        success = 0;
+        // Notare che la memoria occupata dal file non viene liberata subito e mantengo un puntatore al file
+        // Libero invece la memoria occupata dalla chiave, dato che non è più utile
+        if((success = icl_hash_delete(ds->fs_table, victim->data, free, NULL)) != -1) {
             // rimozione OK, decremento numero file nel server e quantità di memoria occupata
             ds->curr_files--;
             ds->curr_mem -= sz;
         }
 
         if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
-            res = -1;
+            success = -1;
         }
-        if(res == -1) {
+        if(success == -1) {
+            free_Queue(*paths);
+            free_Queue(*files);
+            free_file(fptr);
+            free(victim->data);
+            free(victim);
             return -1;
         }
-
-        free_file(file);
+        
+        // Aggiorno le code con il nuovo file espulso
+        if(enqueue(*paths, victim->data, strlen((char*)victim->data) + 1, -1) == -1) {
+            // fallito inserimento del path del file in coda
+            success = -1;
+            break;
+        }
+        if(enqueue(*files, fptr, sizeof(struct fs_filedata_t), -1) == -1) {
+            // fallito inserimento del file in coda
+            success = -1;
+            break;
+        }
+        
+        // posso liberare il nodo contenente il path
         free(victim->data);
         free(victim);
-
-
-        // concateno il path della directory e del file
-        size_t len = strlen((char*)victim->data) + strlen(dirname) + 1;
-        char *complete_path = calloc(1, len * sizeof(char));
-        int newfd;
-        if(!complete_path) {
-            // errore di allocazione
-            errno_saved = errno;
-            res = -1;
-        }
-        else {
-            strncat(complete_path, dirname, len);
-            strncat(complete_path, (char*)victim->data, len);
-            if((newfd = creat(complete_path, PERMS_ALL_READ)) == -1) {
-                // impossibile creare il nuovo file
-                errno_saved = errno;
-                res = -1;
-            }
-            else {
-                // Se necessario scrivo il file nella directory dirname
-                res = 0;
-                size_t tot = file->size;
-
-                while(tot > 0 && res != -1) {
-                    int n = writen(newfd, file->data, tot);
-                    if(n == -1) {
-                        // impossibile scrivere il file
-                        errno_saved = errno;
-                        res = -1;
-                    }
-                    else {
-                        tot -= n;
-                    }
-                }
-            }
-        }
-
-
+        
+        success++; // ho espulso con successo un altro file, quindi incremento il contatore
     }
-    while(ds->curr_mem >= ds->max_mem - newsz);
-
+    while(ds->curr_mem + newsz >= ds->max_mem);
+    
     // aggiorno il numero di chiamate (che hanno avuto successo) dell'algorimto di rimpiazzamento
-    if(res == 0) ds->cache_triggered++;
+    if(success > 0) ds->cache_triggered++;
 
     errno = errno_saved;
 
-    return res;
+    return success;
 }

@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
     // Creo il socket sul quale il server ascolta connessioni (e lo assegno)
     int listen_connections;
     if((listen_connections = sock_init(run_params.sock_path, strlen(run_params.sock_path))) == -1) {
-        if(log(server_ds, errno, "Impossibile creare socket per ascolto connessioni") == -1) {
+        if(logging(server_ds, errno, "Impossibile creare socket per ascolto connessioni") == -1) {
             perror("Impossibile creare socket per ascolto connessioni");
         }
         return 1;
@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
     // attributi per il thread di terminazione
     pthread_attr_t attrs;
     if(pthread_attr_init(&attrs) != 0 && pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED != 0)) {
-        if(log(server_ds, errno, "Impossibile settare thread detached") == -1) {
+        if(logging(server_ds, errno, "Impossibile settare thread detached") == -1) {
             perror("Impossibile settare thread detached");
         }
         return 1;
@@ -109,10 +109,10 @@ int main(int argc, char **argv) {
     //-------------------------------------------------------------------------------
     // Da qui in poi multithreaded
 
-	// creo il thread che gestisce la terminazione
+    // creo il thread che gestisce la terminazione
     pthread_t term_tid;
     if(pthread_create(&term_tid, &attrs, term_thread, server_ds) == -1) {
-        if(log(server_ds, errno, "Impossibile creare il thread di terminazione") == -1) {
+        if(logging(server_ds, errno, "Impossibile creare il thread di terminazione") == -1) {
             perror("Impossibile creare il thread di terminazione");
         }
         return 2;
@@ -121,14 +121,14 @@ int main(int argc, char **argv) {
     // adesso disabilito tutti i segnali per il thread manager e per quelli da esso creati (worker)
     sigset_t mask_sigs;
     if(sigfillset(&mask_sigs) == -1) {
-        if(log(server_ds, errno, "Impossibile mascherare segnali (altri thread)") == -1) {
+        if(logging(server_ds, errno, "Impossibile mascherare segnali (altri thread)") == -1) {
             perror("Impossibile mascherare segnali (altri thread)");
         }
         return 1;
     }
     int ret;
     if((ret = pthread_sigmask(SIG_BLOCK, &mask_sigs, NULL)) != 0) {
-        if(log(server_ds, ret, "Impossibile bloccare i segnali") == -1) {
+        if(logging(server_ds, ret, "Impossibile bloccare i segnali") == -1) {
             perror("Impossibile bloccare i segnali");
         }
         return 1;
@@ -137,8 +137,8 @@ int main(int argc, char **argv) {
     // creo la thread pool
     pthread_t *workers = malloc(run_params.thread_pool*sizeof(pthread_t));
     if(!workers) {
-        if(log(server_ds, errno, "Impossibile creare la threadpool") == -1) {
-                perror("Impossibile creare thread pool");
+        if(logging(server_ds, errno, "Impossibile creare la threadpool") == -1) {
+            perror("Impossibile creare thread pool");
         }
         return 2;
     }
@@ -146,7 +146,7 @@ int main(int argc, char **argv) {
     for(i = 0; i < run_params.thread_pool; i++) {
         // Il puntatore alle strutture dati e per la terminazione viene passato ad ogni worker thread come parametro
         if(pthread_create(&(workers[i]), &attrs, work, server_ds) != 0) {
-            if(log(server_ds, errno, "Impossibile creare la threadpool") == -1) {
+            if(logging(server_ds, errno, "Impossibile creare la threadpool") == -1) {
                 perror("Impossibile creare thread pool");
             }
             return 2;
@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
             }
             // un altro errore della select => provoca terminazione
             else {
-                if(log(server_ds, errno, "Select fallita") == -1) {
+                if(logging(server_ds, errno, "Select fallita") == -1) {
                     perror("Select fallita");
                     return 2;
                 }
@@ -242,7 +242,7 @@ int main(int argc, char **argv) {
                 if((client_sock = accept_connection(listen_connections)) == -1) {
                     // errore nella connessione al client, ma non fatale: il server va avanti normalmente
                     // tuttavia eseguo il logging dell'operazione
-                    if(log(server_ds, errno, "Impossibile accettare connessione") == -1) {
+                    if(logging(server_ds, errno, "Impossibile accettare connessione") == -1) {
                         perror("Impossibile accettare connessione");
                     }
                     continue;
@@ -260,11 +260,11 @@ int main(int argc, char **argv) {
                 // leggo il socket servito
                 int sock = -1;
                 if(read(server_ds->feedback[0], (void*)&sock, sizeof(int)) == -1) {
-                    if(log(server_ds, errno, "Impossibile leggere feedback") == -1) {
+                    if(logging(server_ds, errno, "Impossibile leggere feedback") == -1) {
                         perror("Impossibile leggere feedback");
                     }
                 }
-                log(server_ds, errno, "Servita richiesta del client");
+                logging(server_ds, errno, "Servita richiesta del client");
                 // Rimetto il client tra quelli che il server ascolta (cioè in fd_read)
                 FD_SET(sock, &fd_read);
                 // Se necessario devo aggiornare il massimo indice dei socket
@@ -299,12 +299,12 @@ fast_term:
     pthread_cond_broadcast(&(server_ds->new_job));
     // Aspetto la terminazione dei worker thread (terminano da soli, ma necessario per deallocare risorse)
     //for(i = 0; i < run_params.thread_pool; i++) {
-        //if(pthread_join(workers[i], NULL) != 0) {
-            //if(log(server_ds, errno, "Impossibile effettuare il join dei thread") == -1) {
-                //perror("Impossibile effettuare il join dei thread");
-            //}
-            //return 2;
-        //}
+    //if(pthread_join(workers[i], NULL) != 0) {
+    //if(logging(server_ds, errno, "Impossibile effettuare il join dei thread") == -1) {
+    //perror("Impossibile effettuare il join dei thread");
+    //}
+    //return 2;
+    //}
     //}
     free(workers);
 
@@ -313,8 +313,8 @@ fast_term:
 
     // rimuovo il socket dal filesystem
     if(unlink(run_params.sock_path) == -1) {
-        if(log(server_ds, errno, "Fallita rimozione socket") == -1) {
-                perror("Fallita rimozione socket");
+        if(logging(server_ds, errno, "Fallita rimozione socket") == -1) {
+            perror("Fallita rimozione socket");
         }
     }
     // libero le strutture dati del server
@@ -343,20 +343,20 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
     }
     if(readn(client_fd, req, sizeof(struct request_t)) != sizeof(struct request_t)) {
         if(errno != EINTR) {
-           return -1;
+            return -1;
         }
     }
 
     // Ora inserisco la richiesta nella coda (in ME)
     if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
-        if(log(server_ds, errno, "Fallito lock coda di richieste") == -1) {
+        if(logging(server_ds, errno, "Fallito lock coda di richieste") == -1) {
             perror("Fallito lock coda di richieste");
         }
         return -1;
     }
 
     if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), client_fd) == -1) {
-        if(log(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
+        if(logging(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
             perror("Fallito inserimento nella coda di richieste");
         }
         return -1;
@@ -365,7 +365,7 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
     pthread_cond_signal(&(server_ds->new_job));
 
     if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
-        if(log(server_ds, errno, "Fallito unlock coda di richieste") == -1) {
+        if(logging(server_ds, errno, "Fallito unlock coda di richieste") == -1) {
             perror("Fallito unlock coda di richieste");
         }
         return -1;
