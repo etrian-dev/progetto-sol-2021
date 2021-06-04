@@ -62,11 +62,11 @@ int add_client(const int conn_fd, const int pid) {
     }
     else {
         // devo determinare la prima posizione libera
-        for(size_t i = 0; i < clients_info->capacity; i++) {
-            if(clients_info->client_id[2 * i] == -1) {
-                first_free = i;
-            }
+        size_t i = 0;
+        while(i < clients_info->capacity && clients_info[2 * i] != -1) {
+            i++;
         }
+        first_free = i;
     }
 
     // inserisco prima il socket della connessione e dopo il PID del chiamante per distinguere i client

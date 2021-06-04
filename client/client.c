@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
                     if(openFile(path, O_CREATEFILE) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
+                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire (scrivere) il file \"%s\"\n", getpid(), path);
                               perror("openFile");
                              )
                         break;
@@ -319,11 +319,6 @@ int main(int argc, char **argv) {
         /// Se non è -1 allora significa che l'opzione è stata riconosciuta correttamente
         // Altrimenti o non è stata data questa opzione, oppure aveva un argomento non valido
         if(options->nread != -1) {
-            // visita ricorsivamente a partire da dir_write e restituisce una lista di file
-            struct Queue *lfiles = queue_init();
-            long int nfiles = visit_dir(lfiles, options->dir_save_reads, options->nread);
-            printf("Da leggere %ld files\n", nfiles);
-
             // invio nreads richieste di lettura: se è stata settata anche la directory per salvare
             // i file letti allora vengono creati lì con il loro pathname
             if(readNFiles(options->nread, options->dir_save_reads) == -1) {

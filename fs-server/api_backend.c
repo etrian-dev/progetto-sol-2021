@@ -218,7 +218,9 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     return success;
 }
 
-// Legge n file e li invia al client. Se n<=0 allora legge tutti i file presenti nel server
+// Legge n file nel server (quelli meno recenti per come è implementata) e li invia al client
+// Se n<=0 allora legge tutti i file presenti nel server
+// Se ha successo ritorna 0, -1 altrimenti
 int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
     int success = 0;
 
@@ -472,4 +474,11 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
     }
 
     return success;
+}
+
+// Se l'operazione precedente del client client_sock (completata con successo) era stata
+// openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
+int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+    // TODO: scrivere la funzione e aggiungere alle strutture dati del server l'ultima operazione compiuta con successo da ciascun socket dei client
 }

@@ -79,6 +79,12 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
                     return -1;
                 }
             }
+            // aggiungo il client
+            int client_pid = getpid();
+            if(add_client(conn_sock, client_pid) == -1) {
+                // fallito inserimento del client: impossibile aprire connnessione
+                return -1;
+            }
             // tutto ok: connessione tra client e server stabilita
             return 0;
         }
@@ -145,10 +151,11 @@ int openFile(const char *pathname, int flags) {
     }
     if(reply->status != REPLY_YES) {
         // errore: la richiesta non è stata soddisfatta
+        free(reply);
         return -1;
     }
-    free(reply); // il buffer in questo caso è sempre NULL
-
+    // ad openFile non viene restituito alcun buffer, per cui posso liberare memoria ed uscire
+    free(reply);
     // richiesta OK: file aperto
     return 0;
 }

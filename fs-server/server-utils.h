@@ -117,12 +117,29 @@ void *work(void *params);
 
 //-----------------------------------------------------------------------------------
 // Operazioni sui file
+
+// Apre il file con path pathname (se presente) per il socket passato come parametro con le flag richieste
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
+
+// Legge il file con path pathname (se presente nel server) e lo invia lungo il socket client_sock
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+
+
+// Legge n file nel server (quelli meno recenti per come è implementata) e li invia al client
+// Se n<=0 allora legge tutti i file presenti nel server
+// Se ha successo ritorna 0, -1 altrimenti
 int api_readN(struct fs_ds_t *ds, const int n, const int client_sock);
-int api_appendToFile(
-    struct fs_ds_t *ds, const char *pathname, const int client_sock,
-    const size_t size, char *buf);
+
+// Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
+int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, char *buf);
+
+// Se l'operazione precedente del client client_sock (completata con successo) era stata
+// openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
+int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
 
 // Varie funzioni di utilità implementate in api_backend-utils.c
 
