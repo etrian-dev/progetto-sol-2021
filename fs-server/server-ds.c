@@ -32,7 +32,7 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
         return -1;
     }
 
-    *server_ds = malloc(sizeof(struct fs_ds_t));
+    *server_ds = calloc(1, sizeof(struct fs_ds_t));
     if(!(*server_ds)) {
         return -1;
     }
@@ -71,14 +71,9 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
         return -1;
     }
 
-    // Setto i limiti di numero di file e memoria e le quantità iniziali a zero
+    // Setto i limiti di numero di file e memoria (il resto dei parametri sono azzerati di default)
     (*server_ds)->max_files = params->max_fcount;
-    (*server_ds)->curr_files = 0;
-    (*server_ds)->max_nfiles = 0;
     (*server_ds)->max_mem = MBYTE_TO_BYTE(params->max_memsz);
-    (*server_ds)->curr_mem = 0;
-    (*server_ds)->max_used_mem = 0;
-    (*server_ds)->cache_triggered = 0;
 
     // Tutte le strutture dati inizializzate con successo
     return 0;
@@ -96,7 +91,14 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
         if(server_ds->job_queue) {
             free_Queue(server_ds->job_queue);
         }
-        free_Queue(server_ds->cache_q);
+        if(server_ds->cache_q) {
+            free_Queue(server_ds->cache_q);
+        }
+
+        // libero l'array di client
+        if(server_ds->active_clients) {
+            free(server_ds->active_clients);
+        }
 
         // chiudo le pipe
         if( close(server_ds->feedback[0]) == -1
@@ -119,4 +121,87 @@ void free_file(void *file) {
         free(f->openedBy);
     }
     free(f);
+}
+
+// Aggiunge un client a quelli connessi
+// Ritorna 0 se ha successo, -1 altrimenti
+int add_connection(struct fs_ds_t *ds, const int csock) {
+    if(!(ds->active_clients)) {
+        ds->active_clients = malloc(sizeof(struct client_info));
+        if(!(ds->active_clients)) {
+            return -1;
+        }
+    }
+    else {
+        struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * ds->connected_clients + 1);
+        if(!newptr) {
+            return -1;
+        }
+        ds->active_clients = newptr;
+    }
+    ds->active_clients[ds->connected_clients].socket = csock;
+    ds->active_clients[ds->connected_clients].last_op = 0;
+    ds->active_clients[ds->connected_clients].last_op_flags = 0;
+    ds->active_clients[ds->connected_clients].last_op_path = NULL;
+
+    ds->connected_clients++;
+
+    return 0;
+}
+
+// Rimuove un client da quelli connessi
+// Ritorna 0 se ha successo, -1 altrimenti
+int rm_connection(struct fs_ds_t *ds, const int csock) {
+    if(!(ds->active_clients) || ds->connected_clients == 0) {
+        // non vi era nessun client connesso
+        return -1;
+    }
+
+    size_t i = 0;
+    while(i < ds->connected_clients && ds->active_clients[i].socket != csock) {
+        i++;
+    }
+    if(i == ds->connected_clients) {
+        // client non trovato
+        return -1;
+    }
+    // libero il client e sposto indietro di una posizione tutti gli altri
+    if(ds->active_clients[i].last_op_path) {
+        free(ds->active_clients[i].last_op_path);
+    }
+    for(; i < ds->connected_clients - 1; i++) {
+        ds->active_clients[i] = ds->active_clients[i+1];
+    }
+    struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * ds->connected_clients - 1);
+    if(!newptr) {
+        return -1;
+    }
+    ds->active_clients = newptr;
+    ds->connected_clients--;
+
+    return 0;
+}
+
+// Aggiorna lo stato del client connesso sul socket sock con l'ultima operazione conclusa con successo
+// Ritorna 0 se ha successo, -1 altrimenti
+int update_client_op(struct fs_ds_t *ds, const int sock, const char op, const int op_flags, const char *op_path) {
+    size_t i;
+    for(i = 0; i < ds->connected_clients; i++) {
+        if(ds->active_clients[i].socket == sock) {
+            ds->active_clients[i].last_op = op;
+            ds->active_clients[i].last_op_flags = op_flags;
+            if(op_path) {
+                ds->active_clients[i].last_op_path = strndup(op_path, strlen(op_path) + 1);
+                if(!ds->active_clients[i].last_op_path) {
+                    return -1;
+                }
+            }
+            else if(ds->active_clients[i].last_op_path) {
+                free(ds->active_clients[i].last_op_path);
+                ds->active_clients[i].last_op_path = NULL;
+            }
+            return 0;
+        }
+    }
+    return -1;
 }

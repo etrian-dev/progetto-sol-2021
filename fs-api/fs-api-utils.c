@@ -63,7 +63,7 @@ int add_client(const int conn_fd, const int pid) {
     else {
         // devo determinare la prima posizione libera
         size_t i = 0;
-        while(i < clients_info->capacity && clients_info[2 * i] != -1) {
+        while(i < clients_info->capacity && clients_info->client_id[2 * i] != -1) {
             i++;
         }
         first_free = i;
@@ -180,6 +180,11 @@ struct reply_t *newreply(const char stat, const int nbuf, size_t *lenghts, const
 
 // Funzione per leggere dal server dei file ed opzionalmente scriverli nella directory dir
 int write_swp(const int server, const char *dir, struct reply_t *rep, const char *paths) {
+    char *paths_cpy = strndup(paths, strlen(paths) + 1); // devo copiare paths perché strtok modifica la stringa
+    if(!paths_cpy) {
+        return -1;
+    }
+
     // determino la directory corrente (assumo limite superiore alla lughezza del path)
     char *orig = malloc(BUF_BASESZ * sizeof(char));
     if(!orig) {
@@ -208,7 +213,7 @@ int write_swp(const int server, const char *dir, struct reply_t *rep, const char
     // La risposta contiene il numero di file inviati dal server nel campo nbuffers
     int i = 0;
     char *state = NULL;
-    char *fname = strtok_r(paths, "\n", &state); // tokenizzo per ottenere gli nbuffers path in paths 
+    char *fname = strtok_r(paths_cpy, "\n", &state); // tokenizzo per ottenere gli nbuffers path in paths
     while(i < rep->nbuffers) {
         // Leggo l'i-esimo file inviato dal server
         void *data = malloc(rep->buflen[i]);

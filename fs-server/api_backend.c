@@ -59,6 +59,13 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                     if(logging(ds, 0, "openFile: successo") == -1) {
                         perror("openFile: successo");
                     }
+                    // aggiorno info client
+                    if(update_client_op(ds, client_sock, OPEN_FILE, flags, pathname) == -1) {
+                        // fallito aggiornamento stato client
+                        if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                            perror("Fallito aggiornamento stato client");
+                        }
+                    }
                 }
             }
         }
@@ -124,6 +131,13 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 if(logging(ds, 0, "openFile: successo") == -1) {
                     perror("openFile: successo");
                 }
+                // aggiorno info client
+                if(update_client_op(ds, client_sock, OPEN_FILE, flags, pathname) == -1) {
+                    // fallito aggiornamento stato client
+                    if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                        perror("Fallito aggiornamento stato client");
+                    }
+                }
             }
         }
     }
@@ -135,8 +149,52 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
         free(reply);
     }
-    
+
     return success; // 0 se successo, -1 altrimenti
+}
+
+// Chiude il file con path pathname (se presente) per il socket passato come parametro
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
+int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+	// conterrà la risposta del server
+    struct reply_t *reply = NULL;
+    int success = 0;
+
+    // Cerco il file nella tabella
+    struct fs_filedata_t *file = find_file(ds, pathname);
+    if(file == NULL) {
+    	// il file non è presente nel server
+    	reply = newreply(REPLY_NO, 0, NULL, NULL);
+    	success = -1;
+    }
+    else {
+   		// file presente: devo controllare se il client che richiede la sua chiusura abbia aperto il file
+   		size_t i = 0;
+   		while(i < file->nopened && file->openedBy[i] != client_sock) {
+   			i++;
+   		}
+   		if(i == file->nopened) {
+   			// non risulta che il file fosse aperto quando è stata inviata la richiesta di chiusura
+   			// quindi l'operazione di chiusura fallisce
+   			reply = newreply(REPLY_NO, 0, NULL, NULL);
+   			success = -1;
+   		}
+   		// altrimenti il file era aperto: lo chiudo per questo socket
+   		file->openedBy[i] = -1;
+   		file->nopened--;
+   		// rispondo positivamente alla api
+   		reply = newreply(REPLY_YES, 0, NULL, NULL);
+   	}
+   	
+   	if(reply) {
+   		if(writen(client_sock, reply, sizeof(*reply)) == -1) {
+   			// fallita scrittura sul socket
+   			perror("Fallita scrittura sul socket");
+   		}
+   		free(reply);
+   	}
+   	
+   	return success;
 }
 
 // Legge il file con path pathname (se presente) e lo invia al client client_sock
@@ -180,6 +238,13 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             }
             if(logging(ds, 0, "readFile: successo") == -1) {
                 perror("readFile: successo");
+            }
+            // aggiorno info client
+            if(update_client_op(ds, client_sock, READ_FILE, 0, pathname) == -1) {
+                // fallito aggiornamento stato client
+                if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                    perror("Fallito aggiornamento stato client");
+                }
             }
         }
         else {
@@ -243,11 +308,11 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
     size_t *sizes = malloc(num_sent * sizeof(size_t));
     // path dei suddetti file
     char **paths = malloc(num_sent * sizeof(char*));
-    
+
     char *all_paths = NULL; // conterrà tutti i path dei file concatenati
-    
+
     struct reply_t *rep = NULL;
-    
+
     if(!(files && sizes && paths)) {
         // una delle allocazioni fallita
         success = -1;
@@ -264,7 +329,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
             paths[i] = (char*)curr->data;
             curr = curr->next;
         }
-        
+
         // Alloco la risposta contenente il numero di file, la dimensione e la lunghezza dei path concatenati
         rep = newreply(REPLY_YES, num_sent, sizes, paths);
         if(!rep) {
@@ -276,7 +341,9 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
             // errore alloc
             success = -1;
             // devo cambiare la risposta
-            rep->status = REPLY_NO;
+            if(rep) {
+                rep->status = REPLY_NO;
+            }
         }
         else {
             // devo quindi concatenare i num_sent path dei file in all_paths e separarli con '\n'
@@ -292,28 +359,40 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
                 }
             }
         }
-        
-        // scrivo la risposta e poi di seguito i path dei file ed i file stessi
-        if(write(client_sock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
-            // errore di scrittura
-            success = -1;
-        }
+
+
         if(rep) {
-            if(write(client_sock, all_paths, rep->paths_sz) != rep->paths_sz) {
+            // scrivo la risposta e poi di seguito i path dei file ed i file stessi
+            if(write(client_sock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
                 // errore di scrittura
                 success = -1;
             }
-            // Infine invio sul socket tutti i file richiesti
-            for(i = 0; i < num_sent; i++) {
-                if(write(client_sock, files[i]->data, files[i]->size) == -1) {
-                    // errore di scrittura file
+            if(success == 0) {
+                if(write(client_sock, all_paths, rep->paths_sz) != rep->paths_sz) {
+                    // errore di scrittura
                     success = -1;
-                    break;
+                }
+                // Infine invio sul socket tutti i file richiesti
+                for(i = 0; i < num_sent; i++) {
+                    if(write(client_sock, files[i]->data, files[i]->size) == -1) {
+                        // errore di scrittura file
+                        success = -1;
+                        break;
+                    }
+                }
+            }
+            if(success == 0) {
+                // aggiorno info client
+                if(update_client_op(ds, client_sock, READ_N_FILES, 0, NULL) == -1) {
+                    // fallito aggiornamento stato client
+                    if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                        perror("Fallito aggiornamento stato client");
+                    }
                 }
             }
         }
     }
-    
+
     // libero memoria
     if(files) free(files);
     if(sizes) free(sizes);
@@ -321,7 +400,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
     if(all_paths) free(all_paths);
     if(rep->buflen) free(rep->buflen);
     if(rep) free(rep);
-    
+
     return success;
 }
 
@@ -341,9 +420,12 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
         // chiave non trovata => restituire errore alla API
         if((reply = newreply(REPLY_NO, 0, NULL, NULL)) == NULL) {
             // errore allocazione risposta
-            if(logging(ds, 0, "api_appendToFile: file non trovato") == -1) {
-                perror("api_appendToFile: file non trovato");
+            if(logging(ds, 0, "errore allocazione risposta") == -1) {
+                perror("errore allocazione risposta");
             }
+        }
+        if(logging(ds, 0, "api_appendToFile: file non trovato") == -1) {
+            perror("api_appendToFile: file non trovato");
         }
         success = -1;
     }
@@ -373,7 +455,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
             // espando l'area di memoria del file per contenere buf
             void *newptr = NULL;
             if(!(file->data)) {
-                newptr = malloc(size); // il file era vuoto
+                newptr = malloc(size); // il file era vuoto (dopo una write)
             }
             else {
                 newptr = realloc(file->data, file->size + size); // il file non era vuoto
@@ -382,7 +464,12 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                 // errore allocazione memoria
                 if((reply = newreply(REPLY_NO, 0, NULL, NULL)) == NULL) {
                     // errore allocazione risposta
-                    puts("errore alloc risposta"); // TODO: log
+                    if(logging(ds, 0, "errore allocazione risposta") == -1) {
+                        perror("errore allocazione risposta");
+                    }
+                }
+                if(logging(ds, 0, "api_appendToFile: errore allocazione memoria") == -1) {
+                    perror("api_appendToFile: errore allocazione memoria");
                 }
                 success = -1;
             }
@@ -428,7 +515,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                             // fallita allocazione
                             success = -1;
                         }
-                        
+
                         if(success == 0) {
                             size_t offt = 0;
                             for(i = 0; i < nevicted; i++) {
@@ -443,9 +530,16 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                             }
                             free(sizes);
                             free(paths);
-                            // scrivo i file 
+                            // scrivo i file
                             if(logging(ds, 0, "api_appendToFile: successo") == -1) {
                                 perror("api_appendToFile: successo");
+                            }
+                            // aggiorno info client
+                            if(update_client_op(ds, client_sock, APPEND_FILE, 0, pathname) == -1) {
+                                // fallito aggiornamento stato client
+                                if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                                    perror("Fallito aggiornamento stato client");
+                                }
                             }
                         }
                     }
@@ -480,5 +574,70 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
 // openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
-    // TODO: scrivere la funzione e aggiungere alle strutture dati del server l'ultima operazione compiuta con successo da ciascun socket dei client
+    int success = 0;
+    // conterrà la risposta del server
+    struct reply_t *reply = NULL;
+    // controllo se l'ultima operazione di questo client (completata con successo)
+    // sia stata una openFile(pathname, O_CREATEFILE)
+    size_t pos = 0;
+    while(  pos < ds->connected_clients
+            && !(ds->active_clients[pos].socket == client_sock
+                && ds->active_clients[pos].last_op == OPEN_FILE
+                && ds->active_clients[pos].last_op_flags == O_CREATEFILE
+                && strcmp(ds->active_clients[pos].last_op_path, pathname) == 0))
+    { pos++; }
+    if(pos == ds->connected_clients) {
+        // il client non rispetta almeno una delle condizioni sopra, quindi l'operazione è negata
+        reply = newreply(REPLY_NO, 0, NULL, NULL);
+        success = -1;
+    }
+
+    if(success == 0) {
+        // Cerco il file nella tabella
+        struct fs_filedata_t *file = find_file(ds, pathname);
+        if(file == NULL) {
+            // chiave non trovata => restituire errore alla API
+            if((reply = newreply(REPLY_NO, 0, NULL, NULL)) == NULL) {
+                // errore allocazione risposta
+                if(logging(ds, 0, "errore allocazione risposta") == -1) {
+                    perror("errore allocazione risposta");
+                }
+            }
+            if(logging(ds, 0, "api_writeFile: file non trovato") == -1) {
+                perror("api_writeFile: file non trovato");
+            }
+            success = -1;
+        }
+        // file trovato: ne cancello il contenuto e resetto a zero la dimensione
+        else {
+            if(file->data) {
+                free(file->data);
+            }
+            file->data = NULL;
+
+            ds->curr_mem -= file->size; // devo aggiornare anche la quantità di memoria occupata
+            file->size = 0;
+
+            // operazione terminata con successo
+            reply = newreply(REPLY_YES, 0, NULL, NULL);
+            if(logging(ds, 0, "api_writeFile: successo") == -1) {
+                perror("api_writeFile: successo");
+            }
+
+            // aggiorno info client
+            if(update_client_op(ds, client_sock, WRITE_FILE, 0, pathname) == -1) {
+                // fallito aggiornamento stato client
+                if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                    perror("Fallito aggiornamento stato client");
+                }
+            }
+        }
+    }
+
+    // scrivo la risposta sul socket del client
+    if(reply) {
+        writen(client_sock, reply, sizeof(*reply));
+    }
+
+    return success;
 }

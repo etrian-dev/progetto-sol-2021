@@ -248,11 +248,19 @@ int main(int argc, char **argv) {
                     continue;
                 }
                 // Invece, se è stata accettata, allora si può aggiungere
-                // il socket del client a quelli ascoltati da select
-                FD_SET(client_sock, &fd_read);
-                // Se necessario devo aggiornare il massimo indice dei socket
-                if(new_maxfd < client_sock) {
-                    new_maxfd = client_sock;
+
+                // Devo espandere l'array di client connessi
+                if(add_connection(server_ds, client_sock) == -1) {
+                    // impossibile aggiungere un client
+                    close(client_sock);
+                }
+                else {
+                    // il socket del client a quelli ascoltati da select
+                    FD_SET(client_sock, &fd_read);
+                    // Se necessario devo aggiornare il massimo indice dei socket
+                    if(new_maxfd < client_sock) {
+                        new_maxfd = client_sock;
+                    }
                 }
             }
             // Se ho ricevuto feeback da un worker
@@ -284,6 +292,7 @@ int main(int argc, char **argv) {
                     writen(fd, reply, sizeof(struct reply_t));
                     free(reply);
                 }
+
                 // Poi tolgo il fd da quelli ascoltati
                 FD_CLR(fd, &fd_read);
             }
@@ -392,6 +401,7 @@ void stats(struct fs_ds_t *ds) {
     printf("Massimo numero di file aperti: %lu\n", ds->max_nfiles);
     printf("Massima quantità di memoria occupata : %lu Mbyte (%lu byte)\n", ds->max_used_mem/1048576, ds->max_used_mem);
     printf("Chiamate algoritmo di rimpiazzamento FIFO: %lu\n", ds->cache_triggered);
+    printf("Client connessi al momento della terminazione: %lu\n", ds->connected_clients);
     printf("File presenti nel server alla terminazione: ");
     struct node_t *file = ds->cache_q->head;
     while(file) {

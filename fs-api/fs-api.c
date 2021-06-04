@@ -100,9 +100,30 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 int closeConnection(const char *sockname) {
     // prima controllo che il nome del socket sia quello giusto
     if(strncmp(clients_info->sockname, sockname, strlen(sockname)) == 0) {
-        // Devo sapere il PID del chiamante per cercarlo tra le connessioni aperte
-        int cpid = getpid();
-        if(rm_client(cpid) == -1) {
+        // Verifico che questo client sia connesso
+        int cPID = getpid();
+        int pos;
+        if((pos = isConnected(cPID)) == -1) {
+            // errore: client non connesso
+            return -1;
+        }
+        // pos ora contiene la posizione del client, per cui posso accedere a clients_info
+        int csock = clients_info->client_id[2 * pos];
+
+        // preparo la richiesta
+        struct request_t *request = newrequest(CLOSE_CONN, 0, 0, 0);
+        if(!request) {
+            // errore di allocazione
+            return -1;
+        }
+
+        // Scrivo la richiesta sul socket
+        if(writen(csock, request, sizeof(struct request_t)) == -1) {
+            return -1;
+        }
+
+        // Rimuovo traccia della connessione anche lato API
+        if(rm_client(cPID) == -1) {
             // errore: client non connesso o impossibile chiudere correttamente il socket
             return -1;
         }
@@ -305,7 +326,7 @@ int readNFiles(int N, const char *dirname) {
         free(rep);
         return -1;
     }
-    
+
     // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
     char *paths = malloc(rep->paths_sz);
     if(!paths) {
@@ -390,7 +411,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     }
 
     // Operazione consentita
-    
+
     // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
     char *paths = malloc(rep->paths_sz);
     if(!paths) {
@@ -406,7 +427,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
         free(rep);
         return -1;
     }
-    
+
     // Controllo se sono stati espulsi dei file
     int num_docs = -1;
     if(rep->nbuffers > 0) {
@@ -472,41 +493,9 @@ int writeFile(const char *pathname, const char *dirname) {
         free(rep);
         return -1;
     }
-    
-    // Operazione consentita
-    
-    // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
-    char *paths = malloc(rep->paths_sz);
-    if(!paths) {
-        // errore di allocazione
-        free(rep->buflen);
-        free(rep);
-        return -1;
-    }
-    if(readn(csock, paths, rep->paths_sz) != rep->paths_sz) {
-        // lettura path incompleta
-        free(paths);
-        free(rep->buflen);
-        free(rep);
-        return -1;
-    }
 
-    // Controllo se è stato espulso un file (al più uno perché creo un file e basta)
-    int num_docs;
-    if(rep->nbuffers > 0) {
-        // Vi sono file espulsi: li leggo e li inserisco in dirname
-        num_docs = write_swp(csock, dirname, rep, paths);
-        if(num_docs == -1) {
-            // Qualcosa ha fallito
-            // Libero memoria della risposta
-            free(rep->buflen);
-            free(rep);
-            return -1;
-        }
-    }
-    free(rep->buflen);
+    // Operazione consentita
     free(rep);
-    // Altrimenti nessun file è stato espulso
 
     return 0;
 }

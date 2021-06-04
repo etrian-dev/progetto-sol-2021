@@ -43,6 +43,12 @@ int parse_config(struct serv_params *params, const char *conf_fpath);
 // Inizializza il socket su cui il server accetterà le connessioni da parte dei client
 int sock_init(const char *addr, const size_t len);
 
+// Funzione eseguita dal worker
+void *work(void *params);
+
+// Funzione eseguita dal thread che gestisce la terminazione
+void *term_thread(void *params);
+
 //-----------------------------------------------------------------------------------
 // Strutture dati del server per la memorizzazione dei file e gestione delle richieste della API
 
@@ -56,6 +62,17 @@ struct fs_filedata_t {
 };
 // dichiaro anche la funzione per liberare la struttura
 void free_file(void *file);
+
+// Struttura dati che contiene informazioni riguardo ad un client connesso al server (attraverso il socket)
+struct client_info {
+    int socket;            // il socket su cui il client è connesso (>0)
+    char last_op;          // il tipo dell'ultima operazione eseguita con successo da questo client
+    // 0 di default
+    int last_op_flags;     // le flag dell'ultima operazione eseguita con successo
+    // 0 di default
+    char *last_op_path;    // path del file a cui l'ultima operazione completata con successo si riferiva
+    // NULL se non rilevante
+};
 
 // Dichiaro qui tutte le strutture dati condivise del server
 struct fs_ds_t {
@@ -90,6 +107,11 @@ struct fs_ds_t {
     pthread_mutex_t mux_cacheq;
     pthread_cond_t new_cacheq;
 
+    // array di socket connessi, comprendenti informazioni riguardo l'ultima operazione
+    // eseguita con successo
+    struct client_info *active_clients;
+    size_t connected_clients; // il numero di client connessi al momento (ovvero la lunghezza dell'array sopra)
+
     // numero di volte che l'algoritmo di rimpiazzamento dei file è stato chiamato
     size_t cache_triggered;
 
@@ -109,11 +131,15 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds);
 // Funzione che libera la memoria allocata per la struttura dati
 void free_serv_ds(struct fs_ds_t *server_ds);
 
-// Funzione eseguita dal thread che gestisce la terminazione
-void *term_thread(void *params);
-
-// Funzione eseguita dal worker
-void *work(void *params);
+// Aggiunge un client a quelli connessi
+// Ritorna 0 se ha successo, -1 altrimenti
+int add_connection(struct fs_ds_t *ds, const int csock);
+// Rimuove un client da quelli connessi
+// Ritorna 0 se ha successo, -1 altrimenti
+int rm_connection(struct fs_ds_t *ds, const int csock);
+// Aggiorna lo stato del client connesso sul socket sock con l'ultima operazione conclusa con successo
+// Ritorna 0 se ha successo, -1 altrimenti
+int update_client_op(struct fs_ds_t *ds, const int sock, const char op, const int op_flags, const char *op_path);
 
 //-----------------------------------------------------------------------------------
 // Operazioni sui file
@@ -122,10 +148,13 @@ void *work(void *params);
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
 
+// Chiude il file con path pathname (se presente) per il socket passato come parametro
+// Se l'operazione ha successo ritorna 0, -1 altrimenti
+int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+
 // Legge il file con path pathname (se presente nel server) e lo invia lungo il socket client_sock
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
-
 
 // Legge n file nel server (quelli meno recenti per come è implementata) e li invia al client
 // Se n<=0 allora legge tutti i file presenti nel server
@@ -141,6 +170,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
 
+//-----------------------------------------------------------------------------------
 // Varie funzioni di utilità implementate in api_backend-utils.c
 
 // Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
@@ -155,7 +185,7 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
 // Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
 // newsz byte, in modo tale da avere una occupazione in memoria inferiore a ds->max_mem - newsz al termine
 // Ritorna il numero di file espulsi (>0) se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
-// Se la funzione ha successo inizializza e riempe con i file espulsi ed i loro path le due code passate come 
+// Se la funzione ha successo inizializza e riempe con i file espulsi ed i loro path le due code passate come
 // parametro alla funzione, altrimenti se l'algoritmo di rimpiazzamento fallisce
 // esse non sono allocate e comunque lasciate in uno stato inconsistente
 int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files);

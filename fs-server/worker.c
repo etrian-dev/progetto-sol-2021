@@ -86,6 +86,15 @@ void *work(void *params) {
         // A seconda dell'operazione richiesta chiama la funzione che la implementa
         // e si occupa di fare tutto l'I/O ed i controlli internamente
         switch(request->type) {
+        case CLOSE_CONN: // operazione di chiusura della connessione da parte di un client
+            if(rm_connection(ds, client_sock) == -1) {
+                // Fallita rimozione client
+                if(logging(ds, errno, "Fallita rimozione client") == -1) {
+                    perror("Fallita rimozione client");
+                }
+            }
+            close(client_sock); // chiudo anche il socket su cui si era connesso (in realtà lo fa anche il client stesso)
+            break;
         case OPEN_FILE: { // operazione di apertura di un file
             // leggo dal socket il path del file da aprire
             path = malloc(request->path_len * sizeof(char));
@@ -117,6 +126,33 @@ void *work(void *params) {
             free(path);
             break;
         }
+        case CLOSE_FILE: { // operazione di chiusura del file
+       		// leggo dal socket il path del file da chiudere
+            path = malloc(request->path_len * sizeof(char));
+            if(!path) {
+                if(logging(ds, errno, "openFile: Fallita allocazione path") == -1) {
+                    perror("openFile: Fallita allocazione path");
+                }
+                break;
+            }
+            if(readn(client_sock, path, request->path_len) == -1) {
+                if(logging(ds, errno, "openFile: Fallita lettura path") == -1) {
+                    perror("openFile: Fallita lettura path");
+                }
+                break;
+            }
+            // chiamo api_closeFile con il path appena letto
+            if(api_closeFile(ds, path, client_sock) == -1) {
+           		// Operazione non consentita: effettuo il log
+                if(logging(ds, errno, "closeFile: Operazione non consentita") == -1) {
+                    perror("closeFile: Operazione non consentita");
+                }
+           	}
+           	if(logging(ds, errno, "closeFile: Operazione consentita") == -1) {
+            	perror("closeFile: Operazione consentita");
+            }
+            break;
+       	}
         case READ_FILE: { // operazione di lettura di un file
             // leggo dal socket il path del file da leggere
             path = malloc(request->path_len * sizeof(char));
@@ -202,7 +238,42 @@ void *work(void *params) {
             clean(path, buf);
             break;
         }
-        case 'W':
+        case WRITE_FILE: { // write file
+            // leggo dal socket il path del file da modificare
+            path = malloc(request->path_len * sizeof(char));
+            void *buf = malloc(request->buf_len);
+            if(!path || !buf) {
+                if(logging(ds, errno, "writeFile: Fallita allocazione path o buffer dati") == -1) {
+                    perror("writeFile: Fallita allocazione path o buffer dati");
+                }
+                // cleanup
+                clean(path, buf);
+                break;;
+            }
+            if(readn(client_sock, path, request->path_len) == -1) {
+                if(logging(ds, errno, "writeFile: Fallita lettura path") == -1) {
+                    perror("writeFile: Fallita lettura path");
+                }
+                // cleanup
+                clean(path, buf);
+                break;
+            }
+            // creo il file solo se era stato aperto con la flag O_CREATEFILE
+            if(api_writeFile(ds, path, client_sock) == -1) {
+                // Operazione non consentita: logging
+                if(logging(ds, errno, "writeFile: Operazione non consentita") == -1) {
+                    perror("writeFile: Operazione non consentita");
+                }
+            }
+            else {
+                // write OK
+                if(logging(ds, errno, "writeFile: Operazione riuscita") == -1) {
+                    perror("writeFile: Operazione riuscita");
+                }
+            }
+            clean(path, buf);
+            break;
+        }
         case 'L': // lock file
         case 'U': // unlock file
         case 'C': // remove file

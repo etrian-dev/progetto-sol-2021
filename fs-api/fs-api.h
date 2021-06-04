@@ -42,6 +42,7 @@ int isConnected(const int pid);
 void get_delay(const int msec, struct timespec *delay);
 
 // definizione delle operazioni implementate dalla API
+#define CLOSE_CONN '!' // usata in closeConnection per segnalare al server di terminare la connessione col client
 #define OPEN_FILE 'O'
 #define CLOSE_FILE 'Q'
 #define LOCK_FILE 'L'
@@ -70,14 +71,14 @@ struct request_t *newrequest(const char type, const int flags, const size_t path
 struct reply_t {
     char status;          // stato della risposta: 'Y' o 'N'
     int nbuffers;         // il numero di file (buffer) restituiti: un numero >= 0
-    size_t *buflen;       // lunghezza di ciascun buffer restituito dal server
+    size_t bufs_sz;       // numero di byte occupati dalle dimensioni dei file (è sempre nbuffers * sizeof(size_t))
     size_t paths_sz;      // lunghezza della stringa di path da leggere (se rilevante)
     // Il formato della stringa di path è il seguente: ciascun path è scritto nell'ordine
     // dato dall'indice nell'array buflen del file ed i path sono separati da '\n'
 };
 // Funzione che alloca e setta i parametri di una risposta
 // Ritorna un puntatore ad essa se ha successo, NULL altrimenti
-struct reply_t *newreply(const char stat, const int nbuf, size_t *lenghts, const char **names);
+struct reply_t *newreply(const char stat, const int nbuf, const char **names);
 
 // Funzione per leggere dal server dei file ed opzionalmente scriverli nella directory dir
 int write_swp(const int server, const char *dir, struct reply_t *rep, const char *paths);
@@ -108,9 +109,11 @@ int readFile(const char *pathname, void **buf, size_t *size);
 int readNFiles(int N, const char *dirname);
 
 // invia al server la richiesta di concatenare al file il buffer buf
+// eventuali file espulsi dal server sono scritti in dirname se non nulla
 int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
 
 // invia al server la richiesta di scrittura del file pathname
+// eventuali file espulsi dal server sono scritti in dirname se non nulla
 int writeFile(const char *pathname, const char *dirname);
 
 // invia al server la richiesta di acquisire la mutua esclusione sul file pathname

@@ -155,18 +155,18 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
 // Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
 // newsz byte, in modo tale da avere una occupazione in memoria inferiore a ds->max_mem - newsz al termine
 // Ritorna il numero di file espulsi (>0) se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
-// Se la funzione ha successo inizializza e riempe con i file espulsi ed i loro path le due code passate come 
+// Se la funzione ha successo inizializza e riempe con i file espulsi ed i loro path le due code passate come
 // parametro alla funzione, altrimenti se l'algoritmo di rimpiazzamento fallisce
 // esse non sono allocate e comunque lasciate in uno stato inconsistente
 int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files) {
     int success = 0; // conterrà il valore di ritorno
 
-    // È possibile che il file possa non entrare nel quantitativo di memoria 
+    // È possibile che il file possa non entrare nel quantitativo di memoria
     // assegnato al server all'avvio. In tal caso l'algoritmo fallisce (e qualunque operazione collegata)
     if(newsz > ds->max_mem) {
         return -1;
     }
-    
+
     // creo le tre code
     *paths = queue_init();
     if(!(*paths)) {
@@ -179,9 +179,9 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         free_Queue(*paths);
         return -1;
     }
-    
+
     int errno_saved = 0;
-   
+
     // Almeno un file deve essere espulso se chiamo l'algoritmo, perciò uso un do-while
     do {
         // Secondo la politica FIFO la vittima è la testa della coda cache_q
@@ -212,7 +212,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         // prima devo cercarlo per sapere la sua size (mutex interna a find_file)
         struct fs_filedata_t *fptr = find_file(ds, victim->data);
         size_t sz = fptr->size;
-        
+
         if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
             free(victim->data);
             free(victim);
@@ -239,7 +239,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
             free(victim);
             return -1;
         }
-        
+
         // Aggiorno le code con il nuovo file espulso
         if(enqueue(*paths, victim->data, strlen((char*)victim->data) + 1, -1) == -1) {
             // fallito inserimento del path del file in coda
@@ -251,17 +251,20 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
             success = -1;
             break;
         }
-        
+
         // posso liberare il nodo contenente il path
         free(victim->data);
         free(victim);
-        
+
         success++; // ho espulso con successo un altro file, quindi incremento il contatore
     }
     while(ds->curr_mem + newsz >= ds->max_mem);
-    
+
     // aggiorno il numero di chiamate (che hanno avuto successo) dell'algorimto di rimpiazzamento
     if(success > 0) ds->cache_triggered++;
+    if(logging(ds, 0, "Algoritmo di rimpiazzamento chiamato") == -1) {
+        perror("Algoritmo di rimpiazzamento chiamato");
+    }
 
     errno = errno_saved;
 
