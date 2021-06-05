@@ -145,9 +145,9 @@ struct request_t *newrequest(const char type, const int flags, const size_t path
     return req;
 }
 
-struct reply_t *newreply(const char stat, const int nbuf, size_t *lenghts, const char **names) {
+struct reply_t *newreply(const char stat, const int nbuf, const char **names) {
     if(nbuf < 0) {
-        // deve essere un numero di buffer >= 0
+        // il numero di buffer non può essere < 0
         return NULL;
     }
 
@@ -155,31 +155,23 @@ struct reply_t *newreply(const char stat, const int nbuf, size_t *lenghts, const
     if(!rep) {
         return NULL;
     }
-    rep->buflen = malloc(nbuf * sizeof(size_t));
-    if(!(rep->buflen)) {
-        free(rep);
-        return NULL;
-    }
     rep->status = stat;
     rep->nbuffers = nbuf;
     rep->paths_sz = 0;
-
-    int i;
-    for(i = 0; i < nbuf; i++) {
-        rep->buflen[i] = lenghts[i];
-        if(names[i]) {
-            // le stringhe dei path sono separate da '\n', per cui devo contarlo
-            rep->paths_sz += strlen(names[i]) + 1;
-        }
-    }
-    // devo riservare un byte anche per il terminatore
-    rep->paths_sz += 1;
+	// calcolo la lunghezza della stringa di path
+	if(names && nbuf > 0) {
+		int i;
+		for(i = 0; i < nbuf; i++) {
+			// conto anche il carattere di terminazione della stringa '\n'
+			rep->paths_sz += strlen(names[i]) + 1;
+		}
+	}
 
     return rep;
 }
 
 // Funzione per leggere dal server dei file ed opzionalmente scriverli nella directory dir
-int write_swp(const int server, const char *dir, struct reply_t *rep, const char *paths) {
+int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes, const char *paths) {
     char *paths_cpy = strndup(paths, strlen(paths) + 1); // devo copiare paths perché strtok modifica la stringa
     if(!paths_cpy) {
         return -1;
@@ -213,16 +205,17 @@ int write_swp(const int server, const char *dir, struct reply_t *rep, const char
     // La risposta contiene il numero di file inviati dal server nel campo nbuffers
     int i = 0;
     char *state = NULL;
-    char *fname = strtok_r(paths_cpy, "\n", &state); // tokenizzo per ottenere gli nbuffers path in paths
-    while(i < rep->nbuffers) {
+    // tokenizzo per ottenere tutti i pathname contenuti in paths
+    char *fname = strtok_r(paths_cpy, "\n", &state); 
+    while(i < nbufs) {
         // Leggo l'i-esimo file inviato dal server
-        void *data = malloc(rep->buflen[i]);
+        void *data = malloc(sizes[i]);
         if(!data) {
             // fallita allocazione buffer
             break;
         }
 
-        if(readn(server, data, rep->buflen[i]) == -1) {
+        if(readn(server, data, sizes[i]) != sizes[i]) {
             free(data);
             break;
         }
@@ -235,7 +228,7 @@ int write_swp(const int server, const char *dir, struct reply_t *rep, const char
                 // fallita creazione file
                 break;
             }
-            if(writen(file_fd, data, rep->buflen[i]) == -1) {
+            if(writen(file_fd, data, sizes[i]) == -1) {
                 // fallita scrittura file
                 close(file_fd);
                 break;

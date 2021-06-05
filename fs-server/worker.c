@@ -82,6 +82,9 @@ void *work(void *params) {
 
         client_sock = elem->socket; // il socket del client da servire
         request = (struct request_t *)elem->data; // la richiesta inviata dal client
+        
+        char msg[BUF_BASESZ];
+        memset(msg, 0, BUF_BASESZ * sizeof(char));
 
         // A seconda dell'operazione richiesta chiama la funzione che la implementa
         // e si occupa di fare tutto l'I/O ed i controlli internamente
@@ -89,8 +92,9 @@ void *work(void *params) {
         case CLOSE_CONN: // operazione di chiusura della connessione da parte di un client
             if(rm_connection(ds, client_sock) == -1) {
                 // Fallita rimozione client
-                if(logging(ds, errno, "Fallita rimozione client") == -1) {
-                    perror("Fallita rimozione client");
+                snprintf(msg, BUF_BASESZ, "Fallita rimozione client con socket %d", client_sock);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             close(client_sock); // chiudo anche il socket su cui si era connesso (in realtà lo fa anche il client stesso)
@@ -113,14 +117,16 @@ void *work(void *params) {
             // chiamo api_openfile con il path appena letto e le flag che erano state settate nella richiesta
             if(api_openFile(ds, path, client_sock, request->flags) == -1) {
                 // Operazione non consentita: effettuo il log
-                if(logging(ds, errno, "openFile: Operazione non consentita") == -1) {
-                    perror("openFile: Operazione non consentita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] openFile(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             else {
                 // L'apertura del file ha avuto successo: effettuo il log
-                if(logging(ds, errno, "openFile: Operazione riuscita") == -1) {
-                    perror("openFile: Operazione riuscita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] openFile(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             free(path);
@@ -130,26 +136,30 @@ void *work(void *params) {
        		// leggo dal socket il path del file da chiudere
             path = malloc(request->path_len * sizeof(char));
             if(!path) {
-                if(logging(ds, errno, "openFile: Fallita allocazione path") == -1) {
-                    perror("openFile: Fallita allocazione path");
+                if(logging(ds, errno, "closeFile: Fallita allocazione path") == -1) {
+                    perror("closeFile: Fallita allocazione path");
                 }
                 break;
             }
             if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "openFile: Fallita lettura path") == -1) {
-                    perror("openFile: Fallita lettura path");
+                if(logging(ds, errno, "closeFile: Fallita lettura path") == -1) {
+                    perror("closeFile: Fallita lettura path");
                 }
                 break;
             }
             // chiamo api_closeFile con il path appena letto
             if(api_closeFile(ds, path, client_sock) == -1) {
            		// Operazione non consentita: effettuo il log
-                if(logging(ds, errno, "closeFile: Operazione non consentita") == -1) {
-                    perror("closeFile: Operazione non consentita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] closeFile(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
            	}
-           	if(logging(ds, errno, "closeFile: Operazione consentita") == -1) {
-            	perror("closeFile: Operazione consentita");
+           	else {
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] closeFile(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
             }
             break;
        	}
@@ -163,7 +173,7 @@ void *work(void *params) {
                 break;
             }
             if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "openFile: Fallita lettura path") == -1) {
+                if(logging(ds, errno, "readFile: Fallita lettura path") == -1) {
                     perror("readFile: Fallita lettura path");
                 }
                 break;
@@ -171,14 +181,16 @@ void *work(void *params) {
             // leggo dalla ht (se presente) il file path, inviandolo lungo il socket fornito
             if(api_readFile(ds, path, client_sock) == -1) {
                 // Operazione non consentita: logging
-                if(logging(ds, errno, "readFile: Operazione non consentita") == -1) {
-                    perror("readFile: Operazione non consentita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] readFile(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             // La lettura del file ha avuto successo: logging
             else {
-                if(logging(ds, errno, "readFile: Operazione riuscita") == -1) {
-                    perror("readFile: Operazione riuscita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] readFile(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             free(path);
@@ -186,10 +198,18 @@ void *work(void *params) {
         }
         case READ_N_FILES: { // lettura di n files qualsiasi dal server
             // Il campo flags della richiesta al server è usato per specificare il numero di file da leggere
-            if(api_readN(ds, request->flags, client_sock) == -1) {
+            int nfiles = -1;
+            if((nfiles = api_readN(ds, request->flags, client_sock)) == -1) {
                 // Operazione non consentita: logging
-                if(logging(ds, errno, "readNFiles: Operazione non consentita") == -1) {
-                    perror("readNFiles: Operazione non consentita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] readNFiles(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
+            }
+            else {
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] readNFiles(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             break;
@@ -204,7 +224,7 @@ void *work(void *params) {
                 }
                 // cleanup
                 clean(path, buf);
-                break;;
+                break;
             }
             if(readn(client_sock, path, request->path_len) == -1) {
                 if(logging(ds, errno, "appendToFile: Fallita lettura path") == -1) {
@@ -225,14 +245,16 @@ void *work(void *params) {
             // scrivo i dati contenuti in buf alla fine del file path (se presente)
             if(api_appendToFile(ds, path, client_sock, request->buf_len, buf) == -1) {
                 // Operazione non consentita: logging
-                if(logging(ds, errno, "appendToFile: Operazione non consentita") == -1) {
-                    perror("appendToFile: Operazione non consentita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] appendToFile(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             else {
                 // Append OK
-                if(logging(ds, errno, "appendFile: Operazione riuscita") == -1) {
-                    perror("appendFile: Operazione riuscita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] appendToFile(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             clean(path, buf);
@@ -261,14 +283,16 @@ void *work(void *params) {
             // creo il file solo se era stato aperto con la flag O_CREATEFILE
             if(api_writeFile(ds, path, client_sock) == -1) {
                 // Operazione non consentita: logging
-                if(logging(ds, errno, "writeFile: Operazione non consentita") == -1) {
-                    perror("writeFile: Operazione non consentita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] writeFile(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             else {
                 // write OK
-                if(logging(ds, errno, "writeFile: Operazione riuscita") == -1) {
-                    perror("writeFile: Operazione riuscita");
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] writeFile(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
                 }
             }
             clean(path, buf);

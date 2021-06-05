@@ -71,17 +71,16 @@ struct request_t *newrequest(const char type, const int flags, const size_t path
 struct reply_t {
     char status;          // stato della risposta: 'Y' o 'N'
     int nbuffers;         // il numero di file (buffer) restituiti: un numero >= 0
-    size_t bufs_sz;       // numero di byte occupati dalle dimensioni dei file (è sempre nbuffers * sizeof(size_t))
     size_t paths_sz;      // lunghezza della stringa di path da leggere (se rilevante)
-    // Il formato della stringa di path è il seguente: ciascun path è scritto nell'ordine
-    // dato dall'indice nell'array buflen del file ed i path sono separati da '\n'
+    // Il formato della stringa di path è il seguente: ciascun path è concatenato
+    // e separato dal path successivo dal carattere '\n'. La stringa termina con '\0'.
 };
 // Funzione che alloca e setta i parametri di una risposta
 // Ritorna un puntatore ad essa se ha successo, NULL altrimenti
 struct reply_t *newreply(const char stat, const int nbuf, const char **names);
 
 // Funzione per leggere dal server dei file ed opzionalmente scriverli nella directory dir
-int write_swp(const int server, const char *dir, struct reply_t *rep, const char *paths);
+int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes, const char *paths);
 
 //-----------------------------------------------------------------------------------
 // Definizione delle operazioni

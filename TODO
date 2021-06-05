@@ -21,3 +21,6 @@ memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy,
         Testing?
 
         Fixare newreply in tutti i posti dove compare
+        
+cambiare PERMS_ALL_READ in PERMISSIONS in tutti i posti dove compare
+ragione: più chiaro quali permessi setta

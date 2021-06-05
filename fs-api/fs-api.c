@@ -177,6 +177,7 @@ int openFile(const char *pathname, int flags) {
     }
     // ad openFile non viene restituito alcun buffer, per cui posso liberare memoria ed uscire
     free(reply);
+
     // richiesta OK: file aperto
     return 0;
 }
@@ -268,18 +269,21 @@ int readFile(const char *pathname, void **buf, size_t *size) {
         // operazione negata
         return -1;
     }
-    // altrimenti lettura consentita: la dimensione del file è inserita nel primo elemento dell'array
-    *buf = malloc(reply->buflen[0]);
+    // altrimenti lettura consentita
+    // NOTA: la dimensione del file è inserita direttamente in paths_sz per evitare una ulteriore read
+    *buf = malloc(reply->paths_sz);
     if(!(*buf)) {
         return -1;
     }
-    if(readn(csock, *buf, reply->buflen[0]) == -1) {
-        // errore nella risposta
+    // leggo il file mandato dal server nel buffer appena allocato
+    if(readn(csock, *buf, reply->paths_sz) != reply->paths_sz) {
+        // errore nella lettura (errno settato)
+        free(buf);
         return -1;
     }
-    *size =reply->buflen[0];
+    // setto la size
+    *size =reply->paths_sz;
 
-    free(reply->buflen);
     free(reply);
 
     // File letto con successo: buf contiene i dati e size la dimesione di buf
@@ -326,38 +330,49 @@ int readNFiles(int N, const char *dirname) {
         free(rep);
         return -1;
     }
-
+    // leggo la dimensione dei file restituiti in un array
+    size_t *sizes = malloc(rep->nbuffers * sizeof(size_t));
+    if(!sizes) {
+        // fallita allocazione
+        free(rep);
+        return -1;
+    }
+    if(readn(csock, sizes, rep->nbuffers * sizeof(size_t)) != rep->nbuffers * sizeof(size_t)) {
+        // fallita lettura dimensioni file
+        free(rep);
+        return -1;
+    }
     // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
     char *paths = malloc(rep->paths_sz);
     if(!paths) {
         // errore di allocazione
-        free(rep->buflen);
         free(rep);
         return -1;
     }
     if(readn(csock, paths, rep->paths_sz) != rep->paths_sz) {
         // lettura path incompleta
         free(paths);
-        free(rep->buflen);
+        free(sizes);
         free(rep);
         return -1;
     }
 
     // Se dirname != NULL scrive i file che riceve dal socket in tale directory
-    int num_docs = write_swp(csock, dirname, rep, paths);
+    // altrimenti tali file sono liberati
+    int num_docs = write_swp(csock, dirname, rep->nbuffers, sizes, paths);
 
-    // Libero memoria della risposta
+    // Libero memoria
+    free(sizes);
     free(paths);
-    free(rep->buflen);
     free(rep);
 
-    // l'operazione ritorna il numero di file letti con successo o -1 altrimenti
+    // l'operazione ritorna il numero di file letti con successo, -1 altrimenti
     return num_docs;
 }
 
 // Scrive in append al file pathname il contenuto di buf
 int appendToFile(const char* pathname, void* buf, size_t size, const char* dirname) {
-    // controllo che buf sia non nullo e size > 0
+    // controllo che l'indirizzo di buf sia non nullo e size > 0
     if(!buf || size <= 0) {
         return -1;
     }
@@ -412,38 +427,52 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 
     // Operazione consentita
 
-    // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
-    char *paths = malloc(rep->paths_sz);
-    if(!paths) {
-        // errore di allocazione
-        free(rep->buflen);
-        free(rep);
-        return -1;
-    }
-    if(readn(csock, paths, rep->paths_sz) != rep->paths_sz) {
-        // lettura path incompleta
-        free(paths);
-        free(rep->buflen);
-        free(rep);
-        return -1;
-    }
-
-    // Controllo se sono stati espulsi dei file
-    int num_docs = -1;
+    // Se sono stati espulsi dei file allora li leggo
     if(rep->nbuffers > 0) {
-        // Vi sono file espulsi: li leggo e li inserisco in dirname
-        num_docs = write_swp(csock, dirname, rep, paths);
-        if(num_docs == -1) {
-            // Qualcosa ha fallito
-            // Libero memoria della risposta
-            free(rep->buflen);
+        // leggo le dimensioni dei file ricevuti
+        size_t *sizes = malloc(rep->nbuffers * sizeof(size_t));
+        if(!sizes) {
+            // fallita allocazione
             free(rep);
             return -1;
         }
-    }
-    free(rep->buflen);
+        if(readn(csock, sizes, rep->nbuffers * sizeof(size_t)) != rep->nbuffers * sizeof(size_t)) {
+            // fallita lettura
+            free(sizes);
+            free(rep);
+            return -1;
+        }
+        // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
+        char *paths = malloc(rep->paths_sz);
+        if(!paths) {
+            // errore di allocazione
+            free(sizes);
+            free(rep);
+            return -1;
+        }
+        if(readn(csock, paths, rep->paths_sz) != rep->paths_sz) {
+            // lettura path incompleta
+            free(sizes);
+            free(paths);
+            free(rep);
+            return -1;
+        }
+        
+        int num_docs = -1; // write_swp restituisce il numero di file ricevuti e scritti in dirname
+        num_docs = write_swp(csock, dirname, rep->nbuffers, sizes, paths);
+        if(num_docs == -1) {
+            // Qualcosa ha fallito
+            free(sizes);
+            free(paths);
+            free(rep);
+            return -1;
+        }
+        free(sizes);
+        free(paths);
+    } // Altrimenti nessun file è stato espulso
+    
+    // libero memoria
     free(rep);
-    // Altrimenti nessun file è stato espulso
 
     return 0;
 }
@@ -494,8 +523,8 @@ int writeFile(const char *pathname, const char *dirname) {
         return -1;
     }
 
-    // Operazione consentita
     free(rep);
 
+    // Operazione consentita
     return 0;
 }

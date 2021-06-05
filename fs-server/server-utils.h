@@ -158,7 +158,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
 
 // Legge n file nel server (quelli meno recenti per come è implementata) e li invia al client
 // Se n<=0 allora legge tutti i file presenti nel server
-// Se ha successo ritorna 0, -1 altrimenti
+// Se ha successo ritorna il numero di file letti, -1 altrimenti
 int api_readN(struct fs_ds_t *ds, const int n, const int client_sock);
 
 // Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
