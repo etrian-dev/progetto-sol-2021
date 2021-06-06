@@ -141,9 +141,9 @@ int main(int argc, char **argv) {
                              )
                         break;
                     }
-                    
+
                     printf("Scritto il file %s\n", path);
-                    
+
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
@@ -249,9 +249,9 @@ int main(int argc, char **argv) {
                              )
                         break;
                     }
-                    
-                    printf("Concatenato %s al file %s\n", (char*)buf, path);
-                    
+
+                    printf("Concatenato \"%s\" (%lu bytes) al file %s\n", (char*)buf, file_sz, path);
+
                     if(closeFile(dest) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,

@@ -316,12 +316,15 @@ if(server_ds->termination[0] > max_fd_idx) {
                         perror("Manager thread: Impossibile leggere feedback");
                     }
                 }
+
+                printf("Feedback ricevuto dal client %d\n", sock);
                 // Rimetto il client tra quelli che il server ascolta (cioè in fd_read)
                 FD_SET(sock, &fd_read);
                 // Se necessario devo aggiornare il massimo indice dei socket ascoltati
                 if(new_maxfd < sock) {
                     new_maxfd = sock;
                 }
+                break; // valuto di nuovo i socket pronti dopo aver ascoltato sock
             }
             // Se ho ricevuto una richiesta da un client devo inserirla nella coda di richieste
             else if(FD_ISSET(fd, &fd_read_cpy)) {
