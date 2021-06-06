@@ -8,8 +8,11 @@ Fix terminazione soft_term (SIGHUP) e fast_term (SIGINT, SIGQUIT)
 Garantire atomicità della appendToFile
 Logica di check per le operazioni precedenti
 Testare algoritmo rimpiazzamento cache
-api_readN:
-Completare scrittura di tutti i pathname sul socket
+
+Testare integrazione tra api_appendToFile e appendToFile (attesa infinita su una read)
+Testare correttezza readFile e api_readFile
+writeFile, openFile e closeFile dovrebbero essere (al netto delle lock) corrette logicamente
+
 api_backend.c:
 insertFile:
 memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy,

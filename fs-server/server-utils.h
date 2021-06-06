@@ -163,7 +163,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock);
 
 // Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, char *buf);
+int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf);
 
 // Se l'operazione precedente del client client_sock (completata con successo) era stata
 // openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)

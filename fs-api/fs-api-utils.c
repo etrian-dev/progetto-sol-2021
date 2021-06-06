@@ -219,6 +219,8 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
             free(data);
             break;
         }
+        
+        fprintf(stderr, "Ricevuto il file %s di %lu bytes\n", fname, sizes[i]);
 
         // Se era stata fornito il path ed aperta la directory per salvare i file
         // allora devo creare il file (opero su path relativi alla directory dirname)

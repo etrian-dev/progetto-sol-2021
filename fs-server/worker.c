@@ -89,7 +89,7 @@ void *work(void *params) {
         // A seconda dell'operazione richiesta chiama la funzione che la implementa
         // e si occupa di fare tutto l'I/O ed i controlli internamente
         switch(request->type) {
-        case CLOSE_CONN: // operazione di chiusura della connessione da parte di un client
+        case CLOSE_CONN: { // operazione di chiusura della connessione da parte di un client
             if(rm_connection(ds, client_sock) == -1) {
                 // Fallita rimozione client
                 snprintf(msg, BUF_BASESZ, "Fallita rimozione client con socket %d", client_sock);
@@ -99,6 +99,7 @@ void *work(void *params) {
             }
             close(client_sock); // chiudo anche il socket su cui si era connesso (in realtà lo fa anche il client stesso)
             break;
+        }
         case OPEN_FILE: { // operazione di apertura di un file
             // leggo dal socket il path del file da aprire
             path = malloc(request->path_len * sizeof(char));
@@ -112,6 +113,7 @@ void *work(void *params) {
                 if(logging(ds, errno, "openFile: Fallita lettura path") == -1) {
                     perror("openFile: Fallita lettura path");
                 }
+                free(path);
                 break;
             }
             // chiamo api_openfile con il path appena letto e le flag che erano state settate nella richiesta
@@ -145,6 +147,7 @@ void *work(void *params) {
                 if(logging(ds, errno, "closeFile: Fallita lettura path") == -1) {
                     perror("closeFile: Fallita lettura path");
                 }
+                free(path);
                 break;
             }
             // chiamo api_closeFile con il path appena letto
@@ -161,6 +164,7 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
+            free(path);
             break;
        	}
         case READ_FILE: { // operazione di lettura di un file
@@ -176,6 +180,7 @@ void *work(void *params) {
                 if(logging(ds, errno, "readFile: Fallita lettura path") == -1) {
                     perror("readFile: Fallita lettura path");
                 }
+                free(path);
                 break;
             }
             // leggo dalla ht (se presente) il file path, inviandolo lungo il socket fornito
@@ -201,7 +206,7 @@ void *work(void *params) {
             int nfiles = -1;
             if((nfiles = api_readN(ds, request->flags, client_sock)) == -1) {
                 // Operazione non consentita: logging
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] readNFiles(%s): Operazione non consentita", client_sock, path);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] readNFiles(%d): Operazione non consentita", client_sock, request->flags);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
@@ -252,11 +257,12 @@ void *work(void *params) {
             }
             else {
                 // Append OK
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] appendToFile(%s): Operazione completata con successo", client_sock, path);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] appendToFile(%s) (%lu bytes): Operazione completata con successo", client_sock, path, request->buf_len);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
+            // libero memoria
             clean(path, buf);
             break;
         }

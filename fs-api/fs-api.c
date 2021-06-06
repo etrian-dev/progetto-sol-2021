@@ -426,8 +426,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     }
 
     // Operazione consentita
-
-    // Se sono stati espulsi dei file allora li leggo
+    // Controllo se ho avuto delle espulsioni di file
     if(rep->nbuffers > 0) {
         // leggo le dimensioni dei file ricevuti
         size_t *sizes = malloc(rep->nbuffers * sizeof(size_t));
@@ -442,6 +441,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
             free(rep);
             return -1;
         }
+        
         // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
         char *paths = malloc(rep->paths_sz);
         if(!paths) {
@@ -456,6 +456,11 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
             free(paths);
             free(rep);
             return -1;
+        }
+        
+        fprintf(stderr, "Paths:\n%s\n", paths);
+        for(int k = 0; k < rep->nbuffers; k++) {
+            fprintf(stderr, "size[%d] = %lu\n", k, sizes[k]);
         }
         
         int num_docs = -1; // write_swp restituisce il numero di file ricevuti e scritti in dirname

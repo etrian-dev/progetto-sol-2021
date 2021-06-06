@@ -108,9 +108,8 @@ int main(int argc, char **argv) {
                         break;
                     }
 
-                    // Mostro i dati letti a video
-                    // TEMP
-                    write(1, buf, file_sz);
+                    // Mostro i dati letti
+                    printf("Letto il file %s:\n%s\n", path, (char*)buf);
 
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
@@ -142,6 +141,9 @@ int main(int argc, char **argv) {
                              )
                         break;
                     }
+                    
+                    printf("Scritto il file %s\n", path);
+                    
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
@@ -247,6 +249,9 @@ int main(int argc, char **argv) {
                              )
                         break;
                     }
+                    
+                    printf("Concatenato %s al file %s\n", (char*)buf, path);
+                    
                     if(closeFile(dest) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,

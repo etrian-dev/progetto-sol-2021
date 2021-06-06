@@ -19,6 +19,22 @@
 #include <errno.h>
 #include <assert.h>
 
+// Costruisce una stringa contenente i num pathname in paths (str deve essere già allocata)
+void build_pathstr(char **str, const char **paths, const int num) {
+    size_t offt = 0; // offset nella stringa di paths
+    int i;
+    for(i = 0; i < num; i++) {
+        size_t plen = strlen(paths[i]) + 1; // dimensione dell'i-esimo path
+        *str = strncat(*str, paths[i], plen);
+        // inserisco il separatore (non devo farlo per l'ultimo path: str termina con '\0')
+        if(i < num - 1) {
+            *str[offt + plen - 1] = '\n';
+            *str[offt + plen] = '\0';
+            offt += plen;
+        }
+    }
+}
+
 // Apre il file con path pathname (se presente) per il client con le flag passate come parametro
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags) {
@@ -409,16 +425,19 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
 
 // Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, char *buf) {
+int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf) {
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
     int success = 0;
-    int nevicted = 0; // il numero di file espulsi
+    
+    // variabili usate nella logica di rimpiazzamento
     struct Queue *evicted = NULL;
     struct Queue *evicted_paths = NULL;
-    char *all_paths = NULL;
     size_t *sizes = NULL;
     char **paths = NULL;
+    char *all_paths = NULL;
+    
+    int i, isOpen;
     // Cerco il file nella tabella
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
@@ -436,155 +455,174 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
     }
     // file trovato: guardo se era stato aperto da questo client
     else {
-        int i, isOpen;
-        i = isOpen = 0;
+        i = 0;
+        isOpen = 0; // flag per determinare se il file era aperto
         while(!isOpen && i < file->nopened) {
             if(file->openedBy[i] == client_sock) {
                 isOpen = 1; // aperto da questo client
             }
             i++;
         }
-        // Se è aperto da questo client allora posso modificarlo
-        if(isOpen) {
-            // Verifico se la scrittura provochi un capacity miss (per numero file o memoria)
-            if(ds->curr_files == ds->max_files || ds->curr_mem + size > ds->max_mem) {
-                // i file (eventualmente) espulsi sono messi all'interno delle code
-                if((nevicted = cache_miss(ds, ds->curr_mem + size, &evicted_paths, &evicted)) == -1) {
-                    // fallita l'espulsione dei file: l'operazione di apertura fallisce
-                    reply = newreply(REPLY_NO, 0, NULL);
-                    success = -1;
-                }
-                // Altrimenti l'espulsione ha avuto successo (e nevicted contiene il numero di file espulsi)
-            }
-
-            // espando la memoria del file per contenere buf
-            void *newptr = NULL;
-            if(!(file->data)) {
-                newptr = malloc(size); // il file era vuoto (dopo una write)
-            }
-            else {
-                newptr = realloc(file->data, file->size + size); // il file non era vuoto
-            }
-            if(!newptr) {
-                // errore allocazione memoria
-                if((reply = newreply(REPLY_NO, 0, NULL)) == NULL) {
-                    // errore allocazione risposta
-                    if(logging(ds, 0, "errore allocazione risposta") == -1) {
-                        perror("errore allocazione risposta");
-                    }
-                }
-                if(logging(ds, 0, "api_appendToFile: errore allocazione memoria") == -1) {
-                    perror("api_appendToFile: errore allocazione memoria");
-                }
+    }
+    
+    int nevicted = 0; // numero di file espulsi
+    // Se è aperto da questo client allora posso modificarlo
+    if(success == 0 && isOpen) {
+        // Se la scrittura provoca capacity miss (per quantità di memoria) allora chiamo l'algoritmo di rimpiazzamento
+        if(ds->curr_mem + size > ds->max_mem) {
+            // i file (eventualmente) espulsi sono messi all'interno delle code
+            if((nevicted = cache_miss(ds, ds->curr_mem + size, &evicted_paths, &evicted)) == -1) {
+                // fallita l'espulsione dei file: l'operazione di apertura fallisce
+                reply = newreply(REPLY_NO, 0, NULL);
                 success = -1;
             }
-            else { // Aggiorno il file con i nuovi dati
-                file->data = newptr;
-                // copio soltanto la porzione aggiuntiva di dati
-                memcpy(file->data + file->size, buf, size);
-                // aggiorno la size del file
-                file->size += size;
-                // posso liberare buf
-                free(buf);
+            // Altrimenti l'espulsione ha avuto successo (e nevicted contiene il numero di file espulsi)
+        }
+    }
+    // Operazione negata: il client non aveva aperto il file
+    else {
+        reply = newreply(REPLY_NO, 0, NULL);
+        if(logging(ds, 0, "api_appendToFile: il file non era aperto") == -1) {
+            perror("api_appendToFile: il file non era aperto");
+        }
+        success = -1;
+    }
+    
+    // Se il file era aperto allora lo modifico
+    if(success == 0 && isOpen) {
+        // espando l'area di memoria puntata dal campo dati del file per contenere buf
+        void *newptr = NULL;
+        if(!(file->data)) {
+            newptr = malloc(size); // il file era vuoto (dopo una write)
+        }
+        else {
+            newptr = realloc(file->data, file->size + size); // il file non era vuoto
+        }
+        
+        if(!newptr) {
+            // errore allocazione memoria
+            reply = newreply(REPLY_NO, 0, NULL);
+            if(logging(ds, 0, "api_appendToFile: errore nel concatenare i dati") == -1) {
+                perror("api_appendToFile: errore nel concatenare i dati");
+            }
+            success = -1;
+        }
+        // Aggiorno il file con i nuovi dati (se l'allocazione precedente ha avuto successo
+        else{
+            file->data = newptr; // aggiorno il puntatore con il nuovo
+            // copio buf in append
+            memcpy(file->data + file->size, buf, size);
+            // aggiorno la dimensione del file
+            file->size += size;
 
-                // devo aggiornare anche la quantità di memoria occupata
-                ds->curr_mem += size;
-                // aggiorno se necessario anche la massima quantità di memoria occupata
-                if(ds->curr_mem > ds->max_used_mem) {
-                    ds->max_used_mem = ds->curr_mem;
+            // devo aggiornare anche la quantità di memoria occupata nel server
+            ds->curr_mem += size;
+            // aggiorno se necessario anche la massima quantità di memoria occupata
+            if(ds->curr_mem > ds->max_used_mem) {
+                ds->max_used_mem = ds->curr_mem;
+            }
+
+            // Devo inviare eventuali files espulsi
+            if(nevicted > 0) {
+                struct node_t *str = evicted_paths->head; // coda dei path dei file espulsi
+                struct node_t *fs = evicted->head; // coda dei dati dei file espulsi
+                sizes = malloc(nevicted * sizeof(size_t));
+                paths = malloc(nevicted * sizeof(char *));
+                
+                if(!(sizes && paths)) {
+                    // fallita allocazione
+                    success = -1;
                 }
-
-                // l'operazione ha avuto successo: devo inviare eventuali files espulsi
-                if(nevicted > 0) {
-                    struct node_t *str = evicted_paths->head;
-                    struct node_t *fs = evicted->head;
-                    sizes = malloc(nevicted * sizeof(size_t));
-                    paths = malloc(nevicted * sizeof(char *));
-                    if(!(sizes && paths)) {
-                        // fallita allocazione
+                if(success == 0) {
+                    // scrivo le dimensioni ed i puntatori ai path
+                    while(str && fs) {
+                        sizes[i] = ((struct fs_filedata_t*)fs->data)->size;
+                        paths[i] = (char *)fs->data;
+                        str = str->next;
+                        fs = fs->next;
+                    }
+                    // utilizzando le dimensioni ed i path estratti costruisco la risposta
+                    if((reply = newreply(REPLY_YES, nevicted, paths)) == NULL) {
+                        // fallita allocazione risposta: fallisce anche l'invio dei file
                         success = -1;
                     }
+                    // devo quindi concatenare gli nevicted path dei file in all_paths e separarli con '\n'
                     if(success == 0) {
-                        // scrivo le dimensioni ed i puntatori ai path
-                        while(str && fs) {
-                            sizes[i] = ((struct fs_filedata_t*)fs->data)->size;
-                            paths[i] = (char *)fs->data;
-                            str = str->next;
-                            fs = fs->next;
-                        }
-                        // utilizzando le dimensioni ed i path estratti costruisco la risposta
-                        reply = newreply(REPLY_YES, nevicted, paths);
-                        // devo quindi concatenare gli nevicted path dei file in all_paths e separarli con '\n'
-                        char *all_paths = malloc(reply->paths_sz);
+                        all_paths = malloc(reply->paths_sz);
                         if(!all_paths) {
                             // fallita allocazione
                             success = -1;
                         }
+                    }
+                }
+                
+                // 
+                if(success == 0) {
+                    // assegno la stringa a all_paths
+                    build_pathstr(&all_paths, paths, nevicted);
+                    
 
-                        if(success == 0) {
-                            size_t offt = 0;
-                            for(i = 0; i < nevicted; i++) {
-                                size_t plen = strlen(paths[i]) + 1;
-                                all_paths = strncat(all_paths, paths[i], plen);
-                                // inserisco il separatore (non devo farlo per l'ultimo path: all_paths termina con '\0')
-                                if(i < nevicted - 1) {
-                                    all_paths[offt + plen - 1] = '\n';
-                                    all_paths[offt + plen] = '\0';
-                                    offt += plen;
-                                }
-                            }
-                            free(sizes);
-                            free(paths);
-
-                            // aggiorno info client
-                            if(update_client_op(ds, client_sock, APPEND_FILE, 0, pathname) == -1) {
-                                // fallito aggiornamento stato client
-                                if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
-                                    perror("Fallito aggiornamento stato client");
-                                }
-                            }
+                    // aggiorno info client
+                    if(update_client_op(ds, client_sock, APPEND_FILE, 0, pathname) == -1) {
+                        // fallito aggiornamento stato client
+                        if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                            perror("Fallito aggiornamento stato client");
                         }
                     }
                 }
             }
         }
-        else {
-            // Operazione negata: il client non aveva aperto il file
-            if((reply = newreply(REPLY_NO, 0, NULL)) == NULL) {
-                // errore allocazione risposta
-                puts("errore alloc risposta"); // TODO: log
-            }
-            if(logging(ds, 0, "api_appendToFile: il file non era aperto") == -1) {
-                perror("api_appendToFile: il file non era aperto");
-            }
-            success = -1;
-        }
     }
-
+    
     // scrivo la risposta sul socket del client
     if(reply) {
         if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
             // fallita scrittura
             success = -1;
         }
-    
-        if(success == 0 && reply->status == REPLY_YES && sizes) {
+        // scrivo le dimensioni dei file espulsi
+        if(success == 0 && reply->status == REPLY_YES && reply->nbuffers > 0 && sizes) {
             if(writen(client_sock, sizes, reply->nbuffers * sizeof(size_t)) != reply->nbuffers * sizeof(size_t)) {
                 // fallita scrittura
                 success = -1;
             }
         }
-        if(success == 0 && reply->status == REPLY_YES && all_paths) {
+        // scrivo i path dei file espulsi
+        if(success == 0 && reply->status == REPLY_YES && reply->nbuffers > 0 && all_paths) {
             if(writen(client_sock, all_paths, reply->paths_sz) != reply->paths_sz) {
                 // fallita scrittura
                 success = -1;
             }
         }
+        // scrivo i file espulsi
+        if(success == 0 && reply->status == REPLY_YES && reply->nbuffers > 0 && evicted) {
+            struct node_t *file = evicted->head;
+            i = 0;
+            while(file) {
+                if(writen(client_sock, file, sizes[i]) != sizes[i]) {
+                    // fallita scrittura
+                    success = -1;
+                    break;
+                }
+                file = file->next;
+                i++;
+            }
+        }
         free(reply);
     }
+    
+    // posso quindi liberare gli array di supporto e le code
+    if(evicted_paths) free_Queue(evicted_paths);
+    if(evicted) free_Queue(evicted);
     if(sizes) free(sizes);
+    if(paths) free(paths);
     if(all_paths) free(all_paths);
 
+    
+    if(success == -1) {
+        fprintf(stderr, "Some error");
+    }
+    
     return success;
 }
 
