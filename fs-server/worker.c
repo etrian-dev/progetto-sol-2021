@@ -82,7 +82,7 @@ void *work(void *params) {
 
         client_sock = elem->socket; // il socket del client da servire
         request = (struct request_t *)elem->data; // la richiesta inviata dal client
-        
+
         char msg[BUF_BASESZ];
         memset(msg, 0, BUF_BASESZ * sizeof(char));
 
@@ -90,6 +90,7 @@ void *work(void *params) {
         // e si occupa di fare tutto l'I/O ed i controlli internamente
         switch(request->type) {
         case CLOSE_CONN: { // operazione di chiusura della connessione da parte di un client
+            // tolgo questo socket dalla struttura dati del server
             if(rm_connection(ds, client_sock) == -1) {
                 // Fallita rimozione client
                 snprintf(msg, BUF_BASESZ, "Fallita rimozione client con socket %d", client_sock);
@@ -97,7 +98,12 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            close(client_sock); // chiudo anche il socket su cui si era connesso (in realtà lo fa anche il client stesso)
+            else {
+                // chiudo anche il socket su cui si era connesso (in realtà lo fa anche il client stesso)
+                close(client_sock);
+                // Inverto il segno se la richiesta è stata completata con successo
+                client_sock = -client_sock;
+            }
             break;
         }
         case OPEN_FILE: { // operazione di apertura di un file
@@ -312,6 +318,7 @@ void *work(void *params) {
         }
 
         // Quindi deposito il socket servito nella pipe di feedback
+
         if(write(ds->feedback[1], &client_sock, sizeof(client_sock)) == -1) {
             if(logging(ds, errno, "Fallito invio feedback al server") == -1) {
                 perror("Fallito invio feedback al server");

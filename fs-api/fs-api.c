@@ -99,7 +99,7 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 // Chiude la connessione a sockname relativa al client chiamante
 int closeConnection(const char *sockname) {
     // prima controllo che il nome del socket sia quello giusto
-    if(strncmp(clients_info->sockname, sockname, strlen(sockname)) == 0) {
+    if(sockname && strncmp(clients_info->sockname, sockname, strlen(sockname)) == 0) {
         // Verifico che questo client sia connesso
         int cPID = getpid();
         int pos;
@@ -118,13 +118,15 @@ int closeConnection(const char *sockname) {
         }
 
         // Scrivo la richiesta sul socket
-        if(writen(csock, request, sizeof(struct request_t)) == -1) {
+        if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
+            // errore di scrittura della richiesta
+            free(request);
             return -1;
         }
 
-        // Rimuovo traccia della connessione anche lato API
+        // Rimuovo traccia della connessione anche nella API
         if(rm_client(cPID) == -1) {
-            // errore: client non connesso o impossibile chiudere correttamente il socket
+            // errore: impossibile chiudere correttamente il socket
             return -1;
         }
         // Rimozione OK
@@ -441,7 +443,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
             free(rep);
             return -1;
         }
-        
+
         // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
         char *paths = malloc(rep->paths_sz);
         if(!paths) {
@@ -457,12 +459,12 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
             free(rep);
             return -1;
         }
-        
+
         fprintf(stderr, "Paths:\n%s\n", paths);
         for(int k = 0; k < rep->nbuffers; k++) {
             fprintf(stderr, "size[%d] = %lu\n", k, sizes[k]);
         }
-        
+
         int num_docs = -1; // write_swp restituisce il numero di file ricevuti e scritti in dirname
         num_docs = write_swp(csock, dirname, rep->nbuffers, sizes, paths);
         if(num_docs == -1) {
@@ -475,7 +477,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
         free(sizes);
         free(paths);
     } // Altrimenti nessun file è stato espulso
-    
+
     // libero memoria
     free(rep);
 

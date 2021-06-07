@@ -1,0 +1,22 @@
+tree
+1
+2
+3
+5
+6
+7
+13
+16
+18
+19
+20
+21
+29
+30
+33
+dim = 15
+height = 5
+No ABCB
+nodi cardine
+18
+nodi centrali

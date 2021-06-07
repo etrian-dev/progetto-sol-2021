@@ -9,9 +9,8 @@ Garantire atomicità della appendToFile
 Logica di check per le operazioni precedenti
 Testare algoritmo rimpiazzamento cache
 
-Testare integrazione tra api_appendToFile e appendToFile (attesa infinita su una read)
-Testare correttezza readFile e api_readFile
-writeFile, openFile e closeFile dovrebbero essere (al netto delle lock) corrette logicamente
+Testare opzione -w e -R del client e loro corretta implementazione nel server
+Fixare terminazione per socket chiuso dopo chiusura connessione client
 
 api_backend.c:
 insertFile:
@@ -27,3 +26,6 @@ memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy,
         
 cambiare PERMS_ALL_READ in PERMISSIONS in tutti i posti dove compare
 ragione: più chiaro quali permessi setta
+
+FIX client-utils.c:visit_dir:opendir (line 303) restituisce errno = 2 (ENOENT)
+Path relativo? guardare lezione 5

@@ -34,5 +34,13 @@ cleanall: clean
 	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o) $(wildcard *.conf)
 
 test1: all
+	chmod +x makeconf.sh
+	# Creo il file di configurazione del server
+	./makeconf.sh 1 100 128 10000 test1.sock test1.log test1.conf
+	# Lancio il server in background
+	valgrind --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
+	# Lancio i client che testano le operazioni del server (tutti con -p)
 	chmod +x test1.sh
-	./test1.sh
+	./test1.sh test1.sock
+
+

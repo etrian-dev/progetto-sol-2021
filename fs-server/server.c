@@ -317,12 +317,15 @@ if(server_ds->termination[0] > max_fd_idx) {
                     }
                 }
 
-                printf("Feedback ricevuto dal client %d\n", sock);
-                // Rimetto il client tra quelli che il server ascolta (cioè in fd_read)
-                FD_SET(sock, &fd_read);
-                // Se necessario devo aggiornare il massimo indice dei socket ascoltati
-                if(new_maxfd < sock) {
-                    new_maxfd = sock;
+                // Se il socket è un numero negativo diverso da -1 allora è un socket chiuso
+                // Perciò non devo reimmetterlo nel set, altrimenti rimane fuori
+                if(sock > 0) {
+                    // Rimetto il client tra quelli che il server ascolta (cioè in fd_read)
+                    FD_SET(sock, &fd_read);
+                    // Se necessario devo aggiornare il massimo indice dei socket ascoltati
+                    if(new_maxfd < sock) {
+                        new_maxfd = sock;
+                    }
                 }
                 break; // valuto di nuovo i socket pronti dopo aver ascoltato sock
             }
@@ -472,11 +475,12 @@ void stats(struct fs_ds_t *ds) {
     printf("Massima quantità di memoria occupata : %lu Mbyte (%lu byte)\n", ds->max_used_mem/1048576, ds->max_used_mem);
     printf("Chiamate algoritmo di rimpiazzamento FIFO: %lu\n", ds->cache_triggered);
     printf("Client connessi al momento della terminazione: %lu\n", ds->connected_clients);
-    printf("File presenti nel server alla terminazione: ");
+    printf("File presenti nel server alla terminazione (ordinati per tempo di creazione nel server crescente):\n");
     struct node_t *file = ds->cache_q->head;
+    long int i = 0;
     while(file) {
-        printf("\"%s\", ", (char*)file->data);
+        printf("\"%s\"\n", (char*)file->data);
         file = file->next;
+        i++;
     }
-    putchar('\n');
 }

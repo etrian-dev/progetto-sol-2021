@@ -279,44 +279,52 @@ int main(int argc, char **argv) {
         // Adesso viene eseguita la (eventuale) scrittura di file da una directory
         // il cui path è in options->dir_write
         if(options->dir_write) {
-            // visita ricorsivamente a partire da dir_write e restituisce una lista di file
-            struct Queue *lfiles = queue_init();
+            // Visita ricorsivamente a partire da dir_write e restituisce una lista di path
+            // il cui numero è <= options->nwrite (o non limitato superiormente se tale campo è < 0)
+            struct Queue *lfiles = queue_init(); // inizializzo una coda vuota che conterra i path dei file da scrivere
             long int nfiles = visit_dir(lfiles, options->dir_write, options->nwrite);
-            printf("Letti %ld files dalla directory\n", nfiles);
 
-            // scrivo i file nella coda nel fileserver
-            while((elem = pop(lfiles)) != NULL) {
-                path = (char*)elem->data;
-                // apro il file con la flag per crearlo
-                // TODO: OR con O_LOCK?
-                if(openFile(path, O_CREATEFILE) == -1) {
-                    // errore di apertura: log su stderr
-                    PRINT(options->prints_on,
-                          fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
-                          perror("openFile");
-                         );
-                    break;
-                }
-                // file aperto: scrivo il file e fornisco la cartella dove salvare eventuali file espulsi
-                if(writeFile(path, options->dir_swapout) == -1) {
-                    // errore di lettura
-                    PRINT(options->prints_on,
-                          fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
-                          perror("writeFile");
-                         );
-                    break;
-                }
-                if(closeFile(path) == -1) {
-                    // errore di chiusura: log su stderr
-                    PRINT(options->prints_on,
-                          fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                          perror("closeFile");
-                         );
-                }
+            if(nfiles == -1) {
+                // errore nel leggere file da dir_write
+                fprintf(stderr, "Impossibile leggere files da %s: %s\n", options->dir_write, strerror(errno));
+            }
+            else {
+                printf("Letti %ld files dalla directory\n", nfiles);
 
-                // libero la memoria dell'elemento della coda
-                free(elem->data);
-                free(elem);
+                // scrivo i file nella coda nel fileserver
+                while((elem = pop(lfiles)) != NULL) {
+                    path = (char*)elem->data;
+                    // apro il file con la flag per crearlo
+                    // TODO: OR con O_LOCK?
+                    if(openFile(path, O_CREATEFILE) == -1) {
+                        // errore di apertura: log su stderr
+                        PRINT(options->prints_on,
+                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
+                              perror("openFile");
+                             );
+                        break;
+                    }
+                    // file aperto: scrivo il file e fornisco la cartella dove salvare eventuali file espulsi
+                    if(writeFile(path, options->dir_swapout) == -1) {
+                        // errore di lettura
+                        PRINT(options->prints_on,
+                              fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
+                              perror("writeFile");
+                             );
+                        break;
+                    }
+                    if(closeFile(path) == -1) {
+                        // errore di chiusura: log su stderr
+                        PRINT(options->prints_on,
+                              fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
+                              perror("closeFile");
+                             );
+                    }
+
+                    // libero la memoria dell'elemento della coda
+                    free(elem->data);
+                    free(elem);
+                }
             }
         }
 
@@ -329,14 +337,13 @@ int main(int argc, char **argv) {
             if(readNFiles(options->nread, options->dir_save_reads) == -1) {
                 // errore di lettura
                 PRINT(options->prints_on,
-                if(options->nread == 0) {
-                fprintf(stderr, "[CLIENT %d]: Impossibile leggere files\n", getpid());
-                }
-                else {
-                    fprintf(stderr, "[CLIENT %d]: Impossibile leggere %ld files\n", getpid(), options->nread);
-                }
-                perror("readNFiles");
-                     );
+                    if(options->nread == 0) {
+                        fprintf(stderr, "[CLIENT %d]: Impossibile leggere files\n", getpid());
+                    }
+                    else {
+                        fprintf(stderr, "[CLIENT %d]: Impossibile leggere %ld files\n", getpid(), options->nread);
+                    }
+                    perror("readNFiles");)
             }
         }
 

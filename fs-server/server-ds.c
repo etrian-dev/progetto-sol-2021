@@ -152,11 +152,14 @@ int add_connection(struct fs_ds_t *ds, const int csock) {
 // Rimuove un client da quelli connessi
 // Ritorna 0 se ha successo, -1 altrimenti
 int rm_connection(struct fs_ds_t *ds, const int csock) {
-    if(!(ds->active_clients) || ds->connected_clients == 0) {
-        // non vi era nessun client connesso
+    if(!ds) {
         return -1;
     }
-
+    // Se non vi era alcun client connesso allora non posso rimuovere csock
+    if(!(ds->active_clients) || ds->connected_clients == 0) {
+        return -1;
+    }
+    // Cerco il socket tra i client connessi
     size_t i = 0;
     while(i < ds->connected_clients && ds->active_clients[i].socket != csock) {
         i++;
@@ -172,12 +175,19 @@ int rm_connection(struct fs_ds_t *ds, const int csock) {
     for(; i < ds->connected_clients - 1; i++) {
         ds->active_clients[i] = ds->active_clients[i+1];
     }
-    struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * ds->connected_clients - 1);
-    if(!newptr) {
-        return -1;
-    }
-    ds->active_clients = newptr;
     ds->connected_clients--;
+    if(ds->connected_clients == 0) {
+        free(ds->active_clients);
+        ds->active_clients = NULL;
+    }
+    else {
+        struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * ds->connected_clients);
+        if(!newptr) {
+            // fallita riallocazione
+            return -1;
+        }
+        ds->active_clients = newptr;
+    }
 
     return 0;
 }

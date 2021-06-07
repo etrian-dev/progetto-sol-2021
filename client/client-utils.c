@@ -23,7 +23,8 @@ void init_params(struct client_opts *params) {
     if(params) {
         // prima resetto tutto a zero
         memset(params, 0, sizeof(*params));
-        params->nread = -1;
+        params->nread = -1; // default del numero di file da leggere non limitato
+        params->nwrite = -1; // default del numero di file da scrivere non limitato
 
         params->oplist = calloc(1, sizeof(struct Queue));
         // un eventuale errore di allocazione non comporta errori fatali in quanto
@@ -255,81 +256,141 @@ void free_client_opt(struct client_opts *options) {
 }
 
 long int visit_dir(struct Queue *q, const char *basedir, long int nleft) {
-    long int i = 0; // contatore del numero di file visitati
-    char *path = NULL;
-    struct dirent *entry;
+    long int nfiles = 0; // contatore del numero di file visitati
+    struct dirent *entry = NULL;
     struct stat info;
-    // Provo ad aprire la directory specificata
-    DIR *dw = opendir(basedir);
-    if(!dw) {
-        // errore
+
+    // salvo la directory di lavoro corrente
+    char *orig = malloc(BUF_BASESZ * sizeof(char));
+    if(!orig) {
+        // errore di allocazione
         return -1;
     }
+    size_t dir_sz = BUF_BASESZ;
+    errno = 0; // resetto errno per esaminare eventuali errori
+    while(orig && getcwd(orig, dir_sz) == NULL) {
+        // Se errno è diventato ERANGE allora il buffer allocato non è abbastanza grande
+        if(errno == ERANGE) {
+            // rialloco orig, con la politica di raddoppio della size
+            char *newbuf = realloc(orig, BUF_BASESZ * 2);
+            if(newbuf) {
+                orig = newbuf;
+                dir_sz *= 2;
+                errno = 0; // resetto errno in modo da poterlo testare dopo la guardia
+            }
+            else {
+                // errore di riallocazione
+                free(orig);
+                return -1;
+            }
+        }
+        // se si è verificato un altro errore allora esco con fallimento
+        else {
+            free(orig);
+            return -1;
+        }
+    }
+    // Adesso orig contiene il path della directory corrente
+
+    // ottengo il path assoluto di basedir (se già non lo è)
+    char *basedir_abspath = NULL;
+    if(basedir && basedir[0] != '/') {
+        basedir_abspath = get_fullpath(orig, basedir);
+    }
+    else if(basedir && basedir[0] == '.'){
+        basedir_abspath = &basedir[2];
+    }
+    else {
+        basedir_abspath = basedir;
+    }
+
+    // cambio directory corrente a basedir
+    if(!basedir_abspath || chdir(basedir_abspath) == -1) {
+        // impossibile cambiare directory di lavoro
+        free(orig);
+        return -1;
+    }
+
+    // Apro basedir_abspath per scorrerla
+    DIR *dw = opendir(basedir_abspath);
+    if(!dw) {
+        fprintf(stderr, "What: %s\n", strerror(errno));
+        // errore apertura directory
+        return -1;
+    }
+    // Directory aperta con successo
     else {
         do {
-            // Resetto errno per discriminare errore di lettura
+            // Resetto errno per discriminare errore di lettura da fine directory
             errno = 0;
-            entry = readdir(dw); // WARNING: MT-unsafe
+            entry = readdir(dw); // FIXME: MT-unsafe: richiede sincronizzazione esterna con mutex
             // se errno cambia allora ho avuto un errore di lettura
             if(!entry && errno != 0) {
-                // errore
+                // errore lettura directory entry
                 return -1;
             }
             // Ignoro le entry "." e ".."
-            else if(strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            else if(entry && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 // Se entry è a sua volta una directory devo visitarla ricorsivamente
-                // Per determinare ciò potrei usare un campo di dirent non-POSIX, oppure stat
+                // Per determinare ciò uso stat (2).
+                //La directory di lavoro è basedir_abspath, per cui è come se passassi a stat il path basedir_abspath/entry->d_name
                 if(stat(entry->d_name, &info) == -1) {
-                    // errore
+                    // errore di lettura informazioni file
                     return -1;
                 }
+                // Con la seguente macro testa se il file sia una directory
                 if(S_ISDIR(info.st_mode)) {
                     // Allora ricorsivamente visito la directory
+                    // Il path sarà interpretato dalla chiamata ricorsiva come relativo a basedir_abspath
 
-                    // Devo concatenare il path base con il nome della directory
-                    char *fpath = get_fullpath(basedir, entry->d_name);
-                    if(!fpath) {
-                        // impossibile ottenere path assoluto
-                        return -1;
-                    }
-
-                    long int left = (nleft <= 0 ? nleft : nleft - i);
-                    long int res = visit_dir(q, fpath, left);
+                    // Se ho già letto nfiles ed ho un limite allora ne restano da leggere al più
+                    // nleft - nfiles. Altrimenti non ho un limite (nleft < 0) e quindi nleft nella chiamata
+                    // ricorsiva può rimanere invariato
+                    long int left = (nleft < 0 ? nleft : nleft - nfiles);
+                    long int res = visit_dir(q, entry->d_name, left);
+                    // Se la chiamata ricorsiva ha successo devo aggiornare il numero di file letti
                     if(res != -1) {
-                        free(fpath);
-                        i += res; // aggiorno il numero di file letti
+                        nfiles += res; // aggiorno il numero di file letti
                     }
-                    // Se res era -1 c'è stato un errore nella chiamata
+                    // Se res == -1 c'è stato un errore nella chiamata
                     // ricorsiva, ma posso continuare la visita della directory
                 }
                 else {
                     // Altrimenti è il path di un file, per cui lo inserisco in coda
-                    char *fpath = get_fullpath(basedir, entry->d_name);
+                    // In questo caso non uso path relativi per rendere più agevole la gestione da parte del server
+                    char *fpath = get_fullpath(basedir_abspath, entry->d_name);
                     if(!fpath) {
-                        // impossibile ottenere path assoluto
-                        return -1;
+                        // impossibile ottenere path assoluto: posso continuare la visita della directory
+                        continue;
                     }
 
-                    int res = enqueue(q, fpath, strlen(fpath) + 1, -1);
-                    // Se ritorna errore non esco con -1, ma continuo a leggere la directory
-                    // TEMP
-                    if(res == -1) {
-                        printf("Fallito enqueue di %s\n", fpath);
+                    // Inserisco il path assoluto del file nella coda q (la stessa per ogni chiamata ricorsiva)
+                    // Se ritorna errore non esco, ma continuo a leggere la directory (tuttavia stampo a schermo)
+                    if(enqueue(q, fpath, strlen(fpath) + 1, -1) == -1) {
+                        fprintf(stderr, "Fallito enqueue di %s: %s\n", fpath, strerror(errno));
                     }
-                    free(fpath);
 
-                    // Incremento il numero di file processati
-                    i++;
+                    // Incremento il numero di file visitati
+                    nfiles++;
                 }
             }
-        } while(entry && i < nleft); // se entry è NULL allora ho terminato la visita (ricorsiva) della directory
+        } while(entry && (nleft < 0 || nfiles < nleft)); // se entry è NULL (e errno non è cambiato) allora ho terminato la visita della directory
 
         // quindi chiudo la directory
         if(closedir(dw) == -1) {
             // errore di chiusura della directory
             return -1;
         }
+
+        // ripristino la directory originale (nelle chiamate ricorsive sarebbe ".." ma
+        // sfruttare questa entry richiederebbe una gestione più articolata
+        if(chdir(orig) == -1) {
+            // impossibile cambiare directory di lavoro
+            free(orig);
+            return -1;
+        }
+        free(orig);
     }
 
-    return i; // ritorno il numero di file trovati e messi in coda
+    return nfiles; // ritorno il numero di file trovati e messi in coda
 }
