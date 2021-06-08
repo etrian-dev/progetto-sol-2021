@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
     // parsing completato con successo: apro il file di log
     // in append e creandolo se non esiste
     int logfile_fd;
-    if((logfile_fd = open(run_params.log_path, O_WRONLY|O_CREAT|O_APPEND, PERMS_ALL_READ)) == -1) {
+    if((logfile_fd = open(run_params.log_path, O_WRONLY|O_CREAT|O_TRUNC, PERMS_ALL_READ)) == -1) {
         // errore nell'apertura o nella creazione del file di log. L'errore è riportato
         // su standard error, ma il server continua l'esecuzione
         errcode = errno;

@@ -45,18 +45,18 @@ test1: all
 test2: all
 	chmod +x makeconf.sh
 	# Creo il file di configurazione del server
-	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
+	./makeconf.sh 4 1 10 test2.sock test2.log test2.conf
 	# Lancio il server in background
-	valgrind -q --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
+	./fs-server.out -f test2.conf &
 	# Lancio i client che testano le operazioni del server
-	chmod +x test1.sh
-	./test1.sh test1.sock
+	chmod +x test2.sh
+	./test2.sh test2.sock
 test3: all
 	chmod +x makeconf.sh
 	# Creo il file di configurazione del server
-	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
+	./makeconf.sh 8 32 100 test3.sock test3.log test3.conf
 	# Lancio il server in background
-	valgrind -q --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
+	./fs-server.out -f test3.conf &
 	# Lancio i client che testano le operazioni del server
-	chmod +x test1.sh
-	./test1.sh test1.sock
+	chmod +x test3.sh
+	./test1.sh test3.sock

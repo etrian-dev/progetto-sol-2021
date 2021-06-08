@@ -78,22 +78,26 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
                 break;
             case 'R': // l'argomento di -R è il numero massimo di file da leggere
                 // Se l'argomento non è fornito (optarg NULL) rimane al valore di default (-1)
-                retcode = isNumber(optarg, &(params->nread));
-                if(retcode == 1) {
-                    // optarg non è un numero intero
-                    printf("\"-R %s\" non è corretta: \"%s\" non è un numero\n", optarg, optarg);
-                    return -1;
-                }
-                if(retcode == 2) {
-                    // optarg è un numero, ma causa overflow/underflow
-                    printf("\"-R %s\" non è corretta: \"%s\" causa overflow/underflow\n", optarg, optarg);
-                    return -1;
-                }
-                if(params->nread < 0) {
-                    // optarg è un numero intero, ma negativo e quindi non posso accettarlo
-                    printf("\"-R %s\" non è corretta: l'argomento deve essere >= 0\n", optarg);
-                    return -1;
-                }
+                // Se l'argomento è in realtà un'opzione (ovvero -R non ha argomenti)
+                // allora deve rimanere il valore di default
+                if(optarg && optarg[0] != '-') {
+		            retcode = isNumber(optarg, &(params->nread));
+		            if(retcode == 1) {
+		                // optarg non è un numero intero
+		                printf("\"-R %s\" non è corretta: \"%s\" non è un numero\n", optarg, optarg);
+		                return -1;
+		            }
+		            if(retcode == 2) {
+		                // optarg è un numero, ma causa overflow/underflow
+		                printf("\"-R %s\" non è corretta: \"%s\" causa overflow/underflow\n", optarg, optarg);
+		                return -1;
+		            }
+		            if(params->nread < 0) {
+		                // optarg è un numero intero, ma negativo e quindi non posso accettarlo
+		                printf("\"-R %s\" non è corretta: l'argomento deve essere >= 0\n", optarg);
+		                return -1;
+		            }
+		        }
                 // Esiste almeno una richiesta di lettura => Se compare -d è ok
                 has_r = 1;
                 break;

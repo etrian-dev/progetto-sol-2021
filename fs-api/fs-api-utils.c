@@ -234,7 +234,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
     int i = 0;
     char *state = NULL;
     // tokenizzo per ottenere tutti i pathname contenuti in paths
-    char *fname = strtok_r(paths_cpy, "\n", &state);
+    char *abs_filepath = strtok_r(paths_cpy, "\n", &state);
     while(i < nbufs) {
         // Leggo l'i-esimo file inviato dal server
         void *data = malloc(sizes[i]);
@@ -249,12 +249,13 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         }
 
         // SOLO DEBUG
-        fprintf(stdout, "Ricevuto il file %s di %lu bytes\n", fname, sizes[i]);
+        fprintf(stdout, "Ricevuto il file %s di %lu bytes\n", abs_filepath, sizes[i]);
 
         // Se era stata fornito il path allora devo creare il file (opero su path relativi alla directory)
         if(dir) {
             int file_fd;
-            if((file_fd = creat(fname, PERMS_ALL_READ)) == -1) {
+            char *fname = strrchr(abs_filepath, '/');
+            if((file_fd = creat(fname + 1, PERMS_ALL_READ)) == -1) {
                 // fallita creazione file
                 break;
             }
@@ -268,7 +269,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         }
         free(data);
 
-        fname = strtok_r(NULL, "\n", &state); // aggiorno il token
+        abs_filepath = strtok_r(NULL, "\n", &state); // aggiorno il token
         i++; // aumento il numero di file ricevuti correttamente dalla api
     }
 
@@ -278,6 +279,9 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         perror("Errore ripristino directory");
         i = -1;
     }
+    
+    // libero memoria
+    free(paths_cpy);
     free(orig);
     free(dir_abspath);
 
