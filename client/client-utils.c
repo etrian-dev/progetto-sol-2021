@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <dirent.h> // per visita directory
 #include <unistd.h>
 // headers libreria standard
@@ -255,7 +256,7 @@ void free_client_opt(struct client_opts *options) {
     free(options);
 }
 
-long int visit_dir(struct Queue *q, const char *basedir, long int nleft) {
+long int visit_dir(struct Queue *pathlist, struct Queue *datalist, const char *basedir, long int nleft) {
     long int nfiles = 0; // contatore del numero di file visitati
     struct dirent *entry = NULL;
     struct stat info;
@@ -323,7 +324,7 @@ long int visit_dir(struct Queue *q, const char *basedir, long int nleft) {
         do {
             // Resetto errno per discriminare errore di lettura da fine directory
             errno = 0;
-            entry = readdir(dw); // FIXME: MT-unsafe: richiede sincronizzazione esterna con mutex
+            entry = readdir(dw); // NOTA: dovrebbe essere threadsafe in glibc, ma non garantito da POSIX
             // se errno cambia allora ho avuto un errore di lettura
             if(!entry && errno != 0) {
                 // errore lettura directory entry
@@ -347,7 +348,7 @@ long int visit_dir(struct Queue *q, const char *basedir, long int nleft) {
                     // nleft - nfiles. Altrimenti non ho un limite (nleft < 0) e quindi nleft nella chiamata
                     // ricorsiva può rimanere invariato
                     long int left = (nleft < 0 ? nleft : nleft - nfiles);
-                    long int res = visit_dir(q, entry->d_name, left);
+                    long int res = visit_dir(pathlist, datalist, entry->d_name, left);
                     // Se la chiamata ricorsiva ha successo devo aggiornare il numero di file letti
                     if(res != -1) {
                         nfiles += res; // aggiorno il numero di file letti
@@ -356,20 +357,47 @@ long int visit_dir(struct Queue *q, const char *basedir, long int nleft) {
                     // ricorsiva, ma posso continuare la visita della directory
                 }
                 else {
+                    int fail = 0;
+                    int ffd = -1;
                     // Altrimenti è il path di un file, per cui lo inserisco in coda
                     // In questo caso non uso path relativi per rendere più agevole la gestione da parte del server
                     char *fpath = get_fullpath(basedir_abspath, entry->d_name);
                     if(!fpath) {
-                        // impossibile ottenere path assoluto: posso continuare la visita della directory
+                        fail = 1;
+                    }
+                    // apro il file e ne copio il contenuto in un buffer, per poi inserirlo
+                    // la size è nota dalla stat
+                    if((ffd = open(entry->d_name, O_RDONLY)) == -1) {
+                        fail = 1;
+                    }
+                    void *data = malloc(info.st_size);
+                    if(!data) {
+                        fail = 1;
+                    }
+                    if(!fail) {
+                        if(readn(ffd, data, info.st_size) != info.st_size) {
+                            fail = 1;
+                        }
+                    }
+                    // Inserisco il path assoluto del file nella coda pathlist (la stessa per ogni chiamata ricorsiva)
+                    // ed i dati del file nella coda datalist
+                    // Se ritornano errore non esco, ma continuo a leggere la directory (tuttavia stampo a schermo l'errore)
+                    if(enqueue(pathlist, fpath, strlen(fpath) + 1, -1) == -1) {
+                        fprintf(stderr, "Fallito enqueue di \"%s\": %s\n", fpath, strerror(errno));
+                        fail = 1;
+                    }
+                    if(fail || enqueue(datalist, data, info.st_size, -1) == -1) {
+                        fprintf(stderr, "Fallito enqueue dei dati di \"%s\": %s\n", fpath, strerror(errno));
+                        fail = 1;
+                    }
+                    // libero memoria
+                    if(ffd != -1) close(ffd);
+                    if(fpath) free(fpath);
+                    if(data) free(data);
+
+                    if(fail) {
                         continue;
                     }
-
-                    // Inserisco il path assoluto del file nella coda q (la stessa per ogni chiamata ricorsiva)
-                    // Se ritorna errore non esco, ma continuo a leggere la directory (tuttavia stampo a schermo)
-                    if(enqueue(q, fpath, strlen(fpath) + 1, -1) == -1) {
-                        fprintf(stderr, "Fallito enqueue di %s: %s\n", fpath, strerror(errno));
-                    }
-
                     // Incremento il numero di file visitati
                     nfiles++;
                 }

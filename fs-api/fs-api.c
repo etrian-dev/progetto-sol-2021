@@ -321,8 +321,12 @@ int readNFiles(int N, const char *dirname) {
     free(req);
 
     // Attendo la risposta
-    struct reply_t *rep = NULL;
-    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
+    struct reply_t *rep = malloc(sizeof(struct reply_t));
+    if(!rep) {
+        free(req);
+        return -1;
+    }
+    if(readn(csock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         // fallita ricezione riposta
         free(req);
         return -1;
@@ -458,11 +462,6 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
             free(paths);
             free(rep);
             return -1;
-        }
-
-        fprintf(stderr, "Paths:\n%s\n", paths);
-        for(int k = 0; k < rep->nbuffers; k++) {
-            fprintf(stderr, "size[%d] = %lu\n", k, sizes[k]);
         }
 
         int num_docs = -1; // write_swp restituisce il numero di file ricevuti e scritti in dirname

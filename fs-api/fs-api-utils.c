@@ -177,28 +177,56 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         return -1;
     }
 
-    // determino la directory corrente (assumo limite superiore alla lughezza del path)
+    // salvo la directory di lavoro corrente
     char *orig = malloc(BUF_BASESZ * sizeof(char));
     if(!orig) {
+        // errore di allocazione
         return -1;
     }
-    if(!getcwd(orig, BUF_BASESZ)) {
-        free(orig);
-        return -1;
+    size_t dir_sz = BUF_BASESZ;
+    errno = 0; // resetto errno per esaminare eventuali errori
+    while(orig && getcwd(orig, dir_sz) == NULL) {
+        // Se errno è diventato ERANGE allora il buffer allocato non è abbastanza grande
+        if(errno == ERANGE) {
+            // rialloco orig, con la politica di raddoppio della size
+            char *newbuf = realloc(orig, BUF_BASESZ * 2);
+            if(newbuf) {
+                orig = newbuf;
+                dir_sz *= 2;
+                errno = 0; // resetto errno in modo da poterlo testare dopo la guardia
+            }
+            else {
+                // errore di riallocazione
+                free(orig);
+                return -1;
+            }
+        }
+        // se si è verificato un altro errore allora esco con fallimento
+        else {
+            free(orig);
+            return -1;
+        }
+    }
+    // Adesso orig contiene il path della directory corrente
+
+    // ottengo il path assoluto di dir (se già non lo è)
+    char *dir_abspath = NULL;
+    if(dir && dir[0] != '/') {
+        dir_abspath = get_fullpath(orig, dir);
+    }
+    else if(dir && dir[0] == '.'){
+        dir_abspath = &dir[2];
+    }
+    else {
+        dir_abspath = dir;
     }
 
-    // Apro dir per salvarli su disco
-    int is_dir = 1;
-    int dir_fd;
-    if((dir_fd = open(dir, O_CREATEFILE)) == -1) {
-        // errore di apertura/creazione directory
-        is_dir = 0;
-    }
-    // cambio directory a quella specificata da dirname per cui i path dei file
+    // cambio directory a quella specificata da dir per cui i path dei file
     // che creo sono relativi a questa directory
-    if(is_dir && fchdir(dir_fd) == -1) {
+    if(!dir_abspath || chdir(dir_abspath) == -1) {
         // errore nel cambio di directory
-        close(dir_fd);
+        free(orig);
+        free(dir_abspath);
         return -1;
     }
 
@@ -206,7 +234,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
     int i = 0;
     char *state = NULL;
     // tokenizzo per ottenere tutti i pathname contenuti in paths
-    char *fname = strtok_r(paths_cpy, "\n", &state); 
+    char *fname = strtok_r(paths_cpy, "\n", &state);
     while(i < nbufs) {
         // Leggo l'i-esimo file inviato dal server
         void *data = malloc(sizes[i]);
@@ -219,12 +247,12 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
             free(data);
             break;
         }
-        
-        fprintf(stderr, "Ricevuto il file %s di %lu bytes\n", fname, sizes[i]);
 
-        // Se era stata fornito il path ed aperta la directory per salvare i file
-        // allora devo creare il file (opero su path relativi alla directory dirname)
-        if(is_dir) {
+        // SOLO DEBUG
+        fprintf(stdout, "Ricevuto il file %s di %lu bytes\n", fname, sizes[i]);
+
+        // Se era stata fornito il path allora devo creare il file (opero su path relativi alla directory)
+        if(dir) {
             int file_fd;
             if((file_fd = creat(fname, PERMS_ALL_READ)) == -1) {
                 // fallita creazione file
@@ -244,11 +272,6 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         i++; // aumento il numero di file ricevuti correttamente dalla api
     }
 
-    // Se era stata aperta allora chiudo il descrittore della directory di swapout
-    if(is_dir) {
-        close(dir_fd);
-    }
-
     // ripristino la directory originale
     if(chdir(orig) == -1) {
         // errore nel cambio di directory
@@ -256,6 +279,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         i = -1;
     }
     free(orig);
+    free(dir_abspath);
 
     return i;
 }

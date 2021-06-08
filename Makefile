@@ -8,7 +8,7 @@ LIBPATH = -L ./libs
 UTILS   = libs/libutilities.so
 HTABLE  = libs/libicl_hash.so
 
-.PHONY: all clean test1 cleanall fs-api server client
+.PHONY: all clean cleanall test1 test2 test3
 
 all: $(UTILS) $(HTABLE)
 	#crea (se non esistono) le directory per i file oggetto e le librerie condivise
@@ -36,11 +36,27 @@ cleanall: clean
 test1: all
 	chmod +x makeconf.sh
 	# Creo il file di configurazione del server
-	./makeconf.sh 1 100 128 10000 test1.sock test1.log test1.conf
+	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
 	# Lancio il server in background
-	valgrind --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
-	# Lancio i client che testano le operazioni del server (tutti con -p)
+	valgrind -q --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
+	# Lancio i client che testano le operazioni del server
 	chmod +x test1.sh
 	./test1.sh test1.sock
-
-
+test2: all
+	chmod +x makeconf.sh
+	# Creo il file di configurazione del server
+	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
+	# Lancio il server in background
+	valgrind -q --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
+	# Lancio i client che testano le operazioni del server
+	chmod +x test1.sh
+	./test1.sh test1.sock
+test3: all
+	chmod +x makeconf.sh
+	# Creo il file di configurazione del server
+	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
+	# Lancio il server in background
+	valgrind -q --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
+	# Lancio i client che testano le operazioni del server
+	chmod +x test1.sh
+	./test1.sh test1.sock

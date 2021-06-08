@@ -19,7 +19,6 @@
 int O_CREATE = 0x1;
 // extern int O_LOCK = 0x10;
 
-
 // sorgente contenente varie funzioni di utilità
 
 // Questa funzione prova a riallocare un buffer ad una nuova dimensione passata come parametro
@@ -115,6 +114,7 @@ int enqueue(struct Queue *q, const void *data_ptr, size_t size, const int csock)
     }
     // copio i dati
     memcpy(elem->data, data_ptr, size);
+    elem->data_sz = size; // setto la dimensione allocata, per usarla laddove rilevante
     elem->socket = csock;
     elem->next = NULL;
 

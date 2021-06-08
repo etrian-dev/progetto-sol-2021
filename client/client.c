@@ -281,8 +281,9 @@ int main(int argc, char **argv) {
         if(options->dir_write) {
             // Visita ricorsivamente a partire da dir_write e restituisce una lista di path
             // il cui numero è <= options->nwrite (o non limitato superiormente se tale campo è < 0)
-            struct Queue *lfiles = queue_init(); // inizializzo una coda vuota che conterra i path dei file da scrivere
-            long int nfiles = visit_dir(lfiles, options->dir_write, options->nwrite);
+            struct Queue *lfiles = queue_init(); // inizializzo una coda vuota che conterrà i path dei file da scrivere
+            struct Queue *ldata = queue_init(); // inizializzo una coda vuota che conterrà i dati dei file da scrivere
+            long int nfiles = visit_dir(lfiles, ldata, options->dir_write, options->nwrite);
 
             if(nfiles == -1) {
                 // errore nel leggere file da dir_write
@@ -291,8 +292,9 @@ int main(int argc, char **argv) {
             else {
                 printf("Letti %ld files dalla directory\n", nfiles);
 
+                struct node_t *file_data = NULL;
                 // scrivo i file nella coda nel fileserver
-                while((elem = pop(lfiles)) != NULL) {
+                while((elem = pop(lfiles)) != NULL && (file_data = pop(ldata)) != NULL) {
                     path = (char*)elem->data;
                     // apro il file con la flag per crearlo
                     // TODO: OR con O_LOCK?
@@ -304,7 +306,7 @@ int main(int argc, char **argv) {
                              );
                         break;
                     }
-                    // file aperto: scrivo il file e fornisco la cartella dove salvare eventuali file espulsi
+                    // file aperto: creo il file e fornisco la cartella dove salvare eventuali file espulsi
                     if(writeFile(path, options->dir_swapout) == -1) {
                         // errore di lettura
                         PRINT(options->prints_on,
@@ -313,19 +315,33 @@ int main(int argc, char **argv) {
                              );
                         break;
                     }
+                    // scrivo i dati del file (la dimensione è il campo data_sz)
+                    if(appendToFile(path, file_data->data, file_data->data_sz, options->dir_swapout) == -1) {
+                        // errore di lettura
+                        // errore di append
+                        PRINT(options->prints_on,
+                              fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), path);
+                              perror("appendToFile");
+                             )
+                        break;
+                    }
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                              perror("closeFile");
-                             );
+                            fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
+                            perror("closeFile");
+                        )
                     }
 
-                    // libero la memoria dell'elemento della coda
+                    // libero la memoria dell'
                     free(elem->data);
                     free(elem);
+                    free(file_data->data);
+                    free(file_data);
                 }
             }
+            free_Queue(lfiles);
+            free_Queue(ldata);
         }
 
         // Adesso viene eseguita la (eventuale) lettura di n file qualsiasi (dal punto di vista del client)
@@ -334,7 +350,8 @@ int main(int argc, char **argv) {
         if(options->nread != -1) {
             // invio nreads richieste di lettura: se è stata settata anche la directory per salvare
             // i file letti allora vengono creati lì con il loro pathname
-            if(readNFiles(options->nread, options->dir_save_reads) == -1) {
+            int n;
+            if((n = readNFiles(options->nread, options->dir_save_reads)) == -1) {
                 // errore di lettura
                 PRINT(options->prints_on,
                     if(options->nread == 0) {
@@ -344,6 +361,14 @@ int main(int argc, char **argv) {
                         fprintf(stderr, "[CLIENT %d]: Impossibile leggere %ld files\n", getpid(), options->nread);
                     }
                     perror("readNFiles");)
+            }
+            else {
+                PRINT(options->prints_on,
+                    printf("Ricevuti %d files dal server\n", n);
+                    if(options->dir_save_reads) {
+                        printf("Salvati nella directory \"%s\"\n", options->dir_save_reads);
+                    }
+                );
             }
         }
 

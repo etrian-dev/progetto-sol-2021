@@ -52,8 +52,9 @@ int process_filelist(struct Queue *ops, char *arg, char op_type);
 // Libera la struttura
 void free_client_opt(struct client_opts *options);
 
-// funzione per visitare ricorsivamente a partire da options->write_dir al più nleft files
-// I file trovati sono inseriti nella coda q ed il loro numero è ritornato (o -1 per errore)
-long int visit_dir(struct Queue *q, const char *basedir, long int nleft);
+// funzione per visitare ricorsivamente a partire da basedir al più nleft files
+// I path dei file trovati sono inseriti nella coda pathlist ed il loro numero contenuto
+// nella coda datalist è ritornato (o -1 per errore)
+long int visit_dir(struct Queue *pathlist, struct Queue *datalist, const char *basedir, long int nleft);
 
 #endif

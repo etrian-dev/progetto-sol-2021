@@ -23,6 +23,7 @@ int string_dup(char **dest, const char *src);
 // Definisco una coda come lista concatenata
 struct node_t {
     void *data;            // i dati contenuti nella coda
+    size_t data_sz;        // la dimensione del buffer dati
     int socket;            // il socket associato ai dati
     struct node_t *next;   // puntatore al prossimo nodo della lista concatenata
 };
