@@ -38,7 +38,7 @@ test1: all
 	# Creo il file di configurazione del server
 	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
 	# Lancio il server in background
-	valgrind -q --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
+	valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
 	# Lancio i client che testano le operazioni del server
 	chmod +x test1.sh
 	./test1.sh test1.sock

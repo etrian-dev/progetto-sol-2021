@@ -2,7 +2,6 @@
 #ifndef UTILS_H_INCLUDED
 #define UTILS_H_INCLUDED
 
-#include <pthread.h>
 #include <stddef.h>
 
 // definisco una dimensione base dei buffer

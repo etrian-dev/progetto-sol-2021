@@ -1,17 +1,17 @@
 // header api
 #include <fs-api.h>
+// header utilità
 #include <utils.h>
 // syscall headers
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 // std headers
-#include <time.h>
-#include <string.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <time.h>
 
 // file contenente l'implementazione della api di comunicazione tra file storage server ed i client
 

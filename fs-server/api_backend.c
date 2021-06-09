@@ -1,23 +1,19 @@
-// header progetto
+// header server
+#include <server-utils.h>
+// header API
+#include <fs-api.h>
+// header utilità
 #include <utils.h>
 #include <icl_hash.h> // per hashtable
-#include <server-utils.h>
-#include <fs-api.h>
-// multithreading headers
+// header multithreading
 #include <pthread.h>
 // system call headers
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <sys/socket.h>
-#include <fcntl.h>
 #include <unistd.h>
 // headers libreria standard
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 
 // Costruisce una stringa contenente i num pathname in paths (str deve essere già allocata)
 void build_pathstr(char **str, const char **paths, const int num) {
@@ -97,7 +93,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     }
     else {
         // File trovato nella tabella: devo verificare se è stato già aperto da questo client
-        size_t i;
+        size_t i = 0;
         int isOpen = 0;
         while(!isOpen && i < file->nopened) {
             if(file->openedBy[i] == client_sock) {
@@ -119,7 +115,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         else {
             // Il File non era aperto da questo client: lo apro
             // TODO: lock?
-            int *newentry = realloc(file->openedBy, file->nopened + 1);
+            int *newentry = realloc(file->openedBy, sizeof(int) * (file->nopened + 1));
             if(!newentry) {
                 // fallita allocazione nuovo spazio per fd
                 if((reply = newreply(REPLY_NO, 0, NULL)) == NULL) {
@@ -135,8 +131,8 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             else {
                 // Apertura OK
                 newentry[file->nopened] = client_sock;
-                file->nopened++;
                 file->openedBy = newentry;
+                file->nopened++;
                 if((reply = newreply(REPLY_YES, 0, NULL)) == NULL) {
                     // errore allocazione risposta
                     puts("errore alloc risposta"); // TODO: log
@@ -173,7 +169,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
     // Cerco il file nella tabella
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
-    	// il file non è presente nel server
+    	// il file non è presente nel server (quindi non posso chiuderlo)
     	reply = newreply(REPLY_NO, 0, NULL);
     	success = -1;
     }
@@ -184,16 +180,21 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
    			i++;
    		}
    		if(i == file->nopened) {
-   			// non risulta che il file fosse aperto quando è stata inviata la richiesta di chiusura
-   			// quindi l'operazione di chiusura fallisce
+   			// non risulta che il file fosse aperto da questo client
+            // quando è stata inviata la richiesta di chiusura
+   			// quindi l'operazione fallisce
    			reply = newreply(REPLY_NO, 0, NULL);
    			success = -1;
    		}
-   		// altrimenti il file era aperto: lo chiudo per questo socket
-   		file->openedBy[i] = -1;
-   		file->nopened--;
-   		// rispondo positivamente alla api
-   		reply = newreply(REPLY_YES, 0, NULL);
+        else {
+            // altrimenti il file era aperto: lo chiudo per questo socket
+            file->openedBy[i] = -1;
+            file->nopened--;
+            // rialloco (restringo) l'array
+            file->openedBy = realloc(file->openedBy, file->nopened * sizeof(int));
+            // rispondo positivamente alla api
+            reply = newreply(REPLY_YES, 0, NULL);
+        }
    	}
 
    	if(reply) {
@@ -280,6 +281,9 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     // Se la lettura è autorizzata allora invio il file sul socket
     if(success == 0 && reply->status == REPLY_YES) {
         writen(client_sock, file->data, file->size);
+    }
+    if(reply) {
+        free(reply);
     }
 
     return success;
@@ -610,11 +614,6 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
     if(paths) free(paths);
     if(all_paths) free(all_paths);
 
-
-    if(success == -1) {
-        fprintf(stderr, "Some error");
-    }
-
     return success;
 }
 
@@ -682,6 +681,10 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
     // scrivo la risposta sul socket del client
     if(reply) {
         writen(client_sock, reply, sizeof(*reply));
+        free(reply);
+    }
+    else {
+        success = -1;
     }
 
     return success;

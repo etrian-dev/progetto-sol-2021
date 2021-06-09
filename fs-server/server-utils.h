@@ -3,7 +3,7 @@
 #ifndef FS_SERVER_H_INCLUDED
 #define FS_SERVER_H_INCLUDED
 
-#include <stddef.h> // per il tipo size_t
+#include <pthread.h>
 #include <icl_hash.h> // per hashtable
 #include <utils.h> // per la coda sincronizzata
 

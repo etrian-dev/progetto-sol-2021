@@ -1,23 +1,17 @@
-// header progetto
+// header server
+#include <server-utils.h>
+// header API
+#include <fs-api.h>
+// header utilità
 #include <utils.h>
 #include <icl_hash.h> // per hashtable
-#include <server-utils.h>
-#include <fs-api.h>
-// multithreading headers
+// header multithreading
 #include <pthread.h>
-// system call headers
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <sys/socket.h>
-#include <fcntl.h>
-#include <unistd.h>
 // headers libreria standard
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 
 // Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
 // Altrimenti ritorna NULL
@@ -66,10 +60,11 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
             free_file(oldfile);
             return NULL;
         }
-        oldfile->size = 0;
+        oldfile->size = 0; // file vuoto
         oldfile->openedBy[0] = client; // setto il file come aperto da questo client
         oldfile->nopened = 1; // il numero di client che ha il file aperto
         oldfile->data = NULL; // non ho dati da inserire
+        oldfile->lockedBy = -1; // nessun socket ha il lock
 
         // Incremento il numero di file aperti nel server
         ds->curr_files++;
@@ -113,38 +108,42 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
             // copio i vecchi dati
             if((newfile = malloc(sizeof(*oldfile))) == NULL) {
                 // errore di allocazione
+                free(path_cpy);
+                return NULL;
+            }
+            if((newfile->data = malloc(size)) == NULL) {
+                // errore di allocazione
+                free_file(newfile);
+                free(path_cpy);
                 return NULL;
             }
             memmove(newfile, oldfile, sizeof(*oldfile)); // nella remota eventualità di sovrapposizioni
             // modifico il contenuto
-            free(newfile->data);
-            if((newfile->data = malloc(size)) == NULL) {
-                // errore di allocazione
-                free_file(newfile);
-                return NULL;
-            }
             memmove(newfile->data, buf, size);
+            // copio i socket che hanno il file aperto
+            memmove(newfile->openedBy, oldfile->openedBy, oldfile->nopened);
         }
     }
 
     void *res = NULL;
-    // Adesso accedo alla ht in mutua esclusione ed inserisco la entry
+    // Adesso accedo alla ht in mutua esclusione ed inserisco la entry aggiornata
     if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
-        free(path_cpy);
         if(oldfile) free_file(oldfile);
         if(newfile) free_file(newfile);
+        free(path_cpy);
         return NULL;
     }
 
-    res = icl_hash_insert(ds->fs_table, path_cpy, newfile);
+    res = icl_hash_update_insert(ds->fs_table, path_cpy, newfile, (void**)&oldfile);
 
     if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
         // Fallita operazione di unlock
         res = NULL;
     }
+
+    if(oldfile) free_file(oldfile);
     if(!res) {
         free(path_cpy);
-        if(oldfile) free_file(oldfile);
         if(newfile) free_file(newfile);
         return NULL;
     }

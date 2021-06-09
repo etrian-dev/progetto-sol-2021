@@ -1,12 +1,11 @@
-// function that performs socket initialization
-
 // sockets headers
 #include <sys/un.h>
 #include <sys/socket.h>
 // I/O calls
 #include <stdio.h>
-#include <errno.h>
 #include <string.h>
+
+// Funzione usata per inizializzare il socket su cui il server ascolta le richieste di connessione
 
 // creates a socket, binds it to and address (passed as a parameter) and makes it
 // listen for connections (up to SOMAXCONN queued)

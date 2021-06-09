@@ -1,21 +1,17 @@
 // header api
 #include <fs-api.h>
+// header utilità
 #include <utils.h>
 // syscall headers
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <fcntl.h>
-#include <dirent.h>
 #include <unistd.h>
 // std headers
-#include <errno.h>
 #include <stdio.h>
-#include <time.h>
-#include <string.h>
-#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string.h>
+#include <errno.h>
 
 // Implementazione di alcune funzioni di utilità per l'API
 struct conn_info *clients_info;
@@ -136,7 +132,7 @@ struct request_t *newrequest(const char type, const int flags, const size_t path
     if(!req) {
         return NULL;
     }
-    memset(req, 0, sizeof(struct request_t));
+    memset(req, 0, sizeof(struct request_t)); // per evitare errori di campi non inizializzati
     req->type = type;
     req->flags = flags;
     req->path_len = pathlen;
@@ -155,6 +151,7 @@ struct reply_t *newreply(const char stat, const int nbuf, const char **names) {
     if(!rep) {
         return NULL;
     }
+    memset(rep, 0, sizeof(struct reply_t)); // per evitare errori di campi non inizializzati
     rep->status = stat;
     rep->nbuffers = nbuf;
     rep->paths_sz = 0;
@@ -279,7 +276,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         perror("Errore ripristino directory");
         i = -1;
     }
-    
+
     // libero memoria
     free(paths_cpy);
     free(orig);

@@ -1,18 +1,15 @@
-// header progetto
-#include <utils.h>
+// header server
 #include <server-utils.h>
+// header utilità
+#include <utils.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
-#include <sys/types.h>
-#include <sys/un.h>
-#include <sys/socket.h>
 #include <unistd.h>
 // headers libreria standard
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include <time.h> // per stampare il timestamp nel log
 
 // File contenente l'implementazione della funzione per effettuare il logging delle operazioni

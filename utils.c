@@ -1,4 +1,4 @@
-// header progetto
+// header utilità
 #include <utils.h>
 // multithreading headers
 #include <pthread.h>
@@ -14,10 +14,6 @@
 #include <errno.h>
 #include <assert.h>
 #include <stddef.h>
-
-// definisco flags dei file nel fileserver
-int O_CREATE = 0x1;
-// extern int O_LOCK = 0x10;
 
 // sorgente contenente varie funzioni di utilità
 

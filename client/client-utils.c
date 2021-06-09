@@ -1,12 +1,12 @@
 // header client
-#include <utils.h>
 #include <client.h>
+// header API
 #include <fs-api.h> // per le definizioni dei caratteri corrispondenti alle operazioni
+// header utilità
+#include <utils.h>
 // system call headers
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/un.h>
-#include <sys/socket.h>
 #include <fcntl.h>
 #include <dirent.h> // per visita directory
 #include <unistd.h>
@@ -15,8 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 
+// Definisco il numero di client di default (se necessario espando il loro numero)
 #define NPOS_DFL 10
 
 // inizializza i parametri a valori di default
@@ -127,14 +127,14 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
                     // errore nella duplicazione
                     return -1;
                 }
-                if(maxfiles && isNumber(maxfiles, &nfiles) == 0 && nfiles >= 0) {
+                if(maxfiles && isNumber(maxfiles, &nfiles) == 0 && nfiles > 0) {
                     params->nwrite = nfiles;
                 }
-                // Se il massimo numero di file è minore di 0 o non specificato assumo nessun limite
                 if(nfiles < 0) {
-                    fprintf(stderr, "Warning: #file da leggere in %s non limitato\n", dirname); // TODO: migliorare
+                    return -1;
                 }
-                // argomento opzionale mancante => resta max_write = 0 di default
+                // Se il massimo numero di file è 0 o non specificato assumo nessun limite
+                // argomento opzionale mancante => resta max_write = -1 di default
 
                 // Esiste almeno una richiesta di scrittura => Se compare -D è ok
                 has_w = 1;

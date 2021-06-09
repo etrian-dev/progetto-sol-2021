@@ -7,18 +7,13 @@
 // system call headers
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/un.h>
-#include <sys/socket.h>
 #include <fcntl.h>
-#include <dirent.h> // per visita directory
 #include <unistd.h>
 // headers libreria standard
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
-#include <stddef.h>
 
 // macro usata per eseguire i comandi cmd solo se la flag è diversa da 0
 #define PRINT(flag, cmd) if((flag)) {cmd;}
@@ -296,40 +291,35 @@ int main(int argc, char **argv) {
                 // scrivo i file nella coda nel fileserver
                 while((elem = pop(lfiles)) != NULL && (file_data = pop(ldata)) != NULL) {
                     path = (char*)elem->data;
+                    int success = 0;
                     // apro il file con la flag per crearlo
                     // TODO: OR con O_LOCK?
-                    if(openFile(path, O_CREATEFILE) == -1) {
+                    if((success = openFile(path, O_CREATEFILE)) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
                               fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
-                              perror("openFile");
-                             );
+                        )
                         break;
                     }
                     // file aperto: creo il file e fornisco la cartella dove salvare eventuali file espulsi
-                    if(writeFile(path, options->dir_swapout) == -1) {
+                    if(success != 0 || (success = writeFile(path, options->dir_swapout)) == -1) {
                         // errore di lettura
                         PRINT(options->prints_on,
                               fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
-                              perror("writeFile");
-                             );
-                        break;
+                        )
                     }
                     // scrivo i dati del file (la dimensione è il campo data_sz)
-                    if(appendToFile(path, file_data->data, file_data->data_sz, options->dir_swapout) == -1) {
+                    if(success != 0 || (success = appendToFile(path, file_data->data, file_data->data_sz, options->dir_swapout)) == -1) {
                         // errore di lettura
                         // errore di append
                         PRINT(options->prints_on,
                               fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), path);
-                              perror("appendToFile");
                              )
-                        break;
                     }
-                    if(closeFile(path) == -1) {
+                    if(success != 0 || (success = closeFile(path)) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
                             fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                            perror("closeFile");
                         )
                     }
 
@@ -360,7 +350,8 @@ int main(int argc, char **argv) {
                     else {
                         fprintf(stderr, "[CLIENT %d]: Impossibile leggere %ld files\n", getpid(), options->nread);
                     }
-                    perror("readNFiles");)
+                    perror("readNFiles");
+                )
             }
             else {
                 PRINT(options->prints_on,
@@ -368,7 +359,7 @@ int main(int argc, char **argv) {
                     if(options->dir_save_reads) {
                         printf("Salvati nella directory \"%s\"\n", options->dir_save_reads);
                     }
-                );
+                )
             }
         }
 

@@ -1,21 +1,13 @@
-// header progetto
+// header server
 #include <server-utils.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/un.h>
-#include <sys/socket.h>
 #include <unistd.h>
 #include <signal.h>
 // headers libreria standard
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <errno.h>
-#include <assert.h>
 
 void *term_thread(void *params) {
     struct fs_ds_t *ds = (struct fs_ds_t *)params;

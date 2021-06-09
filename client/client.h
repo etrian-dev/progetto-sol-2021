@@ -2,8 +2,7 @@
 #ifndef CLIENT_H_INCLUDED
 #define CLIENT_H_INCLUDED
 
-#include <utils.h> // per il tipo Queue
-#include <stddef.h>
+#include <utils.h> // per il tipo struct Queue
 
 // messaggio di help
 #define HELP_MSG \

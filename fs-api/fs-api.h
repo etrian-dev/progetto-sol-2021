@@ -4,9 +4,8 @@
 #ifndef FS_API_H_DEFINED
 #define FS_API_H_DEFINED
 
-#include <utils.h>
-#include <stddef.h> // per size_t
-#include <time.h> // per struct timespec
+#include <utils.h> // per il tipo struct Queue
+#include <time.h>
 
 #define SOCK_PATH_MAXLEN 108 // per socket AF_UNIX è la massima lunghezza del path al socket
 

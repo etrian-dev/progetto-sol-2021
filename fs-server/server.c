@@ -1,12 +1,13 @@
-// header progetto
-#include <utils.h>
+// header server
 #include <server-utils.h>
+// header API
 #include <fs-api.h>
+// header utilità
+#include <utils.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/un.h>
 #include <sys/socket.h>
@@ -18,7 +19,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 
 // Effettua la rimozione del socket e liberazione della memoria occupata dalla struttura dati del server
 void clean_server(struct serv_params *params, struct fs_ds_t *ds);
@@ -471,11 +471,13 @@ void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const in
 
 // Stampa su stdout delle statistiche di utilizzo del server
 void stats(struct fs_ds_t *ds) {
-    printf("Massimo numero di file aperti: %lu\n", ds->max_nfiles);
-    printf("Massima quantità di memoria occupata : %lu Mbyte (%lu byte)\n", ds->max_used_mem/1048576, ds->max_used_mem);
-    printf("Chiamate algoritmo di rimpiazzamento FIFO: %lu\n", ds->cache_triggered);
     printf("Client connessi al momento della terminazione: %lu\n", ds->connected_clients);
-    printf("File presenti nel server alla terminazione (ordinati per tempo di creazione nel server crescente):\n");
+    printf("Chiamate algoritmo di rimpiazzamento FIFO: %lu\n", ds->cache_triggered);
+    printf("Massimo numero di file aperti: %lu\n", ds->max_nfiles);
+    printf("File aperti al momento della terminazione: %lu\n", ds->curr_files);
+    printf("Massima quantità di memoria occupata : %.3f Mbyte (%lu byte)\n", (float)ds->max_used_mem/1048576.0, ds->max_used_mem);
+    printf("Memoria in uso al momento della terminazione: %.3f Mbyte (%lu byte)\n", (float)ds->curr_mem/1048576.0, ds->curr_mem);
+    printf("File presenti nel server alla terminazione (ordinati dal meno recente al più recente):\n");
     struct node_t *file = ds->cache_q->head;
     long int i = 0;
     while(file) {

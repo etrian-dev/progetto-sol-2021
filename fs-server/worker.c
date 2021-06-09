@@ -1,16 +1,12 @@
-// header progetto
-#include <utils.h>
+// header server
 #include <server-utils.h>
+// header API
 #include <fs-api.h>
+// header utilità
+#include <utils.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/un.h>
-#include <sys/socket.h>
-#include <sys/time.h> // per struct timeval della select
 #include <unistd.h>
 #include <signal.h>
 // headers libreria standard
@@ -18,7 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 
 void clean(void *p1, void *p2) {
     if(p1) free(p1);

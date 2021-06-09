@@ -1,21 +1,15 @@
 // header progetto
-#include <icl_hash.h>
 #include <server-utils.h>
+// header utilità
+#include <icl_hash.h>
 // multithreading headers
 #include <pthread.h>
 // system call headers
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/un.h>
-#include <sys/socket.h>
 #include <unistd.h>
 // headers libreria standard
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <assert.h>
 
 // File contenente la gestione delle strutture dati del server
 
@@ -97,6 +91,9 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
 
         // libero l'array di client
         if(server_ds->active_clients) {
+            for(size_t i = 0; i < server_ds->connected_clients; i++) {
+                free(server_ds->active_clients[i].last_op_path);
+            }
             free(server_ds->active_clients);
         }
 
