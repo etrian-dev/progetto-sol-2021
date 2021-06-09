@@ -1,5 +1,5 @@
 #Makefile per la compilazione del progetto
-CC = gcc
+CC = gcc -std=c99 -D_GNU_SOURCE=1
 CFLAGS = -g -Wall -pedantic
 HEADERS = -I .
 
@@ -32,7 +32,7 @@ clean:
 	-rm -fr $(wildcard ./*.out)
 cleanall: clean
 	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o) $(wildcard *.conf)
-
+	-rm -fr objs libs
 test1: all
 	chmod +x makeconf.sh
 	# Creo il file di configurazione del server

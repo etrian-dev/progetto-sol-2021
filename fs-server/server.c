@@ -244,17 +244,17 @@ if(server_ds->termination[0] > max_fd_idx) {
                 }
                 // in caso di terminazione veloce chiudo (quasi) tutti i descrittori
                 if(term == 1) {
+                    // Lascio aperti soltanti il descrittore per il feedback e per la terminazione
                     close_most_fd(&fd_read, server_ds->feedback[0], server_ds->termination[0], max_fd_idx + 1);
 
                     // Prendo ME sulla coda di richieste
                     if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
                         // Fallita operazione di lock
-                        exit(1);
+                        return 1;
                     }
                     // sostituisco la coda di richieste con una vuota, poi libero quella originale
-                    struct Queue *qcpy = server_ds->job_queue;
+                    free_Queue(server_ds->job_queue);
                     server_ds->job_queue = NULL; // pop su questa coda restituirà sempre NULL
-                    free_Queue(qcpy);
 
                     if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
                         // Fallita operazione di unlock
@@ -367,24 +367,28 @@ if(server_ds->termination[0] > max_fd_idx) {
         max_fd_idx = new_maxfd;
     }
 
-    fast_term:
+fast_term:
     printf("fast term...\n");
     // Risveglio tutti i thread sospesi sulla variabile di condizione della coda di richieste
     pthread_cond_broadcast(&(server_ds->new_job));
     // Aspetto la terminazione dei worker thread (terminano da soli, ma necessario per deallocare risorse)
     //for(i = 0; i < run_params.thread_pool; i++) {
-    //if(pthread_join(workers[i], NULL) != 0) {
-    //if(logging(server_ds, errno, "Impossibile effettuare il join dei thread") == -1) {
-    //perror("Impossibile effettuare il join dei thread");
+        //if((errcode = pthread_join(workers[i], NULL)) != 0) {
+            //if(logging(server_ds, errcode, "Impossibile effettuare il join dei thread") == -1) {
+                //errno = errcode;
+                //perror("Impossibile effettuare il join dei thread");
+            //}
+            //free(workers);
+            //stats(server_ds);
+            //clean_server(&run_params, server_ds);
+            //return errcode;
+        //}
     //}
-    //return 2;
-    //}
-    //}
+    // libero memoria
     free(workers);
-
     // Stampo su stdout statistiche
     stats(server_ds);
-
+    // libero strutture dati del server
     clean_server(&run_params, server_ds);
 
     return 0;

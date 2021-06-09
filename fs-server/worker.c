@@ -77,6 +77,8 @@ void *work(void *params) {
 
         client_sock = elem->socket; // il socket del client da servire
         request = (struct request_t *)elem->data; // la richiesta inviata dal client
+        // posso liberare la memoria occupata dalla richiesta
+        free(elem);
 
         char msg[BUF_BASESZ];
         memset(msg, 0, BUF_BASESZ * sizeof(char));
@@ -312,8 +314,9 @@ void *work(void *params) {
             break;
         }
 
-        // Quindi deposito il socket servito nella pipe di feedback
+        free(request); // libero la richiesta servita
 
+        // Quindi deposito il socket servito nella pipe di feedback
         if(write(ds->feedback[1], &client_sock, sizeof(client_sock)) == -1) {
             if(logging(ds, errno, "Fallito invio feedback al server") == -1) {
                 perror("Fallito invio feedback al server");
@@ -322,8 +325,6 @@ void *work(void *params) {
     }
 
     // libero la memoria allocata dal worker
-    if(request) free(request);
-    if(elem) free(elem);
     if(path) free(path);
 
     return (void*)0;

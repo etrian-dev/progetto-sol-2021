@@ -369,18 +369,18 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
 
         if(rep) {
             // scrivo la risposta
-            if(write(client_sock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
+            if(writen(client_sock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
                 // errore di scrittura
                 success = -1;
             }
             // scrivo le dimensioni dei file
             if(success == 0 && rep->status == REPLY_YES) {
-                if(write(client_sock, sizes, rep->nbuffers * sizeof(size_t)) != rep->nbuffers * sizeof(size_t)) {
+                if(writen(client_sock, sizes, rep->nbuffers * sizeof(size_t)) != rep->nbuffers * sizeof(size_t)) {
                     success = -1;
                 }
             }
             if(success == 0 && rep->status == REPLY_YES) {
-                if(write(client_sock, all_paths, rep->paths_sz) != rep->paths_sz) {
+                if(writen(client_sock, all_paths, rep->paths_sz) != rep->paths_sz) {
                     // errore di scrittura
                     success = -1;
                 }
@@ -388,7 +388,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
             if(success == 0) {
                 // Infine invio sul socket tutti i file richiesti
                 for(i = 0; i < num_sent; i++) {
-                    if(write(client_sock, files[i]->data, files[i]->size) != files[i]->size) {
+                    if(writen(client_sock, files[i]->data, files[i]->size) != files[i]->size) {
                         // errore di scrittura file
                         success = -1;
                         break;

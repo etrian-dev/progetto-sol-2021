@@ -313,7 +313,7 @@ int readNFiles(int N, const char *dirname) {
     }
 
     // Scrivo la richiesta di lettura di n files
-    if(writen(csock, req, sizeof(struct request_t)) == -1) {
+    if(writen(csock, req, sizeof(struct request_t)) != sizeof(struct request_t)) {
         // fallita scrittura richiesta
         free(req);
         return -1;
@@ -345,13 +345,15 @@ int readNFiles(int N, const char *dirname) {
     }
     if(readn(csock, sizes, rep->nbuffers * sizeof(size_t)) != rep->nbuffers * sizeof(size_t)) {
         // fallita lettura dimensioni file
+        free(sizes);
         free(rep);
         return -1;
     }
     // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
-    char *paths = malloc(rep->paths_sz);
+    char *paths = malloc(rep->paths_sz * sizeof(char));
     if(!paths) {
         // errore di allocazione
+        free(sizes);
         free(rep);
         return -1;
     }

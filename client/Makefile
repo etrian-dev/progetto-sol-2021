@@ -1,4 +1,4 @@
-CC = gcc
+CC = gcc -std=c99 -D_GNU_SOURCE=1
 CFLAGS = -g -Wall -pedantic
 HEADERS = -I . -I .. -I ../fs-api
 

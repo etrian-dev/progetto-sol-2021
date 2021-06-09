@@ -86,11 +86,9 @@ struct Queue *queue_init(void) {
 void free_Queue(struct Queue *q) {
     struct node_t *a = NULL;
     while((a = pop(q)) != NULL) {
-        free(a->data);
+        if(a->data) free(a->data);
         free(a);
     }
-    free(q->head);
-    free(q->tail);
     free(q);
 }
 

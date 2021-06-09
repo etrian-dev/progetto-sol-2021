@@ -83,9 +83,11 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
         }
         // libero le code di job e di cache
         if(server_ds->job_queue) {
+            printf("liberata coda jobs\n");
             free_Queue(server_ds->job_queue);
         }
         if(server_ds->cache_q) {
+            printf("liberata coda cache\n");
             free_Queue(server_ds->cache_q);
         }
 
@@ -130,7 +132,7 @@ int add_connection(struct fs_ds_t *ds, const int csock) {
         }
     }
     else {
-        struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * ds->connected_clients + 1);
+        struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * (ds->connected_clients + 1));
         if(!newptr) {
             return -1;
         }
@@ -165,19 +167,23 @@ int rm_connection(struct fs_ds_t *ds, const int csock) {
         // client non trovato
         return -1;
     }
-    // libero il client e sposto indietro di una posizione tutti gli altri
+    // libero il client trovato
     if(ds->active_clients[i].last_op_path) {
         free(ds->active_clients[i].last_op_path);
     }
     for(; i < ds->connected_clients - 1; i++) {
-        ds->active_clients[i] = ds->active_clients[i+1];
+        ds->active_clients[i].socket = ds->active_clients[i+1].socket;
+        ds->active_clients[i].last_op = ds->active_clients[i+1].last_op;
+        ds->active_clients[i].last_op_flags = ds->active_clients[i+1].last_op_flags;
+        ds->active_clients[i].last_op_path = ds->active_clients[i+1].last_op_path;
     }
     ds->connected_clients--;
+    // Se non è connesso più alcun client allora devo liberare l'array del tutto
     if(ds->connected_clients == 0) {
         free(ds->active_clients);
-        ds->active_clients = NULL;
     }
     else {
+        // Altrimenti devo riallocare ad un array di dimensione minore
         struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * ds->connected_clients);
         if(!newptr) {
             // fallita riallocazione
