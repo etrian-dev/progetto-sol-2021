@@ -107,25 +107,12 @@ int main(int argc, char **argv) {
         }
         return errcode;
     }
-
-    // Gli attributi per creare un thread in modalità detached (il thread di terminazione)
-    pthread_attr_t attrs;
-    if(pthread_attr_init(&attrs) != 0 && pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED != 0)) {
-        errcode = errno;
-        if(logging(server_ds, errno, "Errore: Impossibile settare attributi thread") == -1) {
-            errno = errcode;
-            fprintf(stderr, "Errore: Impossibile settare attributi thread: %s\n", strerror(errno));
-            clean_server(&run_params, server_ds);
-        }
-        return errcode;
-    }
-
     //-------------------------------------------------------------------------------
     // Con la creazione del thread di terminazione il processo diventa multithreaded
 
     // Creo il thread che gestisce la terminazione
     pthread_t term_tid;
-    if(pthread_create(&term_tid, &attrs, term_thread, server_ds) == -1) {
+    if(pthread_create(&term_tid, NULL, term_thread, server_ds) == -1) {
         errcode = errno;
         if(logging(server_ds, errno, "Impossibile creare il thread di terminazione") == -1) {
             // in questo caso va bene usare strerror, nonostante sia MT-unsafe, poichè viene
@@ -173,7 +160,7 @@ int main(int argc, char **argv) {
     long int i;
     for(i = 0; i < run_params.thread_pool; i++) {
     // Il puntatore alle strutture dati viene passato ad ogni worker thread come parametro
-    if((errcode = pthread_create(&(workers[i]), &attrs, work, server_ds)) != 0) {
+    if((errcode = pthread_create(&(workers[i]), NULL, work, server_ds)) != 0) {
             if(logging(server_ds, errcode, "Manager thread: Impossibile creare worker thread") == -1) {
                 errno = errcode;
                 perror("Manager thread: Impossibile creare worker thread");
@@ -206,16 +193,12 @@ if(server_ds->termination[0] > max_fd_idx) {
     // Esco da questo while soltanto se uno dei segnali di terminazione viene
     // gestito dal thread che si occupa della terminazione
     while(1) {
-    // setto i descrittori da ascoltare con select
-    fd_read_cpy = fd_read;
-    // Il server seleziona i file descriptor pronti in lettura
-    if(select(max_fd_idx + 1, &fd_read_cpy, NULL, NULL, NULL) == -1) {
-            if(errno == EINTR) {
-                // era stata interrotta da un segnale gestito (terminazione)
-                perror("Manager thread: Select interrotta");
-            }
-            // un altro errore della select => provoca terminazione
-            else {
+        // setto i descrittori da ascoltare con select
+        fd_read_cpy = fd_read;
+        // Il server seleziona i file descriptor pronti in lettura
+        if(select(max_fd_idx + 1, &fd_read_cpy, NULL, NULL, NULL) == -1) {
+            // Select interrota da un errore non gestito: logging + terminazione
+            if(errno != EINTR) {
                 errcode = errno;
                 if(logging(server_ds, errno, "Manager thread: Select fallita") == -1) {
                     errno = errcode;
@@ -233,36 +216,15 @@ if(server_ds->termination[0] > max_fd_idx) {
 
         // Devo trovare i file descriptor pronti ed eseguire azioni di conseguenza
         for(fd = 0; fd < max_fd_idx + 1; fd++) {
-            // se era pronto il descrittore il lettura dalla pipe di terminazione
+            // Era pronto il descrittore il lettura dalla pipe di terminazione, per cui devo terminare il server
             if(fd == server_ds->termination[0] && FD_ISSET(fd, &fd_read_cpy)) {
-                // il server ha ricevuto un segnale che ne provoca la terminazione
-                // devo leggere dalla pipe per capire quale tipo di terminazione (veloce o lenta)
+                // Devo leggere dalla pipe per capire quale tipo di terminazione (veloce o lenta)
                 int term;
                 if(read(server_ds->termination[0], &term, sizeof(term)) == -1) {
                     perror("Manager thread: Impossibile leggere tipo di terminazione");
-                    exit(1);
+                    pthread_kill(pthread_self(), SIGKILL); // terminazione brutale
                 }
-                // in caso di terminazione veloce chiudo (quasi) tutti i descrittori
-                if(term == 1) {
-                    // Lascio aperti soltanti il descrittore per il feedback e per la terminazione
-                    close_most_fd(&fd_read, server_ds->feedback[0], server_ds->termination[0], max_fd_idx + 1);
-
-                    // Prendo ME sulla coda di richieste
-                    if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
-                        // Fallita operazione di lock
-                        return 1;
-                    }
-                    // sostituisco la coda di richieste con una vuota, poi libero quella originale
-                    free_Queue(server_ds->job_queue);
-                    server_ds->job_queue = NULL; // pop su questa coda restituirà sempre NULL
-
-                    if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
-                        // Fallita operazione di unlock
-                        return 1;
-                    }
-                    goto fast_term; // salto fuori dal for e dal while
-                }
-                else if(term == 2) {
+                if(term == SLOW_TERM) {
                     // in caso di terminazione lenta chiudo solo il socket su cui si accettano connessioni
                     if(close(listen_connections) == -1) {
                         perror("Manager thread: Impossibile chiudere il socket del server");
@@ -270,11 +232,79 @@ if(server_ds->termination[0] > max_fd_idx) {
                     // devono essere comunque servite le richieste dei client connessi, quindi tolgo
                     // solo listen_connections da quelli ascoltati dalla select
                     FD_CLR(listen_connections, &fd_read);
+
+                    if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
+                        if(logging(server_ds, errno, "Fallito lock coda di richieste") == -1) {
+                            perror("Fallito lock coda di richieste");
+                        }
+                        return -1;
+                    }
+
+                    // Inserisco tante richieste di terminazione lenta quanti sono i workers
+                    struct request_t *req = newrequest(FAST_TERM, 0, 0, 0);
+
+                    if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), -1) == -1) {
+                        if(logging(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
+                            perror("Fallito inserimento nella coda di richieste");
+                        }
+                        return -1;
+                    }
+                    // Quindi segnalo ai thread worker che vi è una nuova richiesta
+                    pthread_cond_broadcast(&(server_ds->new_job));
+
+                    if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
+                        if(logging(server_ds, errno, "Fallito unlock coda di richieste") == -1) {
+                            perror("Fallito unlock coda di richieste");
+                        }
+                        return -1;
+                    }
+
                     break; // altri socket pronti sono esaminati solo dopo aver aggiornato il set
                 }
+                // In caso di terminazione veloce chiudo (quasi) tutti i descrittori
+                // Viene effettuata di default anche se è stato letto un altro valore
                 else {
-                    printf("[SERVER] term = %d\n", term);
+                    // Lascio aperti soltanti il descrittore per il feedback e per la terminazione
+                    close_most_fd(&fd_read, server_ds->feedback[0], server_ds->termination[0], max_fd_idx + 1);
+
+                    if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
+                        if(logging(server_ds, errno, "Fallito lock coda di richieste") == -1) {
+                            perror("Fallito lock coda di richieste");
+                        }
+                        return -1;
+                    }
+
+                    // svuoto la coda di richieste
+                    struct node_t *n = NULL;
+                    while((n = pop(server_ds->job_queue)) != NULL) {
+                        free(n->data);
+                        free(n);
+                    }
+                    // Inserisco tante richieste di terminazione veloce quanti sono i worker
+                    struct request_t *req = newrequest(FAST_TERM, 0, 0, 0);
+
+                    for(size_t n = 0; n < run_params.thread_pool; n++) {
+                        if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), -1) == -1) {
+                            if(logging(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
+                                perror("Fallito inserimento nella coda di richieste");
+                            }
+                            return -1;
+                        }
+                    }
+                    free(req);
+                    // Quindi segnalo ai thread worker che vi è una nuova richiesta
+                    pthread_cond_broadcast(&(server_ds->new_job));
+
+                    if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
+                        if(logging(server_ds, errno, "Fallito unlock coda di richieste") == -1) {
+                            perror("Fallito unlock coda di richieste");
+                        }
+                        return -1;
+                    }
+
+                    goto fast_term; // salto fuori dal for e dal while
                 }
+
             }
             // Se ci sono connessioni in attesa le accetta
             if(fd == listen_connections && FD_ISSET(fd, &fd_read_cpy)) {
@@ -372,20 +402,30 @@ fast_term:
     // Risveglio tutti i thread sospesi sulla variabile di condizione della coda di richieste
     pthread_cond_broadcast(&(server_ds->new_job));
     // Aspetto la terminazione dei worker thread (terminano da soli, ma necessario per deallocare risorse)
-    //for(i = 0; i < run_params.thread_pool; i++) {
-        //if((errcode = pthread_join(workers[i], NULL)) != 0) {
-            //if(logging(server_ds, errcode, "Impossibile effettuare il join dei thread") == -1) {
-                //errno = errcode;
-                //perror("Impossibile effettuare il join dei thread");
-            //}
-            //free(workers);
-            //stats(server_ds);
-            //clean_server(&run_params, server_ds);
-            //return errcode;
-        //}
-    //}
+    for(i = 0; i < run_params.thread_pool; i++) {
+        if((errcode = pthread_join(workers[i], NULL)) != 0) {
+            if(logging(server_ds, errcode, "Impossibile effettuare il join dei thread") == -1) {
+                errno = errcode;
+                perror("Impossibile effettuare il join dei thread");
+            }
+            free(workers);
+            stats(server_ds);
+            clean_server(&run_params, server_ds);
+            return errcode;
+        }
+    }
     // libero memoria
     free(workers);
+    if((errcode = pthread_join(term_tid, NULL)) != 0) {
+        if(logging(server_ds, errcode, "Impossibile effettuare il join dei thread") == -1) {
+            errno = errcode;
+            perror("Impossibile effettuare il join dei thread");
+        }
+        stats(server_ds);
+        clean_server(&run_params, server_ds);
+        return errcode;
+    }
+
     // Stampo su stdout statistiche
     stats(server_ds);
     // libero strutture dati del server
@@ -447,6 +487,8 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
         }
         return -1;
     }
+    free(req);
+
     // Quindi segnalo ai thread worker che vi è una nuova richiesta
     pthread_cond_signal(&(server_ds->new_job));
 

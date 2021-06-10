@@ -464,7 +464,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
         // Se la scrittura provoca capacity miss (per quantità di memoria) allora chiamo l'algoritmo di rimpiazzamento
         if(ds->curr_mem + size > ds->max_mem) {
             // i file (eventualmente) espulsi sono messi all'interno delle code
-            if((nevicted = cache_miss(ds, ds->curr_mem + size, &evicted_paths, &evicted)) == -1) {
+            if((nevicted = cache_miss(ds, size, &evicted_paths, &evicted)) == -1) {
                 // fallita l'espulsione dei file: l'operazione di apertura fallisce
                 reply = newreply(REPLY_NO, 0, NULL);
                 success = -1;
@@ -688,4 +688,10 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
     }
 
     return success;
+}
+
+// Rimuove dal server il file con path pathname, se presente e non lockato da un altro socket
+// Ritorna 0 se ha successo, -1 altrimenti
+int api_rmFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+    ;
 }

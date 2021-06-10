@@ -83,11 +83,9 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
         }
         // libero le code di job e di cache
         if(server_ds->job_queue) {
-            printf("liberata coda jobs\n");
             free_Queue(server_ds->job_queue);
         }
         if(server_ds->cache_q) {
-            printf("liberata coda cache\n");
             free_Queue(server_ds->cache_q);
         }
 
@@ -113,13 +111,16 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
 
 void free_file(void *file) {
     struct fs_filedata_t *f = (struct fs_filedata_t *)file;
-    if(f->data) {
-        free(f->data);
+    if(f) {
+        if(f->data) {
+            free(f->data);
+        }
+        if(f->openedBy) {
+            free(f->openedBy);
+        }
+        free(f);
+        f = NULL;
     }
-    if(f->openedBy) {
-        free(f->openedBy);
-    }
-    free(f);
 }
 
 // Aggiunge un client a quelli connessi
@@ -181,6 +182,7 @@ int rm_connection(struct fs_ds_t *ds, const int csock) {
     // Se non è connesso più alcun client allora devo liberare l'array del tutto
     if(ds->connected_clients == 0) {
         free(ds->active_clients);
+        ds->active_clients = NULL;
     }
     else {
         // Altrimenti devo riallocare ad un array di dimensione minore
@@ -203,15 +205,15 @@ int update_client_op(struct fs_ds_t *ds, const int sock, const char op, const in
         if(ds->active_clients[i].socket == sock) {
             ds->active_clients[i].last_op = op;
             ds->active_clients[i].last_op_flags = op_flags;
+            if(ds->active_clients[i].last_op_path) {
+                free(ds->active_clients[i].last_op_path);
+                ds->active_clients[i].last_op_path = NULL;
+            }
             if(op_path) {
                 ds->active_clients[i].last_op_path = strndup(op_path, strlen(op_path) + 1);
                 if(!ds->active_clients[i].last_op_path) {
                     return -1;
                 }
-            }
-            else if(ds->active_clients[i].last_op_path) {
-                free(ds->active_clients[i].last_op_path);
-                ds->active_clients[i].last_op_path = NULL;
             }
             return 0;
         }

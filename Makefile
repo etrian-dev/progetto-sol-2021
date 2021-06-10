@@ -13,16 +13,23 @@ HTABLE  = libs/libicl_hash.so
 all: $(UTILS) $(HTABLE)
 	#crea (se non esistono) le directory per i file oggetto e le librerie condivise
 	-mkdir objs libs
+	chmod +x makeconf.sh
+	# Creo il file di configurazione del server
+	./makeconf.sh 10 32 100 server.sock server.log config.conf
 	$(MAKE) -C fs-api
 	$(MAKE) -C fs-server
 	$(MAKE) -C client
 $(UTILS): utils.o
+	#crea (se non esistono) le directory per i file oggetto e le librerie condivise
+	-mkdir objs libs
 	$(CC) $(CFLAGS) -shared -o $@ $< -lpthread
 	mv $< objs/
 utils.o: utils.c utils.h
 	$(CC) $(CFLAGS) $(HEADERS) -c -fPIC -o $@ $< -lpthread
 
 $(HTABLE): icl_hash.o
+	#crea (se non esistono) le directory per i file oggetto e le librerie condivise
+	-mkdir objs libs
 	$(CC) $(CFLAGS) -shared -o $@ $<
 	mv $< objs/
 icl_hash.o: icl_hash/icl_hash.c

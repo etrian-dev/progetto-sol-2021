@@ -159,14 +159,12 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
 // esse non sono allocate e comunque lasciate in uno stato inconsistente
 int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files) {
     int success = 0; // conterrà il valore di ritorno
-
     // È possibile che il file possa non entrare nel quantitativo di memoria
     // assegnato al server all'avvio. In tal caso l'algoritmo fallisce (e qualunque operazione collegata)
     if(newsz > ds->max_mem) {
         return -1;
     }
-
-    // creo le tre code
+    // creo le due code
     *paths = queue_init();
     if(!(*paths)) {
         // fallita alloc coda
@@ -179,9 +177,8 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         return -1;
     }
 
-    int errno_saved = 0;
-
     // Almeno un file deve essere espulso se chiamo l'algoritmo, perciò uso un do-while
+    int errno_saved = 0;
     do {
         // Secondo la politica FIFO la vittima è la testa della coda cache_q
         if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {

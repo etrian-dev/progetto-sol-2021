@@ -31,23 +31,23 @@ void *work(void *params) {
     int client_sock = -1;
 
     // ascolto il socket di terminazione
-    fd_set term_fd;
-    FD_ZERO(&term_fd);
-    FD_SET(ds->termination[0], &term_fd);
-    int nfd = ds->termination[0] + 1;
+    //fd_set term_fd;
+    //FD_ZERO(&term_fd);
+    //FD_SET(ds->termination[0], &term_fd);
+    //int nfd = ds->termination[0] + 1;
 
     int term = 0;
-    while(term == 0) {
-
-        term = term_worker(ds, &term_fd, nfd);
-        if(term == -1) {
-            // errore della select interna
-            return (void*)1;
-        }
-        if(term == 1) {
-            // terminazione veloce: esco direttamente
-            break;
-        }
+    while(1) {
+        //term = term_worker(ds, &term_fd, nfd);
+        //if(term == -1) {
+            //// errore della select interna
+            //return (void*)1;
+        //}
+        //if(term == FAST_TERM) {
+            //// terminazione veloce: esco direttamente
+            //printf("from select: Exiting from thread %lu\n", pthread_self());
+            //break;
+        //}
         // terminazione lenta o nessuna terminazione: leggo le richieste in coda
 
         // prendo mutex sulla coda di richieste
@@ -58,14 +58,16 @@ void *work(void *params) {
         // aspetto tramite la variabile di condizione che arrivi una richiesta
         while((elem = pop(ds->job_queue)) == NULL) {
             // Controllo se ho terminazione lenta o veloce
-            term = term_worker(ds, &term_fd, nfd);
-            if(term == -1) {
-                // errore della select interna
-                return (void*)1;
-            }
-            if(term == 1 || term == 2) {
-                break;
-            }
+            //term = term_worker(ds, &term_fd, nfd);
+            //if(term == -1) {
+                //// errore della select interna
+                //return (void*)1;
+            //}
+            //// Se non ho più alcuna richiesta e ho terminazione allora esco
+            //if(term == FAST_TERM || term == SLOW_TERM) {
+                //printf("from while: Exiting from thread %lu\n", pthread_self());
+                //goto exit;
+            //}
 
             // Altrimenti non devo terminare (term == 0) allora mi metto in attesa sulla coda
             pthread_cond_wait(&(ds->new_job), &(ds->mux_jobq));
@@ -79,6 +81,12 @@ void *work(void *params) {
         request = (struct request_t *)elem->data; // la richiesta inviata dal client
         // posso liberare la memoria occupata dalla richiesta
         free(elem);
+
+        // Controllo se la richiesta ricevuta sia di terminazione
+        if(request->type == FAST_TERM) {
+            free(request);
+            break;
+        }
 
         char msg[BUF_BASESZ];
         memset(msg, 0, BUF_BASESZ * sizeof(char));
@@ -324,9 +332,6 @@ void *work(void *params) {
         }
     }
 
-    // libero la memoria allocata dal worker
-    if(path) free(path);
-
     return (void*)0;
 }
 
@@ -345,6 +350,7 @@ int term_worker(struct fs_ds_t *ds, fd_set *set, const int maxfd) {
             perror("Impossibile leggere tipo di terminazione");
             exit(1);
         }
+        printf("[WORKER TERM] read %d\n", term);
         return term;
     }
     // non devo terminare
