@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Un breve delay per assicurare che il server sia partito
-sleep 5
+sleep 3
 
 # Script per testare il server. Il socket al quale i client si devono connettere è il
 # primo parametro passato allo script

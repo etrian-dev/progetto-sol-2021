@@ -29,27 +29,7 @@ void *work(void *params) {
     struct request_t *request = NULL;
     char *path = NULL;
     int client_sock = -1;
-
-    // ascolto il socket di terminazione
-    //fd_set term_fd;
-    //FD_ZERO(&term_fd);
-    //FD_SET(ds->termination[0], &term_fd);
-    //int nfd = ds->termination[0] + 1;
-
-    int term = 0;
     while(1) {
-        //term = term_worker(ds, &term_fd, nfd);
-        //if(term == -1) {
-            //// errore della select interna
-            //return (void*)1;
-        //}
-        //if(term == FAST_TERM) {
-            //// terminazione veloce: esco direttamente
-            //printf("from select: Exiting from thread %lu\n", pthread_self());
-            //break;
-        //}
-        // terminazione lenta o nessuna terminazione: leggo le richieste in coda
-
         // prendo mutex sulla coda di richieste
         if(pthread_mutex_lock(&(ds->mux_jobq)) == -1) {
             // Fallita operazione di lock
@@ -57,19 +37,15 @@ void *work(void *params) {
         }
         // aspetto tramite la variabile di condizione che arrivi una richiesta
         while((elem = pop(ds->job_queue)) == NULL) {
-            // Controllo se ho terminazione lenta o veloce
-            //term = term_worker(ds, &term_fd, nfd);
-            //if(term == -1) {
-                //// errore della select interna
-                //return (void*)1;
-            //}
-            //// Se non ho più alcuna richiesta e ho terminazione allora esco
-            //if(term == FAST_TERM || term == SLOW_TERM) {
-                //printf("from while: Exiting from thread %lu\n", pthread_self());
-                //goto exit;
-            //}
-
-            // Altrimenti non devo terminare (term == 0) allora mi metto in attesa sulla coda
+            // Se non ho richieste in coda ed è in corso la procedura di terminazione lenta
+            // allora termino il worker
+            if(ds->slow_term == 1) {
+                if(pthread_mutex_unlock(&(ds->mux_jobq)) == -1) {
+                    // Fallita operazione di unlock
+                    return NULL;
+                }
+                return NULL;
+            }
             pthread_cond_wait(&(ds->new_job), &(ds->mux_jobq));
         }
         if(pthread_mutex_unlock(&(ds->mux_jobq)) == -1) {
@@ -280,21 +256,20 @@ void *work(void *params) {
         case WRITE_FILE: { // write file
             // leggo dal socket il path del file da modificare
             path = malloc(request->path_len * sizeof(char));
-            void *buf = malloc(request->buf_len);
-            if(!path || !buf) {
-                if(logging(ds, errno, "writeFile: Fallita allocazione path o buffer dati") == -1) {
-                    perror("writeFile: Fallita allocazione path o buffer dati");
+            if(!path) {
+                if(logging(ds, errno, "writeFile: Fallita allocazione path") == -1) {
+                    perror("writeFile: Fallita allocazione path");
                 }
                 // cleanup
-                clean(path, buf);
-                break;;
+                clean(path, NULL);
+                break;
             }
             if(readn(client_sock, path, request->path_len) == -1) {
                 if(logging(ds, errno, "writeFile: Fallita lettura path") == -1) {
                     perror("writeFile: Fallita lettura path");
                 }
                 // cleanup
-                clean(path, buf);
+                clean(path, NULL);
                 break;
             }
             // creo il file solo se era stato aperto con la flag O_CREATEFILE
@@ -312,14 +287,102 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            clean(path, buf);
+            clean(path, NULL);
             break;
         }
-        case 'L': // lock file
-        case 'U': // unlock file
-        case 'C': // remove file
-        default:
+        case LOCK_FILE: { // unlock file
+            // leggo dal socket il path del file da modificare
+            path = malloc(request->path_len * sizeof(char));
+            if(readn(client_sock, path, request->path_len) == -1) {
+                if(logging(ds, errno, "lockFile: Fallita lettura path") == -1) {
+                    perror("lockFile: Fallita lettura path");
+                }
+                // cleanup
+                clean(path, NULL);
+                break;
+            }
+            // La mutua esclusione sul file viene garantita solo se il file era aperto
+            // pre questo client e non era lockato da altri client
+            if(api_lockFile(ds, path, client_sock) == -1) {
+                // Operazione non consentita: logging
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] lockFile(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
+            }
+            else {
+                // lock OK
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] lockFile(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
+            }
+            clean(path, NULL);
             break;
+        }
+        case UNLOCK_FILE: { // unlock file
+            // leggo dal socket il path del file da modificare
+            path = malloc(request->path_len * sizeof(char));
+            if(readn(client_sock, path, request->path_len) == -1) {
+                if(logging(ds, errno, "unlockFile: Fallita lettura path") == -1) {
+                    perror("unlockFile: Fallita lettura path");
+                }
+                // cleanup
+                clean(path, NULL);
+                break;
+            }
+            // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
+            if(api_unlockFile(ds, path, client_sock) == -1) {
+                // Operazione non consentita: logging
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] unlockFile(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
+            }
+            else {
+                // lock OK
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] unlockFile(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
+            }
+            clean(path, NULL);
+            break;
+        }
+        case REMOVE_FILE: { // remove file
+            // leggo dal socket il path del file da modificare
+            path = malloc(request->path_len * sizeof(char));
+            if(readn(client_sock, path, request->path_len) == -1) {
+                if(logging(ds, errno, "removeFile: Fallita lettura path") == -1) {
+                    perror("removeFile: Fallita lettura path");
+                }
+                // cleanup
+                clean(path, NULL);
+                break;
+            }
+            // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
+            if(api_rmFile(ds, path, client_sock) == -1) {
+                // Operazione non consentita: logging
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] removeFile(%s): Operazione non consentita", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
+            }
+            else {
+                // lock OK
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] removeFile(%s): Operazione completata con successo", client_sock, path);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
+            }
+            clean(path, NULL);
+            break;
+        }
+        default:
+            snprintf(msg, BUF_BASESZ, "[WARNING] Operazione non riconosciuta proveniente dal client %d", client_sock);
+            if(logging(ds, errno, msg) == -1) {
+                perror(msg);
+            }
         }
 
         free(request); // libero la richiesta servita
@@ -333,26 +396,4 @@ void *work(void *params) {
     }
 
     return (void*)0;
-}
-
-int term_worker(struct fs_ds_t *ds, fd_set *set, const int maxfd) {
-    int term;
-    fd_set set_cpy = *set;
-    struct timeval timeout = {0, 1}; // aspetta per 1ms
-    // il valore di ritorno di select è il numero di file descriptor pronti
-    int retval = select(maxfd, &set_cpy, NULL, NULL, &timeout);
-    if(retval == -1) {
-        return -1;
-    }
-    else if(retval == 1) {
-        // Controllo se terminazione lenta o veloce
-        if(read(ds->termination[0], &term, sizeof(term)) == -1) {
-            perror("Impossibile leggere tipo di terminazione");
-            exit(1);
-        }
-        printf("[WORKER TERM] read %d\n", term);
-        return term;
-    }
-    // non devo terminare
-    return 0;
 }

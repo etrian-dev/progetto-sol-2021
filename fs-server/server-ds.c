@@ -49,7 +49,8 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
         return -1;
     }
     // inizializzo mutex
-    pthread_mutex_init(&((*server_ds)->mux_ht), NULL);
+    pthread_mutex_init(&((*server_ds)->mux_files), NULL);
+    pthread_mutex_init(&((*server_ds)->mux_mem), NULL);
     pthread_mutex_init(&((*server_ds)->mux_jobq), NULL);
     pthread_mutex_init(&((*server_ds)->mux_cacheq), NULL);
     pthread_mutex_init(&((*server_ds)->mux_log), NULL);
@@ -118,6 +119,8 @@ void free_file(void *file) {
         if(f->openedBy) {
             free(f->openedBy);
         }
+        // rilascio lock nel caso in cui fosse acquisita (anche se fallisce non è rilevante)
+        pthread_mutex_unlock(&(f->mux_file));
         free(f);
         f = NULL;
     }

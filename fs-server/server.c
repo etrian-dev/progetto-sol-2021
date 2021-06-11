@@ -29,7 +29,7 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd);
 // Chiude tutti gli fd in set, tranne feedpipe e termpipe, rimuovendoli anche dal set
 void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const int maxsock);
 // Stampa su stdout delle statistiche di utilizzo del server
-void stats(struct fs_ds_t *ds);
+void stats(struct serv_params *params, struct fs_ds_t *ds);
 
 // Funzione main del server multithreaded: ricopre il ruolo di thread manager
 int main(int argc, char **argv) {
@@ -64,13 +64,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Errore: Fallito parsing del file di configurazione \"%s\": %s\n", argv[1], strerror(errno));
         return errcode;
     }
-
-    // stampo alcuni parametri del server
-    printf("thread pool size: %ld\n", run_params.thread_pool);
-    printf("max memory size: %ldMbyte\n", run_params.max_memsz);
-    printf("max file count: %ld\n", run_params.max_fcount);
-    printf("socket path: %s\n", run_params.sock_path);
-    printf("log file path: %s\n", run_params.log_path);
 
     // parsing completato con successo: apro il file di log
     // in append e creandolo se non esiste
@@ -409,7 +402,7 @@ fast_term:
                 perror("Impossibile effettuare il join dei thread");
             }
             free(workers);
-            stats(server_ds);
+            stats(&run_params, server_ds);
             clean_server(&run_params, server_ds);
             return errcode;
         }
@@ -421,13 +414,13 @@ fast_term:
             errno = errcode;
             perror("Impossibile effettuare il join dei thread");
         }
-        stats(server_ds);
+        stats(&run_params, server_ds);
         clean_server(&run_params, server_ds);
         return errcode;
     }
 
     // Stampo su stdout statistiche
-    stats(server_ds);
+    stats(&run_params, server_ds);
     // libero strutture dati del server
     clean_server(&run_params, server_ds);
 
@@ -516,13 +509,20 @@ void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const in
 }
 
 // Stampa su stdout delle statistiche di utilizzo del server
-void stats(struct fs_ds_t *ds) {
+void stats(struct serv_params *params, struct fs_ds_t *ds) {
+    puts("======= STATISTICHE DEL SERVER =======");
+    printf("Socket del server: %s\n", params->sock_path);
+    printf("File di log: %s\n", params->log_path);
     printf("Client connessi al momento della terminazione: %lu\n", ds->connected_clients);
+    puts("======= MEMORIA =======");
+    printf("Massima quantità di memoria %lu Mbyte (%lu byte)\n", ds->max_mem/1048576, ds->max_mem);
+    printf("Memoria in uso al momento della terminazione: %lu Mbyte (%lu byte)\n", ds->curr_mem/1048576, ds->curr_mem);
+    printf("Massima quantità di memoria occupata : %lu Mbyte (%lu byte)\n", ds->max_used_mem/1048576, ds->max_used_mem);
     printf("Chiamate algoritmo di rimpiazzamento FIFO: %lu\n", ds->cache_triggered);
-    printf("Massimo numero di file aperti: %lu\n", ds->max_nfiles);
+    puts("======= FILES =======");
+    printf("Massimo numero di file %lu\n", ds->max_files);
     printf("File aperti al momento della terminazione: %lu\n", ds->curr_files);
-    printf("Massima quantità di memoria occupata : %.3f Mbyte (%lu byte)\n", (float)ds->max_used_mem/1048576.0, ds->max_used_mem);
-    printf("Memoria in uso al momento della terminazione: %.3f Mbyte (%lu byte)\n", (float)ds->curr_mem/1048576.0, ds->curr_mem);
+    printf("Massimo numero di file aperti durante l'esecuzione: %lu\n", ds->max_nfiles);
     printf("File presenti nel server alla terminazione (ordinati dal meno recente al più recente):\n");
     struct node_t *file = ds->cache_q->head;
     long int i = 0;
@@ -531,4 +531,5 @@ void stats(struct fs_ds_t *ds) {
         file = file->next;
         i++;
     }
+    puts("===============");
 }

@@ -115,12 +115,12 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
 int writeFile(const char *pathname, const char *dirname);
 
 // invia al server la richiesta di acquisire la mutua esclusione sul file pathname
-//int lockFile(const char *pathname);
+int lockFile(const char *pathname);
 
 // invia al server la richiesta di rilasciare la mutua esclusione sul file pathname
-//int unlockFile(const char *pathname);
+int unlockFile(const char *pathname);
 
 // invia al server la richiesta di rimozione del file dal server (solo se ha la lock su tale file)
-//int removeFile(const char *pathname);
+int removeFile(const char *pathname);
 
 #endif

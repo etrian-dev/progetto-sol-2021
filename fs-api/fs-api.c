@@ -536,3 +536,159 @@ int writeFile(const char *pathname, const char *dirname) {
     // Operazione consentita
     return 0;
 }
+
+// invia al server la richiesta di acquisire la mutua esclusione sul file pathname
+int lockFile(const char *pathname) {
+    // controllo che questo client sia connesso
+    int pos = -1;
+    int pid = getpid(); // prendo il pid del client chiamante
+    if((pos = isConnected(pid)) == -1) {
+        // errore: client non connesso
+        return -1;
+    }
+    // ottengo il suo socket
+    int csock = clients_info->client_id[2 * pos];
+
+    // preparo la richiesta
+    struct request_t *request = newrequest(LOCK_FILE, 0, strlen(pathname) + 1, 0);
+    if(!request) {
+        // errore di allocazione
+        return -1;
+    }
+    // Scrivo la richiesta sul socket
+    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+        free(request);
+        return -1;
+    }
+    // Scrivo il path del file su cui acquisire la lock sul socket
+    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+        free(request);
+        return -1;
+    }
+    free(request);
+
+    // Attendo la risposta dal server
+    struct reply_t *rep = malloc(sizeof(struct reply_t));
+    if(!rep) {
+        return -1;
+    }
+    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
+        // errore nella risposta
+        free(rep);
+        return -1;
+    }
+    if(rep->status == REPLY_NO) {
+        // operazione negata
+        free(rep);
+        return -1;
+    }
+
+    free(rep);
+
+    // Operazione consentita
+    return 0;
+}
+
+// invia al server la richiesta di rilasciare la mutua esclusione sul file pathname
+int unlockFile(const char *pathname) {
+    // controllo che questo client sia connesso
+    int pos = -1;
+    int pid = getpid(); // prendo il pid del client chiamante
+    if((pos = isConnected(pid)) == -1) {
+        // errore: client non connesso
+        return -1;
+    }
+    // ottengo il suo socket
+    int csock = clients_info->client_id[2 * pos];
+
+    // preparo la richiesta
+    struct request_t *request = newrequest(UNLOCK_FILE, 0, strlen(pathname) + 1, 0);
+    if(!request) {
+        // errore di allocazione
+        return -1;
+    }
+    // Scrivo la richiesta sul socket
+    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+        free(request);
+        return -1;
+    }
+    // Scrivo il path del file su cui rilasciare la lock sul socket
+    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+        free(request);
+        return -1;
+    }
+    free(request);
+
+    // Attendo la risposta dal server
+    struct reply_t *rep = malloc(sizeof(struct reply_t));
+    if(!rep) {
+        return -1;
+    }
+    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
+        // errore nella risposta
+        free(rep);
+        return -1;
+    }
+    if(rep->status == REPLY_NO) {
+        // operazione negata
+        free(rep);
+        return -1;
+    }
+
+    free(rep);
+
+    // Operazione consentita
+    return 0;
+}
+
+// invia al server la richiesta di rimozione del file dal server (solo se ha la lock su tale file)
+int removeFile(const char *pathname) {
+    // controllo che questo client sia connesso
+    int pos = -1;
+    int pid = getpid(); // prendo il pid del client chiamante
+    if((pos = isConnected(pid)) == -1) {
+        // errore: client non connesso
+        return -1;
+    }
+    // ottengo il suo socket
+    int csock = clients_info->client_id[2 * pos];
+
+    // preparo la richiesta
+    struct request_t *request = newrequest(REMOVE_FILE, 0, strlen(pathname) + 1, 0);
+    if(!request) {
+        // errore di allocazione
+        return -1;
+    }
+    // Scrivo la richiesta sul socket
+    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+        free(request);
+        return -1;
+    }
+    // Scrivo il path del file da rimuovere
+    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+        free(request);
+        return -1;
+    }
+    free(request);
+
+    // Attendo la risposta dal server
+    struct reply_t *rep = malloc(sizeof(struct reply_t));
+    if(!rep) {
+        return -1;
+    }
+    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
+        // errore nella risposta
+        free(rep);
+        return -1;
+    }
+    if(rep->status == REPLY_NO) {
+        // operazione negata
+        free(rep);
+        return -1;
+    }
+
+    free(rep);
+
+    // Operazione consentita
+    return 0;
+}

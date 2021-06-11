@@ -7,64 +7,75 @@
 #include <icl_hash.h> // per hashtable
 // header multithreading
 #include <pthread.h>
+// syscall headers
+#include <signal.h>
 // headers libreria standard
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 
-// Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
-// Altrimenti ritorna NULL
-struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
-    // cerco il file nella tabella in ME
-    if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
-        // Fallita operazione di lock
+// Funzione che crea un nuovo file con i parametri specificati
+// Ritorna un puntatore se ha successo, NULL altrimenti
+struct fs_filedata_t *newfile(const int client, const int flags) {
+    struct fs_filedata_t *file = NULL;
+    // Alloco ed inizializzo il file
+    if((file = malloc(sizeof(struct fs_filedata_t))) == NULL) {
+        // errore di allocazione
         return NULL;
     }
-    struct fs_filedata_t *file = icl_hash_find(ds->fs_table, (void *)fname);
-    if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
-        // Fallita operazione di unlock
+    if((file->openedBy = malloc(sizeof(int))) == NULL) {
+        // errore di allocazione: libero memoria
+        free_file(file);
         return NULL;
+    }
+    file->openedBy[0] = client; // setto il file come aperto da questo client
+    file->nopened = 1; // il numero di client che ha il file aperto
+    file->data = NULL;
+    file->size = 0;
+    pthread_mutex_init(&(file->mux_file), NULL);
+    file->modifying = 0;
+    // Se devo settare mutua esclusione da parte del client che lo crea lo faccio, altrimenti -1
+    if(flags & O_LOCKFILE) {
+        file->lockedBy = client;
+    }
+    else {
+        file->lockedBy = -1;
     }
     return file;
 }
 
+// Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
+// Altrimenti ritorna NULL
+struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
+    // cerco il file nella hash table
+    struct fs_filedata_t *file = icl_hash_find(ds->fs_table, (void *)fname);
+    return file;
+}
+
 // Inserisce nel fileserver il file path con contenuto buf, di dimensione size, proveniente dal socket client
-// Se l'inserimento riesce allora ritorna un puntatore al file originale e rimpiazza i dati con buf
-// Se buf == NULL allora crea un file vuoto, ritornando il file stesso
-// Se l'operazione fallisce ritorna NULL
-struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const void *buf, const size_t size, const int client) {
+// Se buf == NULL allora crea un file vuoto
+// Se l'operazione fallisce ritorna NULL, altrimenti ritorna un puntatore al file creato/modificato
+struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const int flags, const void *buf, const size_t size, const int client) {
     // Duplico il path per usarlo come chiave
     char *path_cpy = strndup(path, strlen(path) + 1);
     if(!path_cpy) {
         // errore di allocazione
         return NULL;
     }
-
-    // newfile conterrà il file aggiornato
-    struct fs_filedata_t *newfile = NULL;
-    // oldfile conterrà il file prima dell'aggiornamento
-    struct fs_filedata_t *oldfile = NULL;
-
+    // file conterrà il file aggiornato
+    struct fs_filedata_t *file = NULL;
+    void *res = NULL;
     // Se buf è NULL allora significa che sto inserendo un nuovo file (vuoto)
     if(!buf) {
-        // Alloco la struttura del file
-        if((oldfile = malloc(sizeof(struct fs_filedata_t))) == NULL) {
-            // errore di allocazione
+        file = newfile(client, flags);
+        if(!file) {
+            // fallita creazione file
             free(path_cpy);
             return NULL;
         }
-        if((oldfile->openedBy = malloc(sizeof(int))) == NULL) {
-            // errore di allocazione: libero memoria
-            free(path_cpy);
-            free_file(oldfile);
-            return NULL;
-        }
-        oldfile->size = 0; // file vuoto
-        oldfile->openedBy[0] = client; // setto il file come aperto da questo client
-        oldfile->nopened = 1; // il numero di client che ha il file aperto
-        oldfile->data = NULL; // non ho dati da inserire
-        oldfile->lockedBy = -1; // nessun socket ha il lock
+
+        pthread_mutex_lock(&(ds->mux_files)); // TODO: error checking
 
         // Incremento il numero di file aperti nel server
         ds->curr_files++;
@@ -74,11 +85,13 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
             ds->max_nfiles = ds->curr_files;
         }
 
+        pthread_mutex_unlock(&(ds->mux_files)); // TODO: error checking
+
         // Inserisco il pathname del file anche nella coda della cache
         if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
             // Fallita operazione di lock
-            free_file(oldfile);
             free(path_cpy);
+            free_file(file);
             return NULL;
         }
 
@@ -93,62 +106,54 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const vo
 
         if(queued == -1) {
             // fallito inserimento in coda
-            free_file(oldfile);
             free(path_cpy);
+            free_file(file);
             return NULL;
         }
 
-        newfile = oldfile; // come da semantica
+        res = icl_hash_insert(ds->fs_table, path_cpy, file);
     }
-    // Altrimenti devo troncare il file (sostituisco il buffer)
+    // Altrimenti devo aggiornare il file (in seguito ad una appendToFile)
     else {
         // recupero il file
-        oldfile = find_file(ds, path);
+        struct fs_filedata_t *oldfile = find_file(ds, path);
         if(oldfile) {
-            // copio i vecchi dati
-            if((newfile = malloc(sizeof(*oldfile))) == NULL) {
-                // errore di allocazione
-                free(path_cpy);
-                return NULL;
+            pthread_mutex_lock(&(oldfile->mux_file));
+            void *newdata = realloc(oldfile->data, oldfile->size + size);
+            if(newdata) {
+                memmove(newdata + oldfile->size, buf, size);
+                oldfile->data = newdata;
             }
-            if((newfile->data = malloc(size)) == NULL) {
-                // errore di allocazione
-                free_file(newfile);
-                free(path_cpy);
-                return NULL;
+            res = icl_hash_update_insert(ds->fs_table, path_cpy, file, NULL);
+            if(res) {
+                // aggiorno la dimensione del file
+                file->size += size;
+
+                pthread_mutex_lock(&(ds->mux_mem));
+                // devo aggiornare anche la quantità di memoria occupata nel server
+                ds->curr_mem += size;
+                // aggiorno se necessario anche la massima quantità di memoria occupata
+                if(ds->curr_mem > ds->max_used_mem) {
+                    ds->max_used_mem = ds->curr_mem;
+                }
+                pthread_mutex_unlock(&(ds->mux_mem));
             }
-            memmove(newfile, oldfile, sizeof(*oldfile)); // nella remota eventualità di sovrapposizioni
-            // modifico il contenuto
-            memmove(newfile->data, buf, size);
-            // copio i socket che hanno il file aperto
-            memmove(newfile->openedBy, oldfile->openedBy, oldfile->nopened);
+            pthread_mutex_unlock(&(oldfile->mux_file));
         }
+
+        file = oldfile;
     }
 
-    void *res = NULL;
-    // Adesso accedo alla ht in mutua esclusione ed inserisco la entry aggiornata
-    if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
-        if(oldfile) free_file(oldfile);
-        if(newfile) free_file(newfile);
-        free(path_cpy);
-        return NULL;
-    }
-
-    res = icl_hash_update_insert(ds->fs_table, path_cpy, newfile, (void**)&oldfile);
-
-    if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
-        // Fallita operazione di unlock
-        res = NULL;
-    }
-
-    if(oldfile) free_file(oldfile);
+    // NOTA: non assicuro la consistenza della coda di file con la hash table, ma a patto di controllare
+    // sempre il risultato di find_file non ho problemi per file nella coda che
+    // non siano anche effettivamente nella hashtable
     if(!res) {
         free(path_cpy);
-        if(newfile) free_file(newfile);
+        free_file(file);
         return NULL;
     }
 
-    return newfile; // ritorno il puntatore al file inserito
+    return file; // ritorno il puntatore al file inserito
 }
 
 // Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
@@ -179,6 +184,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
 
     // Almeno un file deve essere espulso se chiamo l'algoritmo, perciò uso un do-while
     int errno_saved = 0;
+    pthread_mutex_lock(&(ds->mux_mem));
     do {
         // Secondo la politica FIFO la vittima è la testa della coda cache_q
         if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
@@ -209,41 +215,60 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         struct fs_filedata_t *fptr = find_file(ds, victim->data);
         size_t sz = fptr->size;
 
-        if(pthread_mutex_lock(&(ds->mux_ht)) == -1) {
+        if(pthread_mutex_lock(&(fptr->mux_file)) == -1) {
             free(victim->data);
             free(victim);
             return -1;
         }
 
-        success = 0;
         // Notare che la memoria occupata dal file non viene liberata subito e mantengo un puntatore al file
         // Libero invece la memoria occupata dalla chiave, dato che non è più utile
         if((success = icl_hash_delete(ds->fs_table, victim->data, free, NULL)) != -1) {
+            errno_saved = errno; // salvo errore
             // rimozione OK, decremento numero file nel server e quantità di memoria occupata
+            pthread_mutex_lock(&(ds->mux_files));
             ds->curr_files--;
+            pthread_mutex_unlock(&(ds->mux_files));
+
             ds->curr_mem -= sz;
         }
 
-        if(pthread_mutex_unlock(&(ds->mux_ht)) == -1) {
+        if(pthread_mutex_unlock(&(fptr->mux_file)) == -1) {
             success = -1;
         }
         if(success == -1) {
             free_Queue(*paths);
             free_Queue(*files);
-            free_file(fptr);
-            free(victim->data);
-            free(victim);
+            // Per mantenere la cache consistente è necessario reinserire i path estratti nella coda
+            if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
+                // Fallita operazione di lock
+                return -1;
+            }
+
+            if(enqueue(ds->cache_q, victim->data, victim->data_sz, -1) == -1) {
+                // Consistenza cache compromessa: terminare il server
+                perror("Consistenza cache compromessa: terminazione del server");
+                pthread_kill(pthread_self(), SIGKILL);
+            }
+
+            if(pthread_mutex_unlock(&(ds->mux_cacheq)) == -1) {
+                // Fallita operazione di unlock
+                return -1;
+            }
+            // Consistenza della cache ripristinata
             return -1;
         }
 
         // Aggiorno le code con il nuovo file espulso
         if(enqueue(*paths, victim->data, strlen((char*)victim->data) + 1, -1) == -1) {
             // fallito inserimento del path del file in coda
+            errno_saved = errno;
             success = -1;
             break;
         }
         if(enqueue(*files, fptr, sizeof(struct fs_filedata_t), -1) == -1) {
             // fallito inserimento del file in coda
+            errno_saved = errno;
             success = -1;
             break;
         }
@@ -255,6 +280,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         success++; // ho espulso con successo un altro file, quindi incremento il contatore
     }
     while(ds->curr_mem + newsz >= ds->max_mem);
+    pthread_mutex_unlock(&(ds->mux_mem));
 
     // aggiorno il numero di chiamate (che hanno avuto successo) dell'algorimto di rimpiazzamento
     if(success > 0) ds->cache_triggered++;

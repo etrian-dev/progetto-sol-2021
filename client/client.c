@@ -37,17 +37,7 @@ int main(int argc, char **argv) {
         }
         return 1;
     }
-
-    // stampo le opzioni riconosciute
-    PRINT(options->prints_on,
-          printf("Help: %s\n", (options->help_on ? "ON" : "OFF"));
-          printf("Stdout prints: %s\n", (options->prints_on ? "ON" : "OFF"));
-          printf("Delay: %ldms\n", options->rdelay);
-          printf("Socket: %s\n", options->fs_socket);
-          printf("Directory swapout: %s\n", options->dir_swapout);
-          printf("Directory with files to write: %s\n", options->dir_write);
-          printf("Directory save reads: %s\n", options->dir_save_reads);
-         )
+    
     // Se è stato richiesto il messaggio di help stampa quello e poi esce
     // Vi sono altre condizioni  di seguito
     if(options->help_on || argc == 1 || options->fs_socket == NULL) {

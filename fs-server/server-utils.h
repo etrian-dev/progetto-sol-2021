@@ -59,10 +59,17 @@ void *term_thread(void *params);
 struct fs_filedata_t {
     void *data;      // I dati contenuti nel file
     size_t size;     // La dimensione in numero di byte del file
+    pthread_mutex_t mux_file; // mutex per la modifica del file
+    pthread_cond_t mod_completed; // condition variable per notificare la liberazione della lock
+    int modifying;   // flag per indicare che il file è in corso di modifica da parte di un'altra operazione
+    // modifying = 0 se non in modifica, 1 altrimenti (inizializzato a 0)
     int *openedBy;   // Un array di socket dei client che hanno aperto questo file
     int nopened;     // La dimensione (variabile) dell'array sopra
     int lockedBy;    // Il client (al più uno) che ha la ME sul file
 };
+// Funzione che crea un nuovo file con i parametri specificati
+// Ritorna un puntatore se ha successo, NULL altrimenti
+struct fs_filedata_t *newfile(const int client, const int flags);
 // Funzione che libera la memoria occupata da un file
 void free_file(void *file); // Il parametro ha tipo void* perché viene usata in icl_hash_destroy
 
@@ -84,26 +91,26 @@ struct client_info {
 
 // Struttura dati condivisa del server
 struct fs_ds_t {
+    // Vale sempre la relazione max_files >= max_nfiles >= curr_files
     // Massimo numero di file che possono essere presenti nel server contemporaneamente
     size_t max_files;
     // Numero di file aperti nel server in questo momento
     size_t curr_files;
     // Numero massimo di file memorizzati nel server durante la sua attività
     size_t max_nfiles;
-    // Vale sempre la relazione max_files >= max_nfiles >= curr_files
+    pthread_mutex_t mux_files; // mutex per modificare curr_files e max_nfiles
 
+    // Vale sempre la relazione max_mem >= max_used_mem >= curr_mem
     // Massima capacità del server (in byte)
     size_t max_mem;
     // Quantità di memoria occupata dai file presenti nel server (solo segmento dati)
     size_t curr_mem;
     // Massima quantità di memoria occupata dai file nel server durante la sua attività
     size_t max_used_mem;
-    // Vale sempre la relazione max_mem >= max_used_mem >= curr_mem
+    pthread_mutex_t mux_mem; // mutex per modificare curr_mem e max_used_mem
 
     // Hash table condivisa nel server, che contiene i file
     icl_hash_t *fs_table;
-    // Mutex per l'accesso alla ht
-    pthread_mutex_t mux_ht;
 
     // Coda per la comunicazione delle richieste dal thread manager ai worker threads
     struct Queue *job_queue;
@@ -127,10 +134,10 @@ struct fs_ds_t {
 
     // Pipe per il feedback dal worker al manager thread
     int feedback[2];
+    int slow_term; // flag per indicare terminazione lenta (con SIGHUP)
 
     // Pipe per la gestione della terminazione
     int termination[2];
-    int worker_term;
 
     // File descriptor del file di log del server
     int log_fd;
@@ -178,7 +185,13 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
 // altrimenti crea un nuovo file vuoto (se possibile)
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
-// Rimuove dal server il file con path pathname, se presente e non lockato da un altro socket
+// Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_sock
+// Ritorna 0 se ha successo, -1 altrimenti
+int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock);
+// Toglie la mutua esclusione sul file pathname (solo se era lockato da client_sock)
+// Ritorna 0 se ha successo, -1 altrimenti
+int api_unlockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock);
+// Rimuove dal server il file con path pathname, se presente e lockato da client_sock
 // Ritorna 0 se ha successo, -1 altrimenti
 int api_rmFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
 
@@ -192,7 +205,7 @@ struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname);
 // Se l'inserimento riesce allora ritorna un puntatore al file originale e rimpiazza i dati con buf
 // Se buf == NULL allora crea un file vuoto, ritornando il file creato
 // Se l'operazione fallisce ritorna NULL
-struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const void *buf, const size_t size, const int client);
+struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const int flags, const void *buf, const size_t size, const int client);
 // Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
 // newsz byte, in modo tale da avere una occupazione in memoria inferiore a
 // ds->max_mem - newsz al termine dell'esecuzione della funzione
