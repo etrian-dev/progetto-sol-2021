@@ -200,8 +200,14 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
                 file->openedBy[i] = file->openedBy[i+1];
             }
             file->nopened--;
-            // rialloco (restringo) l'array
-            file->openedBy = realloc(file->openedBy, file->nopened * sizeof(int));
+            // rialloco (restringo) l'array e se non è più aperto da alcun client lo dealloco
+            if(file->nopened == 0) {
+                free(file->openedBy);
+                file->openedBy = NULL;
+            }
+            else {
+                file->openedBy = realloc(file->openedBy, file->nopened * sizeof(int));
+            }
             // rispondo positivamente alla api
             reply = newreply(REPLY_YES, 0, NULL);
 
@@ -662,8 +668,8 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
             size_t save_sz = file->size;
             file->size = 0;
 
-            file->modifying = 1;
-            pthread_mutex_lock(&(file->mux_file));
+            file->modifying = 0;
+            pthread_mutex_unlock(&(file->mux_file));
 
             pthread_mutex_lock(&(ds->mux_mem));
             ds->curr_mem -= save_sz; // devo aggiornare anche la quantità di memoria occupata

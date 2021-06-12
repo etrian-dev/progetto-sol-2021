@@ -119,7 +119,18 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const in
         struct fs_filedata_t *oldfile = find_file(ds, path);
         if(oldfile) {
             pthread_mutex_lock(&(oldfile->mux_file));
-            void *newdata = realloc(oldfile->data, oldfile->size + size);
+            while(oldfile->modifying == 1) {
+                pthread_cond_wait(&(oldfile->mod_completed), &(oldfile->mux_file));
+            }
+            oldfile->modifying = 1;
+
+            void *newdata = NULL;
+            if(oldfile->size > 0) {
+                newdata = realloc(oldfile->data, oldfile->size + size);
+            }
+            else {
+                newdata = malloc(size);
+            }
             if(newdata) {
                 memmove(newdata + oldfile->size, buf, size);
                 oldfile->data = newdata;
@@ -127,7 +138,7 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const in
             res = icl_hash_update_insert(ds->fs_table, path_cpy, file, NULL);
             if(res) {
                 // aggiorno la dimensione del file
-                file->size += size;
+                oldfile->size += size;
 
                 pthread_mutex_lock(&(ds->mux_mem));
                 // devo aggiornare anche la quantità di memoria occupata nel server
@@ -138,6 +149,8 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const in
                 }
                 pthread_mutex_unlock(&(ds->mux_mem));
             }
+
+            oldfile->modifying = 0;
             pthread_mutex_unlock(&(oldfile->mux_file));
         }
 

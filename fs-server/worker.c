@@ -20,8 +20,6 @@ void clean(void *p1, void *p2) {
     if(p2) free(p2);
 }
 
-int term_worker(struct fs_ds_t *ds, fd_set *set, const int maxfd);
-
 // worker thread
 void *work(void *params) {
     struct fs_ds_t *ds = (struct fs_ds_t *)params;
@@ -42,7 +40,7 @@ void *work(void *params) {
             if(ds->slow_term == 1) {
                 if(pthread_mutex_unlock(&(ds->mux_jobq)) == -1) {
                     // Fallita operazione di unlock
-                    return NULL;
+                    pthread_kill(pthread_self(), SIGKILL);
                 }
                 return NULL;
             }
@@ -67,6 +65,29 @@ void *work(void *params) {
         char msg[BUF_BASESZ];
         memset(msg, 0, BUF_BASESZ * sizeof(char));
 
+        // Leggo il path del file su cui operare (se necessario) e lo trasformo in path assoluto (se non lo è)
+        if((request->type != READ_N_FILES || request->type != CLOSE_CONN) && request->path_len > 0) {
+            path = malloc(request->path_len * sizeof(char));
+            if(!path) {
+                // Impossibile allocare memoria per il path: termino il server
+                if(logging(ds, errno, "Impossibile allocare memoria per il path da leggere") == -1) {
+                    perror("Impossibile allocare memoria per il path da leggere");
+                }
+                break;
+            }
+            if(readn(client_sock, path, request->path_len) != request->path_len) {
+                if(logging(ds, errno, "Fallita lettura path") == -1) {
+                    perror("Fallita lettura path");
+                }
+                free(path);
+                break;
+            }
+            // Ora ho il path
+            if(path[0] != '/') {
+                // TODO: creare path assoluto e riassegnarlo a path
+            }
+        }
+
         // A seconda dell'operazione richiesta chiama la funzione che la implementa
         // e si occupa di fare tutto l'I/O ed i controlli internamente
         switch(request->type) {
@@ -88,21 +109,6 @@ void *work(void *params) {
             break;
         }
         case OPEN_FILE: { // operazione di apertura di un file
-            // leggo dal socket il path del file da aprire
-            path = malloc(request->path_len * sizeof(char));
-            if(!path) {
-                if(logging(ds, errno, "openFile: Fallita allocazione path") == -1) {
-                    perror("openFile: Fallita allocazione path");
-                }
-                break;
-            }
-            if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "openFile: Fallita lettura path") == -1) {
-                    perror("openFile: Fallita lettura path");
-                }
-                free(path);
-                break;
-            }
             // chiamo api_openfile con il path appena letto e le flag che erano state settate nella richiesta
             if(api_openFile(ds, path, client_sock, request->flags) == -1) {
                 // Operazione non consentita: effettuo il log
@@ -122,21 +128,6 @@ void *work(void *params) {
             break;
         }
         case CLOSE_FILE: { // operazione di chiusura del file
-       		// leggo dal socket il path del file da chiudere
-            path = malloc(request->path_len * sizeof(char));
-            if(!path) {
-                if(logging(ds, errno, "closeFile: Fallita allocazione path") == -1) {
-                    perror("closeFile: Fallita allocazione path");
-                }
-                break;
-            }
-            if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "closeFile: Fallita lettura path") == -1) {
-                    perror("closeFile: Fallita lettura path");
-                }
-                free(path);
-                break;
-            }
             // chiamo api_closeFile con il path appena letto
             if(api_closeFile(ds, path, client_sock) == -1) {
            		// Operazione non consentita: effettuo il log
@@ -155,21 +146,6 @@ void *work(void *params) {
             break;
        	}
         case READ_FILE: { // operazione di lettura di un file
-            // leggo dal socket il path del file da leggere
-            path = malloc(request->path_len * sizeof(char));
-            if(!path) {
-                if(logging(ds, errno, "readFile: Fallita allocazione path") == -1) {
-                    perror("readFile: Fallita allocazione path");
-                }
-                break;
-            }
-            if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "readFile: Fallita lettura path") == -1) {
-                    perror("readFile: Fallita lettura path");
-                }
-                free(path);
-                break;
-            }
             // leggo dalla ht (se presente) il file path, inviandolo lungo il socket fornito
             if(api_readFile(ds, path, client_sock) == -1) {
                 // Operazione non consentita: logging
@@ -207,20 +183,11 @@ void *work(void *params) {
             break;
         }
         case APPEND_FILE: { // operazione di append
-            // leggo dal socket il path del file da modificare ed i dati da ricevere
-            path = malloc(request->path_len * sizeof(char));
+            // leggo dal socket  i dati da ricevere
             void *buf = malloc(request->buf_len);
-            if(!path || !buf) {
-                if(logging(ds, errno, "appendToFile: Fallita allocazione path o buffer dati") == -1) {
-                    perror("appendToFile: Fallita allocazione path o buffer dati");
-                }
-                // cleanup
-                clean(path, buf);
-                break;
-            }
-            if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "appendToFile: Fallita lettura path") == -1) {
-                    perror("appendToFile: Fallita lettura path");
+            if(!buf) {
+                if(logging(ds, errno, "appendToFile: Fallita allocazione buffer dati") == -1) {
+                    perror("appendToFile: Fallita allocazione buffer dati");
                 }
                 // cleanup
                 clean(path, buf);
@@ -254,24 +221,6 @@ void *work(void *params) {
             break;
         }
         case WRITE_FILE: { // write file
-            // leggo dal socket il path del file da modificare
-            path = malloc(request->path_len * sizeof(char));
-            if(!path) {
-                if(logging(ds, errno, "writeFile: Fallita allocazione path") == -1) {
-                    perror("writeFile: Fallita allocazione path");
-                }
-                // cleanup
-                clean(path, NULL);
-                break;
-            }
-            if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "writeFile: Fallita lettura path") == -1) {
-                    perror("writeFile: Fallita lettura path");
-                }
-                // cleanup
-                clean(path, NULL);
-                break;
-            }
             // creo il file solo se era stato aperto con la flag O_CREATEFILE
             if(api_writeFile(ds, path, client_sock) == -1) {
                 // Operazione non consentita: logging
@@ -291,16 +240,6 @@ void *work(void *params) {
             break;
         }
         case LOCK_FILE: { // unlock file
-            // leggo dal socket il path del file da modificare
-            path = malloc(request->path_len * sizeof(char));
-            if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "lockFile: Fallita lettura path") == -1) {
-                    perror("lockFile: Fallita lettura path");
-                }
-                // cleanup
-                clean(path, NULL);
-                break;
-            }
             // La mutua esclusione sul file viene garantita solo se il file era aperto
             // pre questo client e non era lockato da altri client
             if(api_lockFile(ds, path, client_sock) == -1) {
@@ -321,16 +260,6 @@ void *work(void *params) {
             break;
         }
         case UNLOCK_FILE: { // unlock file
-            // leggo dal socket il path del file da modificare
-            path = malloc(request->path_len * sizeof(char));
-            if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "unlockFile: Fallita lettura path") == -1) {
-                    perror("unlockFile: Fallita lettura path");
-                }
-                // cleanup
-                clean(path, NULL);
-                break;
-            }
             // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
             if(api_unlockFile(ds, path, client_sock) == -1) {
                 // Operazione non consentita: logging
@@ -350,16 +279,6 @@ void *work(void *params) {
             break;
         }
         case REMOVE_FILE: { // remove file
-            // leggo dal socket il path del file da modificare
-            path = malloc(request->path_len * sizeof(char));
-            if(readn(client_sock, path, request->path_len) == -1) {
-                if(logging(ds, errno, "removeFile: Fallita lettura path") == -1) {
-                    perror("removeFile: Fallita lettura path");
-                }
-                // cleanup
-                clean(path, NULL);
-                break;
-            }
             // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
             if(api_rmFile(ds, path, client_sock) == -1) {
                 // Operazione non consentita: logging
