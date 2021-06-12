@@ -120,7 +120,7 @@ int writeFile(const char *pathname, const char *dirname);
 // invia al server la richiesta di rilasciare la mutua esclusione sul file pathname
 //int unlockFile(const char *pathname);
 
-// invia al server la richiesta di rimozione del file dal server (solo se ha la lock su tale file)
-//int removeFile(const char *pathname);
+// invia al server la richiesta di rimozione del file dal server
+int removeFile(const char *pathname);
 
 #endif

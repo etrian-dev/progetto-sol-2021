@@ -38,14 +38,15 @@ icl_hash.o: icl_hash/icl_hash.c
 clean:
 	-rm -fr $(wildcard ./*.out)
 cleanall: clean
-	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o) $(wildcard *.conf)
-	-rm -fr objs libs
+	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o) $(wildcard *.conf) \
+	$(wildcard *.log)$(wildcard *.sock)
+	-rm -fr objs libs save_reads save_writes
 test1: all
 	chmod +x makeconf.sh
 	# Creo il file di configurazione del server
 	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
 	# Lancio il server in background
-	valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
+	valgrind --leak-check=full --show-leak-kinds=all ./fs-server.out -f test1.conf &
 	# Lancio i client che testano le operazioni del server
 	chmod +x test1.sh
 	./test1.sh test1.sock

@@ -29,7 +29,7 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd);
 // Chiude tutti gli fd in set, tranne feedpipe e termpipe, rimuovendoli anche dal set
 void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const int maxsock);
 // Stampa su stdout delle statistiche di utilizzo del server
-void stats(struct fs_ds_t *ds);
+void stats(struct serv_params *params, struct fs_ds_t *ds);
 
 // Funzione main del server multithreaded: ricopre il ruolo di thread manager
 int main(int argc, char **argv) {
@@ -64,13 +64,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Errore: Fallito parsing del file di configurazione \"%s\": %s\n", argv[1], strerror(errno));
         return errcode;
     }
-
-    // stampo alcuni parametri del server
-    printf("thread pool size: %ld\n", run_params.thread_pool);
-    printf("max memory size: %ldMbyte\n", run_params.max_memsz);
-    printf("max file count: %ld\n", run_params.max_fcount);
-    printf("socket path: %s\n", run_params.sock_path);
-    printf("log file path: %s\n", run_params.log_path);
 
     // parsing completato con successo: apro il file di log
     // in append e creandolo se non esiste
@@ -184,10 +177,10 @@ int main(int argc, char **argv) {
     int fd;
     int max_fd_idx;
     if(listen_connections > server_ds->feedback[0]) {
-    max_fd_idx = listen_connections;
-}
-if(server_ds->termination[0] > max_fd_idx) {
-    max_fd_idx = server_ds->termination[0];
+        max_fd_idx = listen_connections;
+    }
+    if(server_ds->termination[0] > max_fd_idx) {
+        max_fd_idx = server_ds->termination[0];
     }
 
     // Esco da questo while soltanto se uno dei segnali di terminazione viene
@@ -207,6 +200,10 @@ if(server_ds->termination[0] > max_fd_idx) {
                 // mando il segnale di terminazione manualmente al thread di terminazione
                 pthread_kill(term_tid, SIGINT);
                 // salto direttamente a fast_term in modo da effettuare la join
+                goto fast_term;
+            }
+            // Se non vi è alcun client connesso allora il server deve terminare
+            else if(server_ds->slow_term && server_ds->connected_clients == 0) {
                 goto fast_term;
             }
         }
@@ -233,30 +230,9 @@ if(server_ds->termination[0] > max_fd_idx) {
                     // solo listen_connections da quelli ascoltati dalla select
                     FD_CLR(listen_connections, &fd_read);
 
-                    if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
-                        if(logging(server_ds, errno, "Fallito lock coda di richieste") == -1) {
-                            perror("Fallito lock coda di richieste");
-                        }
-                        return -1;
-                    }
-
-                    // Inserisco tante richieste di terminazione lenta quanti sono i workers
-                    struct request_t *req = newrequest(FAST_TERM, 0, 0, 0);
-
-                    if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), -1) == -1) {
-                        if(logging(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
-                            perror("Fallito inserimento nella coda di richieste");
-                        }
-                        return -1;
-                    }
-                    // Quindi segnalo ai thread worker che vi è una nuova richiesta
-                    pthread_cond_broadcast(&(server_ds->new_job));
-
-                    if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
-                        if(logging(server_ds, errno, "Fallito unlock coda di richieste") == -1) {
-                            perror("Fallito unlock coda di richieste");
-                        }
-                        return -1;
+                    // Se non vi è alcun client connesso allora il server deve terminare
+                    if(server_ds->connected_clients == 0) {
+                        goto fast_term;
                     }
 
                     break; // altri socket pronti sono esaminati solo dopo aver aggiornato il set
@@ -357,6 +333,13 @@ if(server_ds->termination[0] > max_fd_idx) {
                         new_maxfd = sock;
                     }
                 }
+                else {
+                    // Se il client ha chiuso la connessione devo controllare quanti client sono ancora connessi
+                    // Se sono 0 ed avevo ricevuto SIGHUP allora il server deve terminare
+                    if(server_ds->connected_clients == 0 && server_ds->slow_term) {
+                        goto fast_term;
+                    }
+                }
                 break; // valuto di nuovo i socket pronti dopo aver ascoltato sock
             }
             // Se ho ricevuto una richiesta da un client devo inserirla nella coda di richieste
@@ -398,7 +381,6 @@ if(server_ds->termination[0] > max_fd_idx) {
     }
 
 fast_term:
-    printf("fast term...\n");
     // Risveglio tutti i thread sospesi sulla variabile di condizione della coda di richieste
     pthread_cond_broadcast(&(server_ds->new_job));
     // Aspetto la terminazione dei worker thread (terminano da soli, ma necessario per deallocare risorse)
@@ -409,7 +391,7 @@ fast_term:
                 perror("Impossibile effettuare il join dei thread");
             }
             free(workers);
-            stats(server_ds);
+            stats(&run_params, server_ds);
             clean_server(&run_params, server_ds);
             return errcode;
         }
@@ -421,13 +403,13 @@ fast_term:
             errno = errcode;
             perror("Impossibile effettuare il join dei thread");
         }
-        stats(server_ds);
+        stats(&run_params, server_ds);
         clean_server(&run_params, server_ds);
         return errcode;
     }
 
     // Stampo su stdout statistiche
-    stats(server_ds);
+    stats(&run_params, server_ds);
     // libero strutture dati del server
     clean_server(&run_params, server_ds);
 
@@ -516,13 +498,21 @@ void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const in
 }
 
 // Stampa su stdout delle statistiche di utilizzo del server
-void stats(struct fs_ds_t *ds) {
+void stats(struct serv_params *params, struct fs_ds_t *ds) {
+    // stampo alcuni parametri del server
+    puts("======= PARAMETRI DEL SERVER =======");
+    printf("Numero di thread worker: %ld\n", params->thread_pool);
+    printf("Quantità massima di memoria: %ld Mbyte\n", params->max_memsz);
+    printf("Massimo numero di file: %ld\n", params->max_fcount);
+    printf("Socket path: %s\n", params->sock_path);
+    printf("Log file path: %s\n", params->log_path);
+    puts("======= STATISTICHE D'USO =======");
     printf("Client connessi al momento della terminazione: %lu\n", ds->connected_clients);
     printf("Chiamate algoritmo di rimpiazzamento FIFO: %lu\n", ds->cache_triggered);
+    printf("Massima quantità di memoria occupata : %lu Mbyte (%lu byte)\n", ds->max_used_mem/1048576, ds->max_used_mem);
+    printf("Memoria in uso al momento della terminazione: %lu Mbyte (%lu byte)\n", ds->curr_mem/1048576, ds->curr_mem);
     printf("Massimo numero di file aperti: %lu\n", ds->max_nfiles);
     printf("File aperti al momento della terminazione: %lu\n", ds->curr_files);
-    printf("Massima quantità di memoria occupata : %.3f Mbyte (%lu byte)\n", (float)ds->max_used_mem/1048576.0, ds->max_used_mem);
-    printf("Memoria in uso al momento della terminazione: %.3f Mbyte (%lu byte)\n", (float)ds->curr_mem/1048576.0, ds->curr_mem);
     printf("File presenti nel server alla terminazione (ordinati dal meno recente al più recente):\n");
     struct node_t *file = ds->cache_q->head;
     long int i = 0;

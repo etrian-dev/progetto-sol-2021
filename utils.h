@@ -17,6 +17,7 @@ char *get_fullpath(const char *base, const char *name);
 // Funzione per convertire una stringa s in un long int
 int isNumber(const char* s, long* n);
 // Funzione per la duplicazione di una stringa allocata sullo heap
+// Ritorna 0 se ha successo, -1 altrimenti
 int string_dup(char **dest, const char *src);
 
 // Definisco una coda come lista concatenata

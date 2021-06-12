@@ -130,7 +130,7 @@ struct fs_ds_t {
 
     // Pipe per la gestione della terminazione
     int termination[2];
-    int worker_term;
+    int slow_term;
 
     // File descriptor del file di log del server
     int log_fd;

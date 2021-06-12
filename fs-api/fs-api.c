@@ -3,6 +3,8 @@
 // header utilità
 #include <utils.h>
 // syscall headers
+#include <sys/types.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -485,7 +487,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     return 0;
 }
 
-// Invia al server la richiesta di scrittura (creazione) del file pathname
+// Invia al server la richiesta di scrittura del file pathname
 int writeFile(const char *pathname, const char *dirname) {
     // controllo che questo client sia connesso
     int pos = -1;
@@ -497,8 +499,32 @@ int writeFile(const char *pathname, const char *dirname) {
     // ottengo il suo socket
     int csock = clients_info->client_id[2 * pos];
 
+    // provo ad aprire il file con il path passato
+    int ffd = open(pathname, O_RDONLY);
+    if(ffd == -1) {
+        // Errore nell'apertura del file
+        return -1;
+    }
+    struct stat info;
+    memset(&info, 0, sizeof(struct stat));
+    if(fstat(ffd, &info) == -1) {
+        // Impossibile ottenere informazioni sul file
+        return -1;
+    }
+    // Sapendo la dimensione alloco il buffer e leggo i dati
+    void *data = malloc(info.st_size);
+    if(!data) {
+        // Fallita allocazione buffer dati
+        return -1;
+    }
+    if(readn(ffd, data, info.st_size) != info.st_size) {
+        // errore di lettura
+        return -1;
+    }
+    // Letto il buffer contenente i dati: mando la richiesta di scrittura
+
     // preparo la richiesta
-    struct request_t *request = newrequest(WRITE_FILE, 0, strlen(pathname) + 1, 0);
+    struct request_t *request = newrequest(WRITE_FILE, 0, strlen(pathname) + 1, info.st_size);
     if(!request) {
         // errore di allocazione
         return -1;
@@ -508,8 +534,13 @@ int writeFile(const char *pathname, const char *dirname) {
         free(request);
         return -1;
     }
-    // Scrivo il path del file da creare sul socket
+    // Scrivo il path del file da scrivere
     if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+        free(request);
+        return -1;
+    }
+    // Scrivo i dati del file
+    if(writen(csock, data, info.st_size) == -1) {
         free(request);
         return -1;
     }
@@ -531,8 +562,60 @@ int writeFile(const char *pathname, const char *dirname) {
         return -1;
     }
 
+    // Da qua in poi prosegue in modo identico a appendToFile
+    // Controllo se ho avuto delle espulsioni di file
+    if(rep->nbuffers > 0) {
+        // leggo le dimensioni dei file ricevuti
+        size_t *sizes = malloc(rep->nbuffers * sizeof(size_t));
+        if(!sizes) {
+            // fallita allocazione
+            free(rep);
+            return -1;
+        }
+        if(readn(csock, sizes, rep->nbuffers * sizeof(size_t)) != rep->nbuffers * sizeof(size_t)) {
+            // fallita lettura
+            free(sizes);
+            free(rep);
+            return -1;
+        }
+
+        // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
+        char *paths = malloc(rep->paths_sz);
+        if(!paths) {
+            // errore di allocazione
+            free(sizes);
+            free(rep);
+            return -1;
+        }
+        if(readn(csock, paths, rep->paths_sz) != rep->paths_sz) {
+            // lettura path incompleta
+            free(sizes);
+            free(paths);
+            free(rep);
+            return -1;
+        }
+
+        int num_docs = -1; // write_swp restituisce il numero di file ricevuti e scritti in dirname
+        num_docs = write_swp(csock, dirname, rep->nbuffers, sizes, paths);
+        if(num_docs == -1) {
+            // Qualcosa ha fallito
+            free(sizes);
+            free(paths);
+            free(rep);
+            return -1;
+        }
+        free(sizes);
+        free(paths);
+    } // Altrimenti nessun file è stato espulso
+
+    // libero memoria
     free(rep);
 
     // Operazione consentita
     return 0;
+}
+
+// invia al server la richiesta di rimozione del file dal server
+int removeFile(const char *pathname) {
+;
 }

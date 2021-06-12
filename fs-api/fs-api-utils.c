@@ -221,7 +221,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
 
     // cambio directory a quella specificata da dir per cui i path dei file
     // che creo sono relativi a questa directory
-    if(dir && !dir_abspath || chdir(dir_abspath) == -1) {
+    if((dir && !dir_abspath) || chdir(dir_abspath) == -1) {
         // errore nel cambio di directory
         free(orig);
         free(dir_abspath);

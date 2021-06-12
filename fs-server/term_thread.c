@@ -32,7 +32,6 @@ void *term_thread(void *params) {
         if(signal == SIGINT || signal == SIGQUIT) {
             // per segnalare terminazione veloce scrivo la richiesta seguente sulla coda
             term = FAST_TERM;
-            ds->worker_term = term;
             write(ds->termination[1],  &term, sizeof(term));
         }
         // terminazione lenta: le connessioni esistenti rimangono aperte
@@ -40,7 +39,7 @@ void *term_thread(void *params) {
         else if(signal == SIGHUP) {
             // per segnalare terminazione lenta scrivo 2 sulla pipe
             term = SLOW_TERM;
-            ds->worker_term = term;
+            ds->slow_term = 1;
             write(ds->termination[1],  &term, sizeof(term));
         }
     }
