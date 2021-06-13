@@ -175,56 +175,58 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         return -1;
     }
 
-    // salvo la directory di lavoro corrente
-    char *orig = malloc(BUF_BASESZ * sizeof(char));
-    if(!orig) {
-        // errore di allocazione
-        return -1;
-    }
-    size_t dir_sz = BUF_BASESZ;
-    errno = 0; // resetto errno per esaminare eventuali errori
-    while(orig && getcwd(orig, dir_sz) == NULL) {
-        // Se errno è diventato ERANGE allora il buffer allocato non è abbastanza grande
-        if(errno == ERANGE) {
-            // rialloco orig, con la politica di raddoppio della size
-            char *newbuf = realloc(orig, BUF_BASESZ * 2);
-            if(newbuf) {
-                orig = newbuf;
-                dir_sz *= 2;
-                errno = 0; // resetto errno in modo da poterlo testare dopo la guardia
+    // Rispettivamente saranno la directory di lavoro corrente e il path assoluto alla
+    // directory nella quale scrivere gli nbufs di cui sono fornite dimensioni e pathname
+    char *cwd = NULL; // cwd la mantengo per ripristinarla al termine della funzione
+    char *dir_abspath = NULL;
+    // Ottengo il path assoulto della directory
+    if(dir[0] != '/') {
+        // salvo la directory di lavoro corrente
+        cwd = malloc(BUF_BASESZ * sizeof(char));
+        if(!cwd) {
+            // errore di allocazione
+            return -1;
+        }
+        size_t dir_sz = BUF_BASESZ;
+        errno = 0; // resetto errno per esaminare eventuali errori
+        while(cwd && getcwd(cwd, dir_sz) == NULL) {
+            // Se errno è diventato ERANGE allora il buffer allocato non è abbastanza grande
+            if(errno == ERANGE) {
+                // rialloco cwd, con la politica di raddoppio della size
+                char *newbuf = realloc(cwd, BUF_BASESZ * 2);
+                if(newbuf) {
+                    cwd = newbuf;
+                    dir_sz *= 2;
+                    errno = 0; // resetto errno in modo da poterlo testare dopo la guardia
+                }
+                else {
+                    // errore di riallocazione
+                    free(cwd);
+                    return -1;
+                }
             }
+            // se si è verificato un altro errore allora esco con fallimento
             else {
-                // errore di riallocazione
-                free(orig);
+                free(cwd);
                 return -1;
             }
         }
-        // se si è verificato un altro errore allora esco con fallimento
-        else {
-            free(orig);
+        // Adesso cwd contiene il path della directory corrente
+        dir_abspath = get_fullpath(cwd, dir);
+        if(!dir_abspath) {
+            free(cwd);
+            free(paths_cpy);
             return -1;
         }
-    }
-    // Adesso orig contiene il path della directory corrente
-
-    // ottengo il path assoluto di dir (se già non lo è)
-    char *dir_abspath = NULL;
-    if(dir && dir[0] != '/') {
-        dir_abspath = get_fullpath(orig, dir);
-    }
-    else if(dir && dir[0] == '.'){
-        dir_abspath = &dir[2];
-    }
-    else {
-        dir_abspath = dir;
     }
 
     // cambio directory a quella specificata da dir per cui i path dei file
     // che creo sono relativi a questa directory
-    if(dir && !dir_abspath || chdir(dir_abspath) == -1) {
+    if((dir && !dir_abspath) || chdir(dir_abspath) == -1) {
         // errore nel cambio di directory
-        free(orig);
+        free(cwd);
         free(dir_abspath);
+        free(paths_cpy);
         return -1;
     }
 
@@ -252,16 +254,21 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         // Se era stata fornito il path allora devo creare il file (opero su path relativi alla directory)
         if(dir) {
             int file_fd;
-            char *fname = strrchr(abs_filepath, '/');
-            if((file_fd = creat(fname + 1, PERMS_ALL_READ)) == -1) {
+            // Il nome del file da scrivere sarà dir_abspath/abs_filepath
+            char *fname = get_fullpath(dir_abspath, abs_filepath + 1);
+            if(fname && (file_fd = creat(fname + 1, PERMS_ALL_READ)) == -1) {
                 // fallita creazione file
                 break;
             }
-            if(writen(file_fd, data, sizes[i]) == -1) {
+            if(fname && writen(file_fd, data, sizes[i]) == -1) {
                 // fallita scrittura file
                 close(file_fd);
                 break;
             }
+            else {
+                fprintf(stdout, "Scritto il file %s\n", fname);
+            }
+            if(fname) free(fname);
             close(file_fd);
             file_fd = -1;
         }
@@ -272,7 +279,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
     }
 
     // ripristino la directory originale
-    if(chdir(orig) == -1) {
+    if(chdir(cwd) == -1) {
         // errore nel cambio di directory
         perror("Errore ripristino directory");
         i = -1;
@@ -280,7 +287,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
 
     // libero memoria
     free(paths_cpy);
-    free(orig);
+    free(cwd);
     free(dir_abspath);
 
     return i;

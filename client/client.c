@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
         }
         return 1;
     }
-    
+
     // Se è stato richiesto il messaggio di help stampa quello e poi esce
     // Vi sono altre condizioni  di seguito
     if(options->help_on || argc == 1 || options->fs_socket == NULL) {
@@ -90,11 +90,9 @@ int main(int argc, char **argv) {
                               fprintf(stderr, "[CLIENT %d]: Impossibile leggere il file \"%s\"\n", getpid(), path);
                               perror("readFile");
                              )
-                        break;
                     }
-
                     // Mostro i dati letti
-                    printf("Letto il file %s:\n%s\n", path, (char*)buf);
+                    PRINT(options->prints_on, printf("Letto il file \"%s\" (%lu bytes)\n", path, file_sz);)
 
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
@@ -124,10 +122,9 @@ int main(int argc, char **argv) {
                               fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
                               perror("writeFile");
                              )
-                        break;
                     }
 
-                    printf("Scritto il file %s\n", path);
+                    PRINT(options->prints_on, printf("Scritto il file \"%s\"\n", path);)
 
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
@@ -232,10 +229,9 @@ int main(int argc, char **argv) {
                               fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), dest);
                               perror("appendToFile");
                              )
-                        break;
                     }
 
-                    printf("Concatenato \"%s\" (%lu bytes) al file %s\n", (char*)buf, file_sz, path);
+                    PRINT(options->prints_on, printf("Concatenato \"%s\" (%lu bytes) al file \"%s\"\n", src, file_sz, path);)
 
                     if(closeFile(dest) == -1) {
                         // errore di chiusura: log su stderr

@@ -15,11 +15,6 @@
 #include <string.h>
 #include <errno.h>
 
-void clean(void *p1, void *p2) {
-    if(p1) free(p1);
-    if(p2) free(p2);
-}
-
 // worker thread
 void *work(void *params) {
     struct fs_ds_t *ds = (struct fs_ds_t *)params;
@@ -84,8 +79,48 @@ void *work(void *params) {
             }
             // Ora ho il path
             if(path[0] != '/') {
-                // TODO: creare path assoluto e riassegnarlo a path
+                // salvo la directory di lavoro corrente
+                char *cwd = malloc(BUF_BASESZ * sizeof(char));
+                if(!cwd) {
+                    // errore di allocazione
+                    return -1;
+                }
+                size_t dir_sz = BUF_BASESZ;
+                errno = 0; // resetto errno per esaminare eventuali errori
+                while(cwd && getcwd(cwd, dir_sz) == NULL) {
+                    // Se errno è diventato ERANGE allora il buffer allocato non è abbastanza grande
+                    if(errno == ERANGE) {
+                        // rialloco cwd, con la politica di raddoppio della size
+                        char *newbuf = realloc(cwd, BUF_BASESZ * 2);
+                        if(newbuf) {
+                            cwd = newbuf;
+                            dir_sz *= 2;
+                            errno = 0; // resetto errno in modo da poterlo testare dopo la guardia
+                        }
+                        else {
+                            // errore di riallocazione
+                            free(cwd);
+                            return -1;
+                        }
+                    }
+                    // se si è verificato un altro errore allora esco con fallimento
+                    else {
+                        free(cwd);
+                        return -1;
+                    }
+                }
+                // Adesso cwd contiene il path della directory corrente
+                char *full_path = get_fullpath(cwd, path);
+                if(full_path) {
+                    free(cwd);
+                    free(path);
+                    path = full_path;
+                }
+                else {
+                    pthread_kill(pthread_self(), SIGKILL);
+                }
             }
+            // Ora path contiene il path completo del file su cui operare
         }
 
         // A seconda dell'operazione richiesta chiama la funzione che la implementa
@@ -124,7 +159,6 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            free(path);
             break;
         }
         case CLOSE_FILE: { // operazione di chiusura del file
@@ -142,7 +176,6 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            free(path);
             break;
        	}
         case READ_FILE: { // operazione di lettura di un file
@@ -161,7 +194,6 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            free(path);
             break;
         }
         case READ_N_FILES: { // lettura di n files qualsiasi dal server
@@ -175,7 +207,7 @@ void *work(void *params) {
                 }
             }
             else {
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] readNFiles(%s): Operazione completata con successo", client_sock, path);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] readNFiles(%d): Operazione completata con successo", client_sock, nfiles);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
@@ -189,16 +221,12 @@ void *work(void *params) {
                 if(logging(ds, errno, "appendToFile: Fallita allocazione buffer dati") == -1) {
                     perror("appendToFile: Fallita allocazione buffer dati");
                 }
-                // cleanup
-                clean(path, buf);
                 break;
             }
             if(readn(client_sock, buf, request->buf_len) == -1) {
                 if(logging(ds, errno, "appendToFile: Fallita lettura dati") == -1) {
                     perror("appendToFile: Fallita lettura dati");
                 }
-                // cleanup
-                clean(path, buf);
                 break;
             }
             // scrivo i dati contenuti in buf alla fine del file path (se presente)
@@ -216,8 +244,7 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            // libero memoria
-            clean(path, buf);
+            free(buf);
             break;
         }
         case WRITE_FILE: { // write file
@@ -236,7 +263,6 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            clean(path, NULL);
             break;
         }
         case LOCK_FILE: { // unlock file
@@ -256,7 +282,6 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            clean(path, NULL);
             break;
         }
         case UNLOCK_FILE: { // unlock file
@@ -275,7 +300,6 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            clean(path, NULL);
             break;
         }
         case REMOVE_FILE: { // remove file
@@ -294,7 +318,6 @@ void *work(void *params) {
                     perror(msg);
                 }
             }
-            clean(path, NULL);
             break;
         }
         default:
@@ -304,6 +327,10 @@ void *work(void *params) {
             }
         }
 
+        if(path) {
+            free(path);
+            path = NULL;
+        }
         free(request); // libero la richiesta servita
 
         // Quindi deposito il socket servito nella pipe di feedback

@@ -77,26 +77,30 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     // oppure se il file è presente ed è stata passata la flag per la creazione
     // oppure se il file esiste ed è lockato da qualche altro client
     // allora l'operazione di apertura/creazione fallisce
-    else if(    (!file && !(flags & O_CREATEFILE))
-                || (file && (flags & O_CREATEFILE))
-                || (file->lockedBy != -1))
-    {
+    else if((!file && !(flags & O_CREATEFILE)) || (file && (flags & O_CREATEFILE)) || (file->lockedBy != -1)) {
         reply = newreply(REPLY_NO, 0, NULL);
         if(logging(ds, 0, "openFile: impossibile aprire/creare il file") == -1) {
             perror("openFile: impossibile aprire/creare il file");
         }
         success = -1;
     }
-    // File trovato nella tabella: provo ad aprirlo
+    // File trovato nella tabella
     else {
         size_t i = 0;
         int isOpen = 0;
+        // Cerco questo socket tra quelli che hanno aperto il file
+        pthread_mutex_lock(&(file->mux_file));
+        while(file->modifying == 1) {
+            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+        }
         while(!isOpen && i < file->nopened) {
             if(file->openedBy[i] == client_sock) {
                 isOpen = 1;
             }
             i++;
         }
+        pthread_mutex_unlock(&(file->mux_file));
+
         if(isOpen) {
             // File già aperto da questo client: l'operazione di apertura fallisce
             reply = newreply(REPLY_NO, 0, NULL);
@@ -108,7 +112,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         else {
             // Il File non era aperto da questo client: lo apro
             pthread_mutex_lock(&(file->mux_file));
-
+            // Aspetto che altre modifiche siano completate prima di procedere all'apertura
             while(file->modifying == 1) {
                 pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
             }
@@ -122,7 +126,6 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                     perror("openFile: apertura file non riuscita");
                 }
                 success = -1;
-
             }
             else {
                 // Apertura OK: setto il file come aperto dal socket
@@ -133,9 +136,6 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 if(flags & O_LOCKFILE) {
                     file->lockedBy = client_sock;
                 }
-
-                reply = newreply(REPLY_YES, 0, NULL);
-
                 // aggiorno info client
                 if(update_client_op(ds, client_sock, OPEN_FILE, flags, pathname) == -1) {
                     // fallito aggiornamento stato client
@@ -143,10 +143,11 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                         perror("Fallito aggiornamento stato client");
                     }
                 }
+
+                reply = newreply(REPLY_YES, 0, NULL);
             }
 
             file->modifying = 0;
-            pthread_cond_signal(&(file->mod_completed));
             pthread_mutex_unlock(&(file->mux_file));
         }
     }
@@ -157,6 +158,10 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             success = -1;
         }
         free(reply);
+    }
+    else {
+        // Fallita allocazione risposta (probabilmente dovuto ad un errore di memoria)
+        success = -1;
     }
 
     return success; // 0 se successo, -1 altrimenti
@@ -177,8 +182,15 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
     	success = -1;
     }
     else {
-   		// file presente: devo controllare se il client che richiede la sua chiusura abbia aperto il file
-   		size_t i = 0;
+        pthread_mutex_lock(&(file->mux_file));
+        while(file->modifying == 1) {
+            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+        }
+        file->modifying = 1;
+
+   		// file presente: devo controllare se il client che richiede la sua chiusura
+        // lo abbia aperto in precedenza
+        size_t i = 0;
    		while(i < file->nopened && file->openedBy[i] != client_sock) {
    			i++;
    		}
@@ -189,13 +201,6 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
    		}
         else {
             // altrimenti il file era aperto: lo chiudo per questo socket
-            pthread_mutex_lock(&(file->mux_file));
-
-            while(file->modifying == 1) {
-                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
-            }
-            file->modifying = 1;
-
             for(; i < file->nopened - 1; i++) {
                 file->openedBy[i] = file->openedBy[i+1];
             }
@@ -210,21 +215,21 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
             }
             // rispondo positivamente alla api
             reply = newreply(REPLY_YES, 0, NULL);
-
-            file->modifying = 0;
-            pthread_cond_signal(&(file->mod_completed));
-            pthread_mutex_unlock(&(file->mux_file));
         }
+        file->modifying = 0;
+        pthread_mutex_unlock(&(file->mux_file));
    	}
 
    	if(reply) {
    		if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
    			// fallita scrittura sul socket
-   			perror("Fallita scrittura sul socket");
             success = -1;
    		}
    		free(reply);
    	}
+    else {
+        success = -1;
+    }
 
    	return success;
 }
@@ -240,10 +245,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
         // chiave non trovata => ritorna errore
-        if((reply = newreply(REPLY_NO, 0, NULL)) == NULL) {
-            // errore allocazione risposta
-            puts("errore alloc risposta"); // TODO: log
-        }
+        reply = newreply(REPLY_NO, 0, NULL);
         if(logging(ds, 0, "readFile: file non trovato") == -1) {
             perror("readFile: file non trovato");
         }
@@ -251,9 +253,14 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     }
     // file trovato: guardo se era stato aperto da questo client
     else {
-        // TODO: lock?
         int i, isOpen;
         i = isOpen = 0;
+
+        pthread_mutex_lock(&(file->mux_file));
+        while(file->modifying == 1) {
+            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+        }
+
         while(!isOpen && i < file->nopened) {
             if(file->openedBy[i] == client_sock) {
                 isOpen = 1; // aperto da questo client
@@ -262,15 +269,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
         // Se è stato aperto da questo client allora posso leggerlo
         if(isOpen) {
-            // Nella risposta includo la dimensione del file da inviare, in modo da consentire al
-            // client di preparare un buffer della dimensione giusta
-            if((reply = newreply(REPLY_YES, 1, NULL)) == NULL) {
-                // errore allocazione risposta
-                puts("errore alloc risposta"); // TODO: log
-            }
-            // setto manualmente la dimensione del file al posto della lunghezza dei path
-            reply->paths_sz = file->size;
-
+            reply = newreply(REPLY_YES, 1, NULL);
             // aggiorno info client
             if(update_client_op(ds, client_sock, READ_FILE, 0, pathname) == -1) {
                 // fallito aggiornamento stato client
@@ -278,33 +277,43 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                     perror("Fallito aggiornamento stato client");
                 }
             }
+            // setto manualmente la dimensione del file al posto della lunghezza dei path
+            // per permettere alla API di allocare un buffer di dimensione adeguata
+            if(reply) {
+                reply->paths_sz = file->size;
+                if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
+                    // fallito invio risposta
+                    success = -1;
+                }
+                if(success != 0 || writen(client_sock, file->data, file->size) != file->size) {
+                    success = -1;
+                }
+                free(reply);
+                reply = NULL; // setto a NULL per evitare di interferire con il test successivo
+            }
         }
         else {
             // Operazione negata: il client non aveva aperto il file
-            if((reply = newreply(REPLY_NO, 0, NULL)) == NULL) {
-                // errore allocazione risposta
-                puts("errore alloc risposta"); // TODO: log
-            }
-            if(logging(ds, 0, "readFile: il file non è stato aperto") == -1) {
-                perror("readFile: il file non è stato aperto");
+            reply = newreply(REPLY_NO, 0, NULL);
+            if(logging(ds, 0, "readFile: il file non era aperto") == -1) {
+                perror("readFile: il file non era aperto");
             }
             success = -1;
         }
+
+        pthread_mutex_unlock(&(file->mux_file));
     }
 
-    // Scrivo la risposta
+    // Scrivo la risposta (se è REPLY_NO, altrimenti è già stata inviata)
     if(reply) {
-        writen(client_sock, reply, sizeof(*reply));
+        if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
+            // fallito invio risposta
+            success = -1;
+        }
+        free(reply);
     }
     else {
         success = -1;
-    }
-    // Se la lettura è autorizzata allora invio il file sul socket
-    if(success == 0 && reply->status == REPLY_YES) {
-        writen(client_sock, file->data, file->size);
-    }
-    if(reply) {
-        free(reply);
     }
 
     return success;
@@ -314,13 +323,11 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
 // Se n<=0 allora legge tutti i file presenti nel server
 // Se ha successo ritorna il numero di file letti, -1 altrimenti
 int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
-    int success = 0;
-
     // Utilizzo la coda di path per ottenere dei file da inviare. Di conseguenza invio
     // sempre al client i file meno recenti nel server (per una maggiore efficienza,
     // dato che è una lista concatenata con il solo forward pointer)
-
-    // Determino il numero di file che invierò, in modo da renderlo noto alla API
+    int success = 0;
+    // num_sent conterrà il numero di file che invierò, in modo da renderlo noto alla API
     int num_sent = 0;
     struct node_t *curr = ds->cache_q->head; // l'indirizzo del nodo contenente il primo path
     while((n <= 0 || num_sent < n) && curr) {
@@ -335,9 +342,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
     size_t *sizes = malloc(num_sent * sizeof(size_t));
     // path dei suddetti file
     char **paths = malloc(num_sent * sizeof(char*));
-
     char *all_paths = NULL; // conterrà tutti i path dei file concatenati
-
     struct reply_t *rep = NULL;
 
     if(!(files && sizes && paths)) {
@@ -467,27 +472,35 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
         }
         success = -1;
     }
-    // file trovato: se era lockato da un altro client allora non posso modificarlo
-    else if(file->lockedBy != -1 && file->lockedBy != client_sock) {
-        reply = newreply(REPLY_NO, 0, NULL);
-        if(logging(ds, 0, "api_appendToFile: file lockato da un altro client") == -1) {
-            perror("api_appendToFile: file lockato da un altro client");
-        }
-        success = -1;
-    }
     else {
-        i = 0;
-        isOpen = 0; // flag per determinare se il file era aperto
-        while(!isOpen && i < file->nopened) {
-            if(file->openedBy[i] == client_sock) {
-                isOpen = 1; // aperto da questo client
-            }
-            i++;
+        pthread_mutex_lock(&(file->mux_file));
+        while(file->modifying == 1) {
+            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
         }
+
+        // file trovato: se era lockato da un altro client allora non posso modificarlo
+        if(file->lockedBy != -1 && file->lockedBy != client_sock) {
+            reply = newreply(REPLY_NO, 0, NULL);
+            if(logging(ds, 0, "api_appendToFile: file lockato da un altro client") == -1) {
+                perror("api_appendToFile: file lockato da un altro client");
+            }
+            success = -1;
+        }
+        else {
+            i = 0;
+            isOpen = 0; // flag per determinare se il file era aperto
+            while(!isOpen && i < file->nopened) {
+                if(file->openedBy[i] == client_sock) {
+                    isOpen = 1; // aperto da questo client
+                }
+                i++;
+            }
+        }
+
+        pthread_mutex_unlock(&(file->mux_file));
     }
 
     int nevicted = 0; // numero di file espulsi
-    // Se è aperto da questo client e non è lockato allora è possibile modificarlo
     if(success == 0 && isOpen) {
         // Se la scrittura provoca capacity miss (per quantità di memoria) allora chiamo l'algoritmo di rimpiazzamento
         if(ds->curr_mem + size > ds->max_mem) {
@@ -511,9 +524,9 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
 
     // Se il file era aperto allora lo modifico
     if(success == 0 && isOpen) {
+        // Sincronizzazione interna a insert_file
         if(insert_file(ds, pathname, 0, buf, size, client_sock)) {
-            // L'inserimento ha avuto successo
-            // Devo inviare eventuali files espulsi al client
+            // L'inserimento ha avuto successo; devo inviare eventuali files espulsi al client
             if(nevicted > 0) {
                 struct node_t *str = evicted_paths->head; // coda dei path dei file espulsi
                 struct node_t *fs = evicted->head; // coda dei dati dei file espulsi
@@ -546,8 +559,6 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                         }
                     }
                 }
-
-                //
                 if(success == 0) {
                     // assegno la stringa a all_paths
                     build_pathstr(&all_paths, paths, nevicted);

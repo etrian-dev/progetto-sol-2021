@@ -17,7 +17,7 @@ all: shell_perms dirs $(UTILS) $(HTABLE)
 	$(MAKE) -C fs-api
 	$(MAKE) -C fs-server
 	$(MAKE) -C client
-	
+
 $(UTILS): utils.o
 	$(CC) $(CFLAGS) -shared -o $@ $< -lpthread
 	# sposto i file oggetto creati
@@ -43,11 +43,12 @@ dirs:
 clean:
 	# rimuove gli eseguibili (se presenti)
 	-rm -fr $(wildcard ./*.out)
-	
+
 cleanall: clean
 	# rimuove tutto quello che è stato generato
-	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o) $(wildcard *.conf) \
-	$(wildcard ./*.log) $(wildcard ./*.sock)
+	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o)
+	-rm -fr $(wildcard *.conf) $(wildcard ./*.log) $(wildcard ./*.sock)
+	-rm -fr save_reads save_writes
 test1: all
 	# Creo il file di configurazione del server per il test1
 	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
