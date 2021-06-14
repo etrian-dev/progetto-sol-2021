@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Lancio il server in background
-./fs-server.out -f test3.conf &
+./fs-server.out -f test2.conf &
 
 # Un breve delay per assicurare che il server sia partito
 sleep 1
@@ -13,10 +13,12 @@ sleep 1
 # per salvare eventuali file espulsi la directory save_writes creata
 mkdir save_writes
 ./client.out -p -f $1 -w testcases,0 -D save_writes
+./client.out -p -f $1 -R 5
+./client.out -p -f $1 -R 0 -d save_reads
 
-server_pid=$(pidof ./fs-server.out)
+server_pid=$(pidof fs-server.out)
 # Quindi invia il segnale di terminazione al server
-kill -1 $server_pid
+kill -2 $server_pid
 # aspetta la terminazione del server e poi termina lo script
 wait $server_pid
 echo "Test 2 terminato"

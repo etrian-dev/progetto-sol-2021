@@ -3,7 +3,7 @@ Fix terminazione soft_term (SIGHUP)
 Garantire atomicità della appendToFile (?)
 Testare algoritmo rimpiazzamento cache (circa OK)
 
-Testare opzione -w e -R del client e loro corretta implementazione nel server
+Testare/implementare LOCK/UNLOCK/REMOVE
 
 insertFile:
 memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy,
@@ -13,3 +13,13 @@ memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy,
 cambiare PERMS_ALL_READ in PERMISSIONS in tutti i posti dove compare
 ragione: più chiaro quali permessi setta
 
+CLIENT:
+        Se writeFile fallisce rimuovere il file creato dal fileserver (?)
+        Altrimenti rimane un file presente nel server ma vuoto (o no, ma comunque senza i dati
+        che si voleva scrivere). Ad es espulsione di file vuoti a seguito di una -w <dir>,... -D <savedir>
+
+        Verificare memory leaks (?)
+
+API:
+        Mettere lock su struttura dati condivisa?
+        (cioè client_info che memorizza l'associazione socket <=> path del socket)

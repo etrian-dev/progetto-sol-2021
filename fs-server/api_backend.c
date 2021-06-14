@@ -15,7 +15,6 @@
 #include <string.h>
 #include <errno.h>
 
-// TODO: FIX SIGSEGV here
 // Costruisce una stringa contenente i num pathname in paths (str deve essere già allocata)
 void build_pathstr(char **str, const char **paths, const int num) {
     size_t offt = 0; // offset nella stringa di paths
@@ -621,7 +620,8 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
     if(evicted) {
         struct node_t *n = evicted->head;
         while(n) {
-            free_file(n->data);
+            free_file(n->data); // libero manualmente perchè non posso usare una semplice free
+            n->data = NULL; // metto a NULL per evitare una doppia free chiamando free_Queue()
             n = n->next;
         }
         free_Queue(evicted);

@@ -225,33 +225,6 @@ if(server_ds->termination[0] > max_fd_idx) {
                     // devono essere comunque servite le richieste dei client connessi, quindi tolgo
                     // solo listen_connections da quelli ascoltati dalla select
                     FD_CLR(listen_connections, &fd_read);
-
-                    if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
-                        if(logging(server_ds, errno, "Fallito lock coda di richieste") == -1) {
-                            perror("Fallito lock coda di richieste");
-                        }
-                        return -1;
-                    }
-
-                    // Inserisco tante richieste di terminazione lenta quanti sono i workers
-                    struct request_t *req = newrequest(FAST_TERM, 0, 0, 0);
-
-                    if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), -1) == -1) {
-                        if(logging(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
-                            perror("Fallito inserimento nella coda di richieste");
-                        }
-                        return -1;
-                    }
-                    // Quindi segnalo ai thread worker che vi è una nuova richiesta
-                    pthread_cond_broadcast(&(server_ds->new_job));
-
-                    if(pthread_mutex_unlock(&(server_ds->mux_jobq)) == -1) {
-                        if(logging(server_ds, errno, "Fallito unlock coda di richieste") == -1) {
-                            perror("Fallito unlock coda di richieste");
-                        }
-                        return -1;
-                    }
-
                     break; // altri socket pronti sono esaminati solo dopo aver aggiornato il set
                 }
                 // In caso di terminazione veloce chiudo (quasi) tutti i descrittori
@@ -510,7 +483,7 @@ void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const in
 
 // Stampa su stdout delle statistiche di utilizzo del server
 void stats(struct serv_params *params, struct fs_ds_t *ds) {
-    puts("======= STATISTICHE DEL SERVER =======");
+    puts("======= RIEPILOGO DELL\'ESECUZIONE =======");
     printf("Socket del server: %s\n", params->sock_path);
     printf("File di log: %s\n", params->log_path);
     printf("Client connessi al momento della terminazione: %lu\n", ds->connected_clients);
@@ -524,12 +497,19 @@ void stats(struct serv_params *params, struct fs_ds_t *ds) {
     printf("File aperti al momento della terminazione: %lu\n", ds->curr_files);
     printf("Massimo numero di file aperti durante l'esecuzione: %lu\n", ds->max_nfiles);
     printf("File presenti nel server alla terminazione (ordinati dal meno recente al più recente):\n");
-    struct node_t *file = ds->cache_q->head;
+    struct node_t *path = ds->cache_q->head;
+    struct fs_filedata_t *file = NULL;
     long int i = 0;
-    while(file) {
-        printf("\"%s\"\n", (char*)file->data);
-        file = file->next;
-        i++;
+    while(path) {
+        file = find_file(ds, (char*)path->data);
+        printf("\"%s\"", (char*)path->data);
+        if(file) {
+            printf(" (%lu bytes)\n", file->size);
+        }
+        else {
+            printf(": Impossibile recuperare il file (inconsistenza tra hashtable e coda di file\n");
+        }
+        path = path->next;
     }
     puts("===============");
 }

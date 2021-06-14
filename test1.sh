@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script per testare il funzionamento delle opzioni del client e la relativa implementazione
-# Il server viene eseguito con valgrind per catturare eventuali memory leak 
+# Il server viene eseguito con valgrind per catturare eventuali memory leak
 # Il socket del server al quale i client si devono connettere è il primo parametro passato allo script
 # ed è specificato nel file test1.conf generato dal target test1 del Makefile
 
@@ -19,7 +19,7 @@ delay=200
 ./client.out -p -t $delay -f $1 -r f2
 # Scrive nel server tutti i file presenti nella directory testcases (e ricorsivamente nelle sottodirectory)
 # Eventuali file espulsi per capacity misses vengono buttati via dal client
-# (anche se in questo caso non succede: vi sono 50 file per un totale di 17 Mbytes, 
+# (anche se in questo caso non succede: vi sono 50 file per un totale di 17 Mbytes,
 # per cui rientra nei limiti imposti dal fileserver)
 ./client.out -p -t $delay -f $1 -w testcases,0
 # Legge tutti i file presenti nel server (tutti quelli in testcases) e li salva nella directory save_reads
@@ -30,7 +30,7 @@ mkdir save_reads
 # In questo caso il server sta eseguendo con valgrind, perciò il pid è quello di valgrind.bin
 server_pid=$(pidof valgrind.bin)
 # Quindi invia il segnale di terminazione lenta al server (SIGHUP)
-kill -1 $server_pid
+kill -2 $server_pid
 # aspetta la terminazione del server e poi termina lo script
 wait $server_pid
 echo "Test 1 terminato"
