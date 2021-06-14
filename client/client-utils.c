@@ -123,7 +123,7 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
                 char *maxfiles = strtok_r(NULL, " ", &save_stat);
                 long int nfiles = 0;
 
-                if(string_dup(&(params->dir_write), optarg) == -1) {
+                if(string_dup(&(params->dir_write), dirname) == -1) {
                     // errore nella duplicazione
                     return -1;
                 }
@@ -298,7 +298,7 @@ long int visit_dir(struct Queue *pathlist, struct Queue *datalist, const char *b
     // Adesso orig contiene il path della directory corrente
 
     // ottengo il path assoluto di basedir (se già non lo è)
-    char *basedir_abspath = NULL;
+    const char *basedir_abspath;
     if(basedir && basedir[0] != '/') {
         basedir_abspath = get_fullpath(orig, basedir);
     }

@@ -391,7 +391,7 @@ if(server_ds->termination[0] > max_fd_idx) {
     }
 
 fast_term:
-    printf("fast term...\n");
+    printf("[SERVER] Terminazione %s\n", (server_ds->slow_term == 1 ? "lenta" : "veloce"));
     // Risveglio tutti i thread sospesi sulla variabile di condizione della coda di richieste
     pthread_cond_broadcast(&(server_ds->new_job));
     // Aspetto la terminazione dei worker thread (terminano da soli, ma necessario per deallocare risorse)

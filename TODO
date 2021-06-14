@@ -1,31 +1,15 @@
-Logging server:
-definire funzione con stringa di formato in modo da poter passare nome file
-su cui effettuo operazioni
-
 SERVER:
-Fix terminazione soft_term (SIGHUP) e fast_term (SIGINT, SIGQUIT)
-(?) Alcune ulteriori mutex (ad esempio aggiornamento memoria e numero file)
-Garantire atomicità della appendToFile
-Logica di check per le operazioni precedenti
-Testare algoritmo rimpiazzamento cache
+Fix terminazione soft_term (SIGHUP)
+Garantire atomicità della appendToFile (?)
+Testare algoritmo rimpiazzamento cache (circa OK)
 
 Testare opzione -w e -R del client e loro corretta implementazione nel server
-Fixare terminazione per socket chiuso dopo chiusura connessione client
 
-api_backend.c:
 insertFile:
 memmove o memcpy? ragionevolmente non si sovrappongono, quindi direi memcpy,
         ma al fine di evitare bug difficili da rintracciare al momento ho preferito memmove
         NOTA: https://stackoverflow.com/questions/4480098/memmove-doesnt-move
-        API:
-        implementare writeFile
-        CLIENT:
-        Testing?
 
-        Fixare newreply in tutti i posti dove compare
-        
 cambiare PERMS_ALL_READ in PERMISSIONS in tutti i posti dove compare
 ragione: più chiaro quali permessi setta
 
-FIX client-utils.c:visit_dir:opendir (line 303) restituisce errno = 2 (ENOENT)
-Path relativo? guardare lezione 5

@@ -182,7 +182,6 @@ struct fs_filedata_t *insert_file(
 // parametro alla funzione, altrimenti se l'algoritmo di rimpiazzamento fallisce
 // esse non sono allocate e comunque lasciate in uno stato inconsistente
 int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files) {
-    int success = 0; // conterrà il valore di ritorno
     // È possibile che il file possa non entrare nel quantitativo di memoria
     // assegnato al server all'avvio. In tal caso l'algoritmo fallisce (e qualunque operazione collegata)
     if(newsz > ds->max_mem) {
@@ -201,6 +200,8 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         return -1;
     }
 
+    int success = 0;
+    int num_evicted = 0;
     // Almeno un file deve essere espulso se chiamo l'algoritmo, perciò uso un do-while
     int errno_saved = 0;
     pthread_mutex_lock(&(ds->mux_mem));
@@ -243,13 +244,15 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         // Notare che la memoria occupata dal file non viene liberata subito e mantengo un puntatore al file
         // Libero invece la memoria occupata dalla chiave, dato che non è più utile
         if((success = icl_hash_delete(ds->fs_table, victim->data, free, NULL)) != -1) {
-            errno_saved = errno; // salvo errore
             // rimozione OK, decremento numero file nel server e quantità di memoria occupata
             pthread_mutex_lock(&(ds->mux_files));
             ds->curr_files--;
             pthread_mutex_unlock(&(ds->mux_files));
 
             ds->curr_mem -= sz;
+        }
+        else {
+            errno_saved = errno; // salvo errore
         }
 
         if(pthread_mutex_unlock(&(fptr->mux_file)) == -1) {
@@ -296,7 +299,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         free(victim->data);
         free(victim);
 
-        success++; // ho espulso con successo un altro file, quindi incremento il contatore
+        num_evicted++; // ho espulso con successo un altro file, quindi incremento il contatore
     }
     while(ds->curr_mem + newsz >= ds->max_mem);
     pthread_mutex_unlock(&(ds->mux_mem));
@@ -320,5 +323,9 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
 
     errno = errno_saved;
 
-    return success;
+    if(num_evicted > 0) {
+        ds->cache_triggered++;
+    }
+
+    return num_evicted;
 }

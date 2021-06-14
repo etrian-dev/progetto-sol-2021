@@ -350,7 +350,7 @@ int readNFiles(int N, const char *dirname) {
         return -1;
     }
     // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
-    char *paths = malloc(rep->paths_sz * sizeof(char));
+    char *paths = malloc(rep->paths_sz);
     if(!paths) {
         // errore di allocazione
         free(sizes);

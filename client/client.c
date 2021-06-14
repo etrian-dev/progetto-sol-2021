@@ -288,28 +288,29 @@ int main(int argc, char **argv) {
                         break;
                     }
                     // file aperto: creo il file e fornisco la cartella dove salvare eventuali file espulsi
-                    if(success != 0 || (success = writeFile(path, options->dir_swapout)) == -1) {
-                        // errore di lettura
-                        PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
-                        )
+                    if(success == 0) {
+                        if((success = writeFile(path, options->dir_swapout)) == -1) {
+                            // errore di lettura
+                            PRINT(options->prints_on,
+                                  fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
+                            )
+                        }
                     }
                     // scrivo i dati del file (la dimensione è il campo data_sz)
-                    if(success != 0 || (success = appendToFile(path, file_data->data, file_data->data_sz, options->dir_swapout)) == -1) {
-                        // errore di lettura
-                        // errore di append
-                        PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), path);
-                             )
+                    if(success == 0) {
+                        if((success = appendToFile(path, file_data->data, file_data->data_sz, options->dir_swapout)) == -1) {
+                            // errore di scrittura dei dati
+                            PRINT(options->prints_on, fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), path);)
+                        }
                     }
-                    if(success != 0 || (success = closeFile(path)) == -1) {
-                        // errore di chiusura: log su stderr
-                        PRINT(options->prints_on,
-                            fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                        )
+                    if(success == 0) {
+                        if((success = closeFile(path)) == -1) {
+                            // errore di chiusura: log su stderr
+                            PRINT(options->prints_on, fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);)
+                        }
                     }
 
-                    // libero la memoria dell'
+                    // libero la memoria occupata
                     free(elem->data);
                     free(elem);
                     free(file_data->data);

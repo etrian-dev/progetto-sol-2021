@@ -158,8 +158,7 @@ struct reply_t *newreply(const char stat, const int nbuf, const char **names) {
     rep->paths_sz = 0;
 	// calcolo la lunghezza della stringa di path
 	if(names && nbuf > 0) {
-		int i;
-		for(i = 0; i < nbuf; i++) {
+		for(int i = 0; i < nbuf; i++) {
 			// conto anche il carattere di terminazione della stringa '\n'
 			rep->paths_sz += strlen(names[i]) + 1;
 		}
@@ -220,10 +219,8 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         }
     }
 
-    // cambio directory a quella specificata da dir per cui i path dei file
-    // che creo sono relativi a questa directory
     if((dir && !dir_abspath) || chdir(dir_abspath) == -1) {
-        // errore nel cambio di directory
+        perror("chdir error");
         free(cwd);
         free(dir_abspath);
         free(paths_cpy);
@@ -255,12 +252,13 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         if(dir) {
             int file_fd;
             // Il nome del file da scrivere sarà dir_abspath/abs_filepath
-            char *fname = get_fullpath(dir_abspath, abs_filepath + 1);
-            if(fname && (file_fd = creat(fname + 1, PERMS_ALL_READ)) == -1) {
+            char *fname = strrchr(abs_filepath, '/');
+            fname = fname + 1; // Il nome del file non contiene '/' iniziale
+            if((file_fd = creat(fname, PERMS_ALL_READ)) == -1) {
                 // fallita creazione file
                 break;
             }
-            if(fname && writen(file_fd, data, sizes[i]) == -1) {
+            if(writen(file_fd, data, sizes[i]) != sizes[i]) {
                 // fallita scrittura file
                 close(file_fd);
                 break;
@@ -268,7 +266,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
             else {
                 fprintf(stdout, "Scritto il file %s\n", fname);
             }
-            if(fname) free(fname);
+            //if(fname) free(fname);
             close(file_fd);
             file_fd = -1;
         }

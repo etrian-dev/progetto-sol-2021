@@ -100,13 +100,13 @@ void *work(void *params) {
                         else {
                             // errore di riallocazione
                             free(cwd);
-                            return -1;
+                            return (void*)1;
                         }
                     }
                     // se si è verificato un altro errore allora esco con fallimento
                     else {
                         free(cwd);
-                        return -1;
+                        return (void*)1;
                     }
                 }
                 // Adesso cwd contiene il path della directory corrente

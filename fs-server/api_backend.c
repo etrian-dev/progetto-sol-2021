@@ -15,18 +15,19 @@
 #include <string.h>
 #include <errno.h>
 
+// TODO: FIX SIGSEGV here
 // Costruisce una stringa contenente i num pathname in paths (str deve essere già allocata)
 void build_pathstr(char **str, const char **paths, const int num) {
     size_t offt = 0; // offset nella stringa di paths
     int i;
     for(i = 0; i < num; i++) {
-        size_t plen = strlen(paths[i]) + 1; // dimensione dell'i-esimo path
-        *str = strncat(*str, paths[i], plen);
+        size_t plen = strlen(paths[i]); // indice del terminatore dell' i-esimo path
+        *str = strncat(*str, paths[i], plen); // concateno il path a str (che termina con \0)
         // inserisco il separatore (non devo farlo per l'ultimo path: str termina con '\0')
         if(i < num - 1) {
-            *str[offt + plen - 1] = '\n';
-            *str[offt + plen] = '\0';
-            offt += plen;
+            *(*str + offt + plen) = '\n';
+            *(*str + offt + plen + 1) = '\0';
+            offt += plen + 1;
         }
     }
 }
@@ -379,17 +380,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
         }
         else {
             // devo quindi concatenare i num_sent path dei file in all_paths e separarli con '\n'
-            size_t offt = 0;
-            for(i = 0; i < num_sent; i++) {
-                size_t plen = strlen(paths[i]) + 1;
-                all_paths = strncat(all_paths, paths[i], plen);
-                // inserisco il separatore (non devo farlo per l'ultimo path: all_paths termina con '\0')
-                if(i < num_sent - 1) {
-                    all_paths[offt + plen - 1] = '\n';
-                    all_paths[offt + plen] = '\0';
-                    offt += plen;
-                }
-            }
+            build_pathstr(&all_paths, paths, num_sent);
         }
 
 
@@ -539,11 +530,13 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                 }
                 if(success == 0) {
                     // scrivo le dimensioni ed i puntatori ai path
+                    i = 0; // resetto i, perché è stata usata in precedenza
                     while(str && fs) {
                         sizes[i] = ((struct fs_filedata_t*)fs->data)->size;
-                        paths[i] = (char *)fs->data;
+                        paths[i] = (char *)str->data;
                         str = str->next;
                         fs = fs->next;
+                        i++;
                     }
                     // utilizzando le dimensioni ed i path estratti costruisco la risposta
                     if((reply = newreply(REPLY_YES, nevicted, paths)) == NULL) {
@@ -552,7 +545,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                     }
                     // devo quindi concatenare gli nevicted path dei file in all_paths e separarli con '\n'
                     if(success == 0) {
-                        all_paths = malloc(reply->paths_sz);
+                        all_paths = calloc(reply->paths_sz, sizeof(char));
                         if(!all_paths) {
                             // fallita allocazione
                             success = -1;
@@ -606,15 +599,17 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
         }
         // scrivo i file espulsi
         if(success == 0 && reply->status == REPLY_YES && reply->nbuffers > 0 && evicted) {
-            struct node_t *file = evicted->head;
+            // Parto dal primo puntatore a file da scrivere presente nella lista e lo invio sul socket
+            struct node_t *n = evicted->head;
             i = 0;
-            while(file) {
-                if(writen(client_sock, file, sizes[i]) != sizes[i]) {
+            while(n) {
+                struct fs_filedata_t *file = (struct fs_filedata_t *)n->data;
+                if(writen(client_sock, file->data, file->size) != file->size) {
                     // fallita scrittura
                     success = -1;
                     break;
                 }
-                file = file->next;
+                n = n->next;
                 i++;
             }
         }
@@ -623,7 +618,14 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
 
     // posso quindi liberare gli array di supporto e le code
     if(evicted_paths) free_Queue(evicted_paths);
-    if(evicted) free_Queue(evicted);
+    if(evicted) {
+        struct node_t *n = evicted->head;
+        while(n) {
+            free_file(n->data);
+            n = n->next;
+        }
+        free_Queue(evicted);
+    }
     if(sizes) free(sizes);
     if(paths) free(paths);
     if(all_paths) free(all_paths);

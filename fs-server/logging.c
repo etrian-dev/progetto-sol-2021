@@ -125,13 +125,13 @@ int logging(struct fs_ds_t *ds, int errcode, char *message) {
     }
     // Come ultimo carattere devo mettere uno \n
     log_len = strlen(log_msg);
-    log_msg[log_len + 1] = '\n';
+    log_msg[log_len] = '\n';
 
     // Scivo nel file di log in ME
     if(pthread_mutex_lock(&(ds->mux_log)) == -1) {
         perror("Lock fallito");
     }
-    if(writen(ds->log_fd, log_msg, log_len + 2) != log_len + 2) {
+    if(writen(ds->log_fd, log_msg, log_len + 1) != log_len + 1) {
         // errore nella scrittura
         free(log_msg);
         return -1;
