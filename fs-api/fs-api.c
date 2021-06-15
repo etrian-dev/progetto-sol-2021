@@ -5,6 +5,9 @@
 // syscall headers
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 // std headers
 #include <stdio.h>
@@ -497,19 +500,55 @@ int writeFile(const char *pathname, const char *dirname) {
     // ottengo il suo socket
     int csock = clients_info->client_id[2 * pos];
 
-    // preparo la richiesta
-    struct request_t *request = newrequest(WRITE_FILE, 0, strlen(pathname) + 1, 0);
+    // Apro il file con path pathname e ne leggo i dati in un buffer
+    int file_fd;
+    if((file_fd = open(pathname, O_RDONLY)) == -1) {
+        // Fallita apertura del file: ritorno errore al client
+        return -1;
+    }
+    struct stat info;
+    memset(&info, 0, sizeof(struct stat));
+    if(fstat(file_fd, &info) == -1) {
+        // Fallito reperimento informazioni sul file
+        close(file_fd);
+        return -1;
+    }
+    void *data = malloc(info.st_size);
+    if(!data) {
+        // Fallita allocazione buffer dati
+        close(file_fd);
+        return -1;
+    }
+    // Leggo i dati nel buffer
+    if(readn(file_fd, data, info.st_size) != info.st_size) {
+        // Fallita lettura o lettura incompleta
+        close(file_fd);
+        free(data);
+        return -1;
+    }
+    close(file_fd); // Posso quindi chiudere il file
+
+    // Dati letti: invio la richiesta comprendente nel terzo campo la dimensione del buffer
+    // che sarà inviato al server
+    struct request_t *request = newrequest(WRITE_FILE, 0, strlen(pathname) + 1, info.st_size);
     if(!request) {
         // errore di allocazione
         return -1;
     }
     // Scrivo la richiesta sul socket
-    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+    if(writen(csock, request, sizeof(*request)) != sizeof(*request)) {
         free(request);
         return -1;
     }
     // Scrivo il path del file da creare sul socket
     if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+        free(request);
+        return -1;
+    }
+    // Scrivo i dati del file
+    if(writen(csock, data, info.st_size) != info.st_size) {
+        // Fallita scrittura o scrittura incompleta
+        free(data);
         free(request);
         return -1;
     }
@@ -531,9 +570,55 @@ int writeFile(const char *pathname, const char *dirname) {
         return -1;
     }
 
+     // Operazione consentita
+    // Controllo se ho avuto delle espulsioni di file
+    if(rep->nbuffers > 0) {
+        // leggo le dimensioni dei file ricevuti
+        size_t *sizes = malloc(rep->nbuffers * sizeof(size_t));
+        if(!sizes) {
+            // fallita allocazione
+            free(rep);
+            return -1;
+        }
+        if(readn(csock, sizes, rep->nbuffers * sizeof(size_t)) != rep->nbuffers * sizeof(size_t)) {
+            // fallita lettura
+            free(sizes);
+            free(rep);
+            return -1;
+        }
+
+        // leggo i path dei file ricevuti (di cui conosco la lunghezza totale)
+        char *paths = malloc(rep->paths_sz);
+        if(!paths) {
+            // errore di allocazione
+            free(sizes);
+            free(rep);
+            return -1;
+        }
+        if(readn(csock, paths, rep->paths_sz) != rep->paths_sz) {
+            // lettura path incompleta
+            free(sizes);
+            free(paths);
+            free(rep);
+            return -1;
+        }
+
+        int num_docs = -1; // write_swp restituisce il numero di file ricevuti e scritti in dirname
+        num_docs = write_swp(csock, dirname, rep->nbuffers, sizes, paths);
+        if(num_docs == -1) {
+            // Qualcosa ha fallito
+            free(sizes);
+            free(paths);
+            free(rep);
+            return -1;
+        }
+        free(sizes);
+        free(paths);
+    } // Altrimenti nessun file è stato espulso
+
+    // libero memoria
     free(rep);
 
-    // Operazione consentita
     return 0;
 }
 

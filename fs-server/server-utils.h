@@ -182,9 +182,9 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock);
 int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf);
 // Se l'operazione precedente del client client_sock (completata con successo) era stata
 // openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)
-// altrimenti crea un nuovo file vuoto (se possibile)
+// altrimenti crea un nuovo file contenente i dati buf (chiama appendToFile internamente)
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf);
 // Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_sock
 // Ritorna 0 se ha successo, -1 altrimenti
 int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock);

@@ -213,6 +213,11 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
             else {
                 file->openedBy = realloc(file->openedBy, file->nopened * sizeof(int));
             }
+            // Se il file viene chiuso dal client che aveva la mutua esclusione su di esso la resetto
+            if(file->lockedBy == client_sock) {
+                file->lockedBy = -1;
+            }
+
             // rispondo positivamente alla api
             reply = newreply(REPLY_YES, 0, NULL);
         }
@@ -491,7 +496,8 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
     }
 
     int nevicted = 0; // numero di file espulsi
-    if(success == 0 && isOpen) {
+    // Controllo che le operazioni precedenti abbiano avuto successo e che il file possa effettivamente entrare in memoria
+    if(success == 0 && isOpen && size <= ds->max_mem) {
         // Se la scrittura provoca capacity miss (per quantità di memoria) allora chiamo l'algoritmo di rimpiazzamento
         if(ds->curr_mem + size > ds->max_mem) {
             // i file (eventualmente) espulsi sono messi all'interno delle code
@@ -636,7 +642,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
 // Se l'operazione precedente del client client_sock (completata con successo) era stata
 // openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf) {
     int success = 0;
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
@@ -646,7 +652,7 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
     while(  pos < ds->connected_clients
             && !(ds->active_clients[pos].socket == client_sock
                 && ds->active_clients[pos].last_op == OPEN_FILE
-                && ds->active_clients[pos].last_op_flags == O_CREATEFILE
+                && (ds->active_clients[pos].last_op_flags == (O_CREATEFILE|O_LOCKFILE))
                 && strcmp(ds->active_clients[pos].last_op_path, pathname) == 0))
     { pos++; }
     if(pos == ds->connected_clients) {
@@ -655,62 +661,20 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
         success = -1;
     }
 
+    int ret;
     if(success == 0) {
-        // Cerco il file nella tabella
-        struct fs_filedata_t *file = find_file(ds, pathname);
-        if(file == NULL) {
-            // chiave non trovata => restituire errore alla API
-            reply = newreply(REPLY_NO, 0, NULL);
-            if(logging(ds, 0, "api_writeFile: file non trovato") == -1) {
-                perror("api_writeFile: file non trovato");
-            }
-            success = -1;
+        ret = api_appendToFile(ds, pathname, client_sock, size, buf);
+    }
+    if(success != 0 || ret != 0) {
+        // Scrivo la risposta negativa
+        if(reply) {
+            writen(client_sock, reply, sizeof(*reply));
         }
-        // file trovato: ne cancello il contenuto e resetto a zero la dimensione
-        else {
-            pthread_mutex_lock(&(file->mux_file));
-            while(file->modifying == 1) {
-                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
-            }
-            file->modifying = 1;
-
-            if(file->data) {
-                free(file->data);
-            }
-            file->data = NULL;
-            size_t save_sz = file->size;
-            file->size = 0;
-
-            file->modifying = 0;
-            pthread_mutex_unlock(&(file->mux_file));
-
-            pthread_mutex_lock(&(ds->mux_mem));
-            ds->curr_mem -= save_sz; // devo aggiornare anche la quantità di memoria occupata
-            pthread_mutex_unlock(&(ds->mux_mem));
-
-            // operazione terminata con successo
-            reply = newreply(REPLY_YES, 0, NULL);
-
-            // aggiorno info client
-            if(update_client_op(ds, client_sock, WRITE_FILE, 0, pathname) == -1) {
-                // fallito aggiornamento stato client
-                if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
-                    perror("Fallito aggiornamento stato client");
-                }
-            }
-        }
+        return -1;
     }
+    // La risposta nel caso in cui l'operazione completi con successo è mandata da appendToFile
 
-    // scrivo la risposta sul socket del client
-    if(reply) {
-        writen(client_sock, reply, sizeof(*reply));
-        free(reply);
-    }
-    else {
-        success = -1;
-    }
-
-    return success;
+    return 0;
 }
 
 // Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_sock

@@ -179,7 +179,7 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
     char *cwd = NULL; // cwd la mantengo per ripristinarla al termine della funzione
     char *dir_abspath = NULL;
     // Ottengo il path assoulto della directory
-    if(dir[0] != '/') {
+    if(dir != NULL && dir[0] != '/') {
         // salvo la directory di lavoro corrente
         cwd = malloc(BUF_BASESZ * sizeof(char));
         if(!cwd) {

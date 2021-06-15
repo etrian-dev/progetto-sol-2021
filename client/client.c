@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
                 case WRITE_FILE: {
                     // apro il file con la flag per crearlo
                     // TODO: OR con O_LOCK?
-                    if(openFile(path, O_CREATEFILE) == -1) {
+                    if(openFile(path, O_CREATEFILE|O_LOCKFILE) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
                               fprintf(stderr, "[CLIENT %d]: Impossibile aprire (scrivere) il file \"%s\"\n", getpid(), path);
@@ -280,7 +280,7 @@ int main(int argc, char **argv) {
                     int success = 0;
                     // apro il file con la flag per crearlo
                     // TODO: OR con O_LOCK?
-                    if((success = openFile(path, O_CREATEFILE)) == -1) {
+                    if((success = openFile(path, O_CREATEFILE|O_LOCKFILE)) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
                               fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
@@ -294,13 +294,6 @@ int main(int argc, char **argv) {
                             PRINT(options->prints_on,
                                   fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
                             )
-                        }
-                    }
-                    // scrivo i dati del file (la dimensione è il campo data_sz)
-                    if(success == 0) {
-                        if((success = appendToFile(path, file_data->data, file_data->data_sz, options->dir_swapout)) == -1) {
-                            // errore di scrittura dei dati
-                            PRINT(options->prints_on, fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), path);)
                         }
                     }
                     if(success == 0) {

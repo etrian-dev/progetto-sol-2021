@@ -199,8 +199,8 @@ if(server_ds->termination[0] > max_fd_idx) {
                 }
                 // mando il segnale di terminazione manualmente al thread di terminazione
                 pthread_kill(term_tid, SIGINT);
-                // salto direttamente a fast_term in modo da effettuare la join
-                goto fast_term;
+                // salto direttamente a term in modo da effettuare la join
+                goto term;
             }
         }
 
@@ -268,9 +268,8 @@ if(server_ds->termination[0] > max_fd_idx) {
                         return -1;
                     }
 
-                    goto fast_term; // salto fuori dal for e dal while
+                    goto term; // salto fuori dal for e dal while
                 }
-
             }
             // Se ci sono connessioni in attesa le accetta
             if(fd == listen_connections && FD_ISSET(fd, &fd_read_cpy)) {
@@ -323,6 +322,18 @@ if(server_ds->termination[0] > max_fd_idx) {
                         new_maxfd = sock;
                     }
                 }
+                // Verifico se il client che si è disconnesso era l'ultimo rimasto dopo un SIGHUP ricevuto
+                else {
+                    char msg[BUF_BASESZ];
+                    snprintf(msg, BUF_BASESZ, "Disconnesso il client %d", -sock);
+                    if(logging(server_ds, 0, msg) == -1) {
+                        perror(msg);
+                    }
+                    if(sock < 0 && server_ds->slow_term == 1 && server_ds->connected_clients == 0) {
+                        // In tal caso i worker sono terminati e posso saltare alla join
+                        goto term;
+                    }
+                }
                 break; // valuto di nuovo i socket pronti dopo aver ascoltato sock
             }
             // Se ho ricevuto una richiesta da un client devo inserirla nella coda di richieste
@@ -363,7 +374,7 @@ if(server_ds->termination[0] > max_fd_idx) {
         max_fd_idx = new_maxfd;
     }
 
-fast_term:
+term:
     printf("[SERVER] Terminazione %s\n", (server_ds->slow_term == 1 ? "lenta" : "veloce"));
     // Risveglio tutti i thread sospesi sulla variabile di condizione della coda di richieste
     pthread_cond_broadcast(&(server_ds->new_job));
