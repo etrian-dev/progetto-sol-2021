@@ -25,7 +25,7 @@ void clean_server(struct serv_params *params, struct fs_ds_t *ds);
 // Accetta la connessione e restituisce il socket da usare (o -1 in caso di errore)
 int accept_connection(const int serv_sock);
 // Legge dal socket del client (client_fd) la richiesta e la inserisce nella coda per servirla
-int processRequest(struct fs_ds_t *server_ds, const int client_fd);
+int processRequest(struct fs_ds_t *server_ds, const int client_sock);
 // Chiude tutti gli fd in set, tranne feedpipe e termpipe, rimuovendoli anche dal set
 void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const int maxsock);
 // Stampa su stdout delle statistiche di utilizzo del server
@@ -325,7 +325,7 @@ if(server_ds->termination[0] > max_fd_idx) {
                 // Verifico se il client che si è disconnesso era l'ultimo rimasto dopo un SIGHUP ricevuto
                 else {
                     char msg[BUF_BASESZ];
-                    snprintf(msg, BUF_BASESZ, "Disconnesso il client %d", -sock);
+                    snprintf(msg, BUF_BASESZ, "Disconnesso il client sul socket %d", -sock);
                     if(logging(server_ds, 0, msg) == -1) {
                         perror(msg);
                     }
@@ -438,13 +438,13 @@ int accept_connection(const int serv_sock) {
     return newsock;
 }
 
-int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
+int processRequest(struct fs_ds_t *server_ds, const int client_sock) {
     // leggo richiesta
     struct request_t *req = malloc(sizeof(struct request_t));
     if(!req) {
         return -1;
     }
-    if(readn(client_fd, req, sizeof(struct request_t)) != sizeof(struct request_t)) {
+    if(readn(client_sock, req, sizeof(struct request_t)) != sizeof(struct request_t)) {
         if(errno != EINTR) {
             return -1;
         }
@@ -458,7 +458,7 @@ int processRequest(struct fs_ds_t *server_ds, const int client_fd) {
         return -1;
     }
 
-    if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), client_fd) == -1) {
+    if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), client_sock) == -1) {
         if(logging(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
             perror("Fallito inserimento nella coda di richieste");
         }

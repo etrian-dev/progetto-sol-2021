@@ -20,7 +20,6 @@ struct conn_info {
     size_t capacity;    // mantiene la capacità dell'array sovrastante
     size_t count;       // conta il numero di client connessi in questo momento
 };
-
 #define NCLIENTS_DFL 10 // il numero di slot preallocati per clients
 
 extern struct conn_info *clients_info;
@@ -34,9 +33,9 @@ int init_api(const char *sname);
 int add_client(const int conn_fd, const int pid);
 // Funzione che rimuove un client da quelli connessi
 int rm_client(const int pid);
-// Funzione che ritorna la posizione del client con PID passato come parametro se esso
-// è connesso al server attraverso la API, -1 altrimenti
-int isConnected(const int pid);
+// Funzione che ritorna il socket su cui il client che l'ha chiamata è connesso
+// e -1 se il client non connesso
+int isConnected(void);
 // funzione di utilità per convertire msec in struct timespec
 void get_delay(const int msec, struct timespec *delay);
 
@@ -44,17 +43,24 @@ void get_delay(const int msec, struct timespec *delay);
 #define CLOSE_CONN '!' // usata in closeConnection per segnalare al server di terminare la connessione col client
 #define OPEN_FILE 'O'
 #define CLOSE_FILE 'Q'
-#define LOCK_FILE 'L'
-#define UNLOCK_FILE 'U'
 #define READ_FILE 'R'
 #define READ_N_FILES 'N'
-#define WRITE_FILE 'W'
 #define APPEND_FILE 'A'
+#define WRITE_FILE 'W'
+#define LOCK_FILE 'L'
+#define UNLOCK_FILE 'U'
 #define REMOVE_FILE 'X'
+// definisco il tipo di risposta: richiesta completata con successo ('Y') oppure no ('N')
+#define REPLY_YES 'Y'
+#define REPLY_NO 'N'
+// definisco flags per le operazioni nel fileserver
+#define O_CREATEFILE 0x1
+#define O_LOCKFILE 0x2
 
 // struttura che definisce il tipo delle richieste
 struct request_t {
     char type;              // tipo della richiesta: uno tra quelli definiti sopra
+    int pid;                // il PID del client che effettua la richiesta
     int flags;              // flags della richiesta: O_CREATE, O_LOCK oppure nessuna (0x0)
     size_t path_len;        // lunghezza della stringa path (compreso terminatore)
     size_t buf_len;         // lunghezza del buffer buf: 0 se non utilizzata
@@ -62,9 +68,6 @@ struct request_t {
 // Funzione che alloca e setta i parametri di una richiesta
 // Ritorna un puntatore ad essa se ha successo, NULL altrimenti
 struct request_t *newrequest(const char type, const int flags, const size_t pathlen, const size_t buflen);
-
-#define REPLY_YES 'Y'
-#define REPLY_NO 'N'
 
 // struttura che definisce il tipo delle risposte
 struct reply_t {
@@ -83,10 +86,6 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
 
 //-----------------------------------------------------------------------------------
 // Definizione delle operazioni
-
-// definisco flags per le operazioni nel fileserver
-#define O_CREATEFILE 0x1
-#define O_LOCKFILE 0x10
 
 // apre la connessione al socket sockname, su cui il server sta ascoltando
 int openConnection(const char *sockname, int msec, const struct timespec abstime);

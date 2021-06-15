@@ -74,21 +74,24 @@ int add_client(const int conn_fd, const int pid) {
 }
 
 int rm_client(const int pid) {
-    int cIdx = -1;
-    if((cIdx = isConnected(pid)) == -1) {
-        // client non trovato, quindi non posso rimuoverlo
+    // Cerco il PID nell'array: se esiste allora ritorno la posizione, altrimenti -1
+    int i = 0;
+    while(i < clients_info->capacity && clients_info->client_id[2 * i + 1] != pid) {
+        i++;
+    }
+    if(i == clients_info->capacity) {
+        // PID non trovato: impossibile rimuovere il client
         return -1;
     }
-    // prendo il socket di questo client
-    int sock = clients_info->client_id[2 * cIdx];
-
-    // libero questa posizione del'array
-    clients_info->client_id[2 * cIdx] = -1;
-    clients_info->client_id[2 * cIdx + 1] = -1;
+    // salvo il socket di questo client
+    int sock = clients_info->client_id[2 * i];
+    // libero questa posizione del'array e ne sovrascivo i contenuti
+    clients_info->client_id[2 * i] = -1;
+    clients_info->client_id[2 * i + 1] = -1;
     // aggiorno il numero di client connessi
     clients_info->count--;
 
-    // chiudo il socket
+    // chiudo il socket del client disconnesso
     if(close(sock) == -1) {
         // errore di chiusura del socket: riporto l'errore al client (ma lo slot è libero)
         return -1;
@@ -98,17 +101,18 @@ int rm_client(const int pid) {
     return 0;
 }
 
-int isConnected(const int pid) {
-    // Cerco il PID fornito nell'array: se esiste allora libero la posizione
+int isConnected(void) {
+    int pid = getpid(); // prendo il pid del client chiamante
+    // Cerco il PID nell'array: se esiste allora ritorno la posizione, altrimenti -1
     int i = 0;
     while(i < clients_info->capacity) {
+        // l'array è di coppie ordinate di interi (socket,PID)
         if(clients_info->client_id[2 * i + 1] == pid) {
-            // Trovato: ritorno la posizione
-            return i;
+            // Trovato: ritorno il socket
+            return clients_info->client_id[2 * i];
         }
         i++;
     }
-
     // Non trovato
     return -1;
 }
@@ -135,6 +139,7 @@ struct request_t *newrequest(const char type, const int flags, const size_t path
     }
     memset(req, 0, sizeof(struct request_t)); // per evitare errori di campi non inizializzati
     req->type = type;
+    req->pid = getpid();
     req->flags = flags;
     req->path_len = pathlen;
     req->buf_len = buflen;

@@ -8,13 +8,21 @@
 #define HELP_MSG \
 "Usage: %s [OPTIONS]\n\nOPTIONS\n\
 \t-h: stampa questo messaggio e termina\n\
+\t-p: stampa su stdout ogni operazione del client\n\
+\t-t <time >= 0>: delay tra le richeste al server (espresso in millisecondi)\n\
 \t-f <filename>: specifica il socket AF_UNIX a cui il client prova a connettersi\n\
-\t-r <file1> [, <filen>]: specifica una lista di file da leggere nel server\n\
-\t-R [n=0]: specifica un numero massimo di file da leggere (se <= 0 prova a leggere tutti i file nel server\n\
+\t-r <file1> [, <filen>]: specifica una lista di file da leggere nel server (almeno uno)\n\
+\t-R [n=0]: specifica un numero massimo di file da leggere (se n == 0 legge tutti i file presenti nel server)\n\
+\t-W <file1> [, <filen>]: specifica una lista di file da scrivere nel server (almeno uno)\n\
+\t-w <dirname>[,n=0]: specifica una directory dalla quale leggere al piu' n files da\n\
+\t\tscrivere nel fileserver (se possibile). Se n == 0 (opzionale: di default viene assunto n == 0)\n\
+\t\tallora non sono posti limiti al numero di file da scrivere. La ricerca prosegue ricorsivamente\n\
+\t\tvisitando le sottodirectory di dirname\n\
 \t-d <dirname>: specifica la directory in cui salvare eventuali file letti dal server\n\
-\t-a dest:scr [, destN:srcN]: specifica il file su cui fare append e il file/la stringa da concatenare\n\
-\t-t <time >= 0>: delay tra le richeste al server (in msec)\n\
-\t-p: stampa su stdout ogni operazione del client\n"
+\t-D <dirname>: specifica la directory in cui salvare eventuali file espulsi dal server\n\
+\t-a dest:src [, destN:srcN]: specifica una lista di coppie composte dal file su cui\n\
+\t\teffettuare la richiesta di append (dest) e il file/la stringa da concatenare (src).\n\
+\t\tLa semantica è di interpretare src come stringa se l'apertura di src come file fallisce\n"
 
 // stringa delle opzioni per getopt
 #define CLIENT_OPSTRING ":hf:D:d:R:r:W:w:a:t:p"

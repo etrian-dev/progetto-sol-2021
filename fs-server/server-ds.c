@@ -142,11 +142,19 @@ int add_connection(struct fs_ds_t *ds, const int csock) {
         }
         ds->active_clients = newptr;
     }
+    // Il client è identificato dal suo PID all'interno del server; tale valore deve essere letto
+    // dal socket csock sul quale la connessione è stata appena accettata
+    int cpid;
+    if(readn(csock, &cpid, sizeof(int)) != sizeof(int)) {
+        // Nell'eventualità che non si riesca a reperire il PID il socket viene chiuso
+        close(csock);
+        return -1;
+    }
+    ds->active_clients[ds->connected_clients].PID = cpid; // PID identificherà il client
     ds->active_clients[ds->connected_clients].socket = csock;
     ds->active_clients[ds->connected_clients].last_op = 0;
     ds->active_clients[ds->connected_clients].last_op_flags = 0;
     ds->active_clients[ds->connected_clients].last_op_path = NULL;
-
     ds->connected_clients++;
 
     return 0;
@@ -154,7 +162,7 @@ int add_connection(struct fs_ds_t *ds, const int csock) {
 
 // Rimuove un client da quelli connessi
 // Ritorna 0 se ha successo, -1 altrimenti
-int rm_connection(struct fs_ds_t *ds, const int csock) {
+int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid) {
     if(!ds) {
         return -1;
     }
@@ -162,9 +170,9 @@ int rm_connection(struct fs_ds_t *ds, const int csock) {
     if(!(ds->active_clients) || ds->connected_clients == 0) {
         return -1;
     }
-    // Cerco il socket tra i client connessi
+    // Cerco il pid tra quelli dei client connessi
     size_t i = 0;
-    while(i < ds->connected_clients && ds->active_clients[i].socket != csock) {
+    while(i < ds->connected_clients && ds->active_clients[i].PID != cpid) {
         i++;
     }
     if(i == ds->connected_clients) {
@@ -175,8 +183,10 @@ int rm_connection(struct fs_ds_t *ds, const int csock) {
     if(ds->active_clients[i].last_op_path) {
         free(ds->active_clients[i].last_op_path);
     }
+    // shifto indietro di una posizione tutti gli altri
     for(; i < ds->connected_clients - 1; i++) {
         ds->active_clients[i].socket = ds->active_clients[i+1].socket;
+        ds->active_clients[i].PID = ds->active_clients[i+1].PID;
         ds->active_clients[i].last_op = ds->active_clients[i+1].last_op;
         ds->active_clients[i].last_op_flags = ds->active_clients[i+1].last_op_flags;
         ds->active_clients[i].last_op_path = ds->active_clients[i+1].last_op_path;
@@ -202,10 +212,10 @@ int rm_connection(struct fs_ds_t *ds, const int csock) {
 
 // Aggiorna lo stato del client connesso sul socket sock con l'ultima operazione conclusa con successo
 // Ritorna 0 se ha successo, -1 altrimenti
-int update_client_op(struct fs_ds_t *ds, const int sock, const char op, const int op_flags, const char *op_path) {
+int update_client_op(struct fs_ds_t *ds, const int csock, const int cpid, const char op, const int op_flags, const char *op_path) {
     size_t i;
     for(i = 0; i < ds->connected_clients; i++) {
-        if(ds->active_clients[i].socket == sock) {
+        if(ds->active_clients[i].PID == cpid) {
             ds->active_clients[i].last_op = op;
             ds->active_clients[i].last_op_flags = op_flags;
             if(ds->active_clients[i].last_op_path) {

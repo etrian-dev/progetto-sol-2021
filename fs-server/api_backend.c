@@ -33,7 +33,7 @@ void build_pathstr(char **str, const char **paths, const int num) {
 
 // Apre il file con path pathname (se presente) per il client con le flag passate come parametro
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags) {
+int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID, int flags) {
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
     int success = 0;
@@ -53,7 +53,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         if(success == 0) {
             // inserisco un file vuoto (passando NULL come buffer) nella tabella
             // e le flags (solo O_LOCKFILE rilevante per settare lock)
-            if(insert_file(ds, pathname, flags, NULL, 0, client_sock) == NULL) {
+            if(insert_file(ds, pathname, flags, NULL, 0, client_PID) == NULL) {
                 reply = newreply(REPLY_NO, 0, NULL);
                 if(logging(ds, 0, "openFile: impossibile creare il file") == -1) {
                     perror("openFile: impossibile creare il file");
@@ -64,7 +64,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 // Inserimento OK (num di file aperti aggiornato da insertFile)
                 reply = newreply(REPLY_YES, 0, NULL);
                 // aggiorno info client
-                if(update_client_op(ds, client_sock, OPEN_FILE, flags, pathname) == -1) {
+                if(update_client_op(ds, client_sock, client_PID, OPEN_FILE, flags, pathname) == -1) {
                     // fallito aggiornamento stato client
                     if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
                         perror("Fallito aggiornamento stato client");
@@ -94,7 +94,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
         }
         while(!isOpen && i < file->nopened) {
-            if(file->openedBy[i] == client_sock) {
+            if(file->openedBy[i] == client_PID) {
                 isOpen = 1;
             }
             i++;
@@ -130,14 +130,14 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             else {
                 // Apertura OK: setto il file come aperto dal socket
                 file->openedBy = newentry;
-                file->openedBy[file->nopened] = client_sock;
+                file->openedBy[file->nopened] = client_PID;
                 file->nopened++;
                 // Se necessario setto lock (non è in stato locked per nessun altro client)
                 if(flags & O_LOCKFILE) {
-                    file->lockedBy = client_sock;
+                    file->lockedBy = client_PID;
                 }
                 // aggiorno info client
-                if(update_client_op(ds, client_sock, OPEN_FILE, flags, pathname) == -1) {
+                if(update_client_op(ds, client_sock, client_PID, OPEN_FILE, flags, pathname) == -1) {
                     // fallito aggiornamento stato client
                     if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
                         perror("Fallito aggiornamento stato client");
@@ -169,7 +169,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
 
 // Chiude il file con path pathname (se presente) per il socket passato come parametro
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID) {
 	// conterrà la risposta del server
     struct reply_t *reply = NULL;
     int success = 0;
@@ -191,7 +191,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
    		// file presente: devo controllare se il client che richiede la sua chiusura
         // lo abbia aperto in precedenza
         size_t i = 0;
-   		while(i < file->nopened && file->openedBy[i] != client_sock) {
+   		while(i < file->nopened && file->openedBy[i] != client_PID) {
    			i++;
    		}
    		if(i == file->nopened) {
@@ -214,7 +214,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
                 file->openedBy = realloc(file->openedBy, file->nopened * sizeof(int));
             }
             // Se il file viene chiuso dal client che aveva la mutua esclusione su di esso la resetto
-            if(file->lockedBy == client_sock) {
+            if(file->lockedBy == client_PID) {
                 file->lockedBy = -1;
             }
 
@@ -241,7 +241,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
 
 // Legge il file con path pathname (se presente) e lo invia al client client_sock
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID) {
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
     int success = 0;
@@ -267,7 +267,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
 
         while(!isOpen && i < file->nopened) {
-            if(file->openedBy[i] == client_sock) {
+            if(file->openedBy[i] == client_PID) {
                 isOpen = 1; // aperto da questo client
             }
             i++;
@@ -276,7 +276,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         if(isOpen) {
             reply = newreply(REPLY_YES, 1, NULL);
             // aggiorno info client
-            if(update_client_op(ds, client_sock, READ_FILE, 0, pathname) == -1) {
+            if(update_client_op(ds, client_sock, client_PID, READ_FILE, 0, pathname) == -1) {
                 // fallito aggiornamento stato client
                 if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
                     perror("Fallito aggiornamento stato client");
@@ -327,7 +327,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
 // Legge n file nel server (quelli meno recenti per come è implementata) e li invia al client
 // Se n<=0 allora legge tutti i file presenti nel server
 // Se ha successo ritorna il numero di file letti, -1 altrimenti
-int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
+int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int client_PID) {
     // Utilizzo la coda di path per ottenere dei file da inviare. Di conseguenza invio
     // sempre al client i file meno recenti nel server (per una maggiore efficienza,
     // dato che è una lista concatenata con il solo forward pointer)
@@ -418,7 +418,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
             }
             if(success == 0) {
                 // aggiorno info client
-                if(update_client_op(ds, client_sock, READ_N_FILES, 0, NULL) == -1) {
+                if(update_client_op(ds, client_sock, client_PID, READ_N_FILES, 0, NULL) == -1) {
                     // fallito aggiornamento stato client
                     if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
                         perror("Fallito aggiornamento stato client");
@@ -443,7 +443,9 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock) {
 
 // Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf) {
+int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
+    const int client_sock, const int client_PID, const size_t size, void *buf)
+    {
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
     int success = 0;
@@ -474,7 +476,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
         }
 
         // file trovato: se era lockato da un altro client allora non posso modificarlo
-        if(file->lockedBy != -1 && file->lockedBy != client_sock) {
+        if(file->lockedBy != -1 && file->lockedBy != client_PID) {
             reply = newreply(REPLY_NO, 0, NULL);
             if(logging(ds, 0, "api_appendToFile: file lockato da un altro client") == -1) {
                 perror("api_appendToFile: file lockato da un altro client");
@@ -485,7 +487,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
             i = 0;
             isOpen = 0; // flag per determinare se il file era aperto
             while(!isOpen && i < file->nopened) {
-                if(file->openedBy[i] == client_sock) {
+                if(file->openedBy[i] == client_PID) {
                     isOpen = 1; // aperto da questo client
                 }
                 i++;
@@ -512,10 +514,17 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
     // Operazione negata: il client non aveva aperto il file
     else {
         reply = newreply(REPLY_NO, 0, NULL);
-        if(logging(ds, 0, "api_appendToFile: il file non era aperto") == -1) {
-            perror("api_appendToFile: il file non era aperto");
-        }
         success = -1;
+        if(size > ds->max_mem) {
+            if(logging(ds, 0, "api_appendToFile: file troppo grande") == -1) {
+                perror("api_appendToFile: file troppo grande");
+            }
+        }
+        else {
+            if(logging(ds, 0, "api_appendToFile: il file non era aperto") == -1) {
+                perror("api_appendToFile: il file non era aperto");
+            }
+        }
     }
 
     // Se il file era aperto allora lo modifico
@@ -562,7 +571,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
                     build_pathstr(&all_paths, paths, nevicted);
 
                     // aggiorno info client
-                    if(update_client_op(ds, client_sock, APPEND_FILE, 0, pathname) == -1) {
+                    if(update_client_op(ds, client_sock, client_PID, APPEND_FILE, 0, pathname) == -1) {
                         // fallito aggiornamento stato client
                         if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
                             perror("Fallito aggiornamento stato client");
@@ -642,7 +651,9 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_
 // Se l'operazione precedente del client client_sock (completata con successo) era stata
 // openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf) {
+int api_writeFile(struct fs_ds_t *ds, const char *pathname,
+    const int client_sock, const int client_PID, const size_t size, void *buf)
+    {
     int success = 0;
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
@@ -663,7 +674,7 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
 
     int ret;
     if(success == 0) {
-        ret = api_appendToFile(ds, pathname, client_sock, size, buf);
+        ret = api_appendToFile(ds, pathname, client_sock, client_PID, size, buf);
     }
     if(success != 0 || ret != 0) {
         // Scrivo la risposta negativa
@@ -679,7 +690,7 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
 
 // Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_sock
 // Ritorna 0 se ha successo, -1 altrimenti
-int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock) {
+int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
     // La risposta del server
     struct reply_t *rep = NULL;
 
@@ -691,10 +702,10 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock)
     }
     else {
         // Se era lockato da questo client o era libero setto lock
-        if(file->lockedBy == -1 || file->lockedBy == client_sock) {
-            file->lockedBy = client_sock;
+        if(file->lockedBy == -1 || file->lockedBy == client_PID) {
+            file->lockedBy = client_PID;
         }
-
+        // L'operazione ha avuto esito positivo
         rep = newreply(REPLY_YES, 0, 0);
     }
 
@@ -704,7 +715,7 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock)
         return -1;
     }
     else {
-        update_client_op(ds, client_sock, LOCK_FILE, O_LOCKFILE, pathname);
+        update_client_op(ds, client_sock, client_PID, LOCK_FILE, O_LOCKFILE, pathname);
         if(writen(client_sock, rep, sizeof(*rep) != sizeof(*rep))) {
             free(rep);
             return -1;
@@ -716,13 +727,13 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock)
 }
 // Toglie la mutua esclusione sul file pathname (solo se era lockato da client_sock)
 // Ritorna 0 se ha successo, -1 altrimenti
-int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_sock) {
+int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID) {
     // La risposta del server
     struct reply_t *rep = NULL;
 
     // Cerco il file nel fileserver
     struct fs_filedata_t *file = find_file(ds, pathname);
-    if(!file || (file->lockedBy != -1 && file->lockedBy != client_sock)) {
+    if(!file || (file->lockedBy != -1 && file->lockedBy != client_PID)) {
         // file non trovato o lockato da qualche altro client
         rep = newreply(REPLY_NO, 0, 0);
     }
@@ -736,7 +747,7 @@ int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_so
         if(!rep) {
             // Se non posso inviare la risposta ripristino la lock
             pthread_mutex_lock(&(file->mux_file));
-            file->lockedBy = client_sock;
+            file->lockedBy = client_PID;
             pthread_mutex_lock(&(file->mux_file));
             return -1;
         }
@@ -755,20 +766,20 @@ int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_so
 
 // Rimuove dal server il file con path pathname, se presente e lockato da client_sock
 // Ritorna 0 se ha successo, -1 altrimenti
-int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock) {
+int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
     // La risposta del server
     struct reply_t *rep = NULL;
 
     // Cerco il file nel fileserver
     struct fs_filedata_t *file = find_file(ds, pathname);
-    if(!file || file->lockedBy != client_sock) {
+    if(!file || file->lockedBy != client_PID) {
         // file non trovato o non lockato da questo client
         rep = newreply(REPLY_NO, 0, 0);
     }
     else {
         // Se il file era lockato da questo client allora lo rimuovo
         pthread_mutex_lock(&(file->mux_file));
-        int result = icl_hash_delete(ds->fs_table, pathname, free, free_file);
+        int result = icl_hash_delete(ds->fs_table, (void*)pathname, free, free_file);
         pthread_mutex_unlock(&(file->mux_file));
 
         if(result == 0) {

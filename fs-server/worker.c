@@ -15,8 +15,8 @@
 #include <string.h>
 #include <errno.h>
 
-#define OP_OK "Operazione completata con successo"
-#define OP_FAIL "Operazione non consentita"
+#define OP_OK "OK"
+#define OP_FAIL "FAILED"
 
 // worker thread
 void *work(void *params) {
@@ -131,7 +131,7 @@ void *work(void *params) {
         switch(request->type) {
         case CLOSE_CONN: { // operazione di chiusura della connessione da parte di un client
             // tolgo questo socket dalla struttura dati del server
-            if(rm_connection(ds, client_sock) == -1) {
+            if(rm_connection(ds, client_sock, request->pid) == -1) {
                 // Fallita rimozione client
                 snprintf(msg, BUF_BASESZ, "Fallita rimozione client con socket %d", client_sock);
                 if(logging(ds, errno, msg) == -1) {
@@ -148,13 +148,13 @@ void *work(void *params) {
         }
         case OPEN_FILE: { // operazione di apertura di un file
             // chiamo api_openfile con il path appena letto e le flag che erano state settate nella richiesta
-            if(api_openFile(ds, path, client_sock, request->flags) == -1) {
+            if(api_openFile(ds, path, client_sock, request->pid, request->flags) == -1) {
                 // %s: effettuo il log
                 snprintf(
                     msg,
                     BUF_BASESZ,
                     "[CLIENT %d] api_openFile(%s, %s|%s): %s",
-                    client_sock,
+                    request->pid,
                     path,
                     (request->flags & O_CREATEFILE ? "O_CREATEFILE" : "0x0"),
                     (request->flags & O_LOCKFILE ? "O_LOCKFILE" : "0x0"),
@@ -170,7 +170,7 @@ void *work(void *params) {
                     msg,
                     BUF_BASESZ,
                     "[CLIENT %d] api_openFile(%s, %s|%s): %s",
-                    client_sock,
+                    request->pid,
                     path,
                     (request->flags & O_CREATEFILE ? "O_CREATEFILE" : "0x0"),
                     (request->flags & O_LOCKFILE ? "O_LOCKFILE" : "0x0"),
@@ -184,15 +184,15 @@ void *work(void *params) {
         }
         case CLOSE_FILE: { // operazione di chiusura del file
             // chiamo api_closeFile con il path appena letto
-            if(api_closeFile(ds, path, client_sock) == -1) {
+            if(api_closeFile(ds, path, client_sock, request->pid) == -1) {
            		// %s: effettuo il log
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_closeFile(%s): %s", client_sock, path, OP_FAIL);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_closeFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
            	}
            	else {
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_closeFile(%s): %s", client_sock, path, OP_OK);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_closeFile(%s): %s", request->pid, path, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
@@ -201,16 +201,16 @@ void *work(void *params) {
        	}
         case READ_FILE: { // operazione di lettura di un file
             // leggo dalla ht (se presente) il file path, inviandolo lungo il socket fornito
-            if(api_readFile(ds, path, client_sock) == -1) {
+            if(api_readFile(ds, path, client_sock, request->pid) == -1) {
                 // %s: logging
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readFile(%s): %s", client_sock, path, OP_FAIL);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             // La lettura del file ha avuto successo: logging
             else {
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readFile(%s): %s", client_sock, path, OP_OK);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readFile(%s): %s", request->pid, path, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
@@ -220,15 +220,15 @@ void *work(void *params) {
         case READ_N_FILES: { // lettura di n files qualsiasi dal server
             // Il campo flags della richiesta al server è usato per specificare il numero di file da leggere
             int nfiles = -1;
-            if((nfiles = api_readN(ds, request->flags, client_sock)) == -1) {
+            if((nfiles = api_readN(ds, request->flags, client_sock, request->pid)) == -1) {
                 // %s: logging
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readNFiles(%d): %s", client_sock, request->flags, OP_FAIL);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readNFiles(%d): %s", request->pid, request->flags, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readNFiles(%d): %s", client_sock, nfiles, OP_OK);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readNFiles(%d): %s", request->pid, nfiles, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
@@ -246,9 +246,9 @@ void *work(void *params) {
                     break;
                 }
                 // scrivo i dati contenuti in buf alla fine del file path (se presente)
-                if(api_appendToFile(ds, path, client_sock, request->buf_len, buf) == -1) {
+                if(api_appendToFile(ds, path, client_sock, request->pid, request->buf_len, buf) == -1) {
                     // %s: logging
-                    snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_appendToFile(%s): %s", client_sock, path, OP_FAIL);
+                    snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_appendToFile(%s): %s", request->pid, path, OP_FAIL);
                     if(logging(ds, errno, msg) == -1) {
                         perror(msg);
                     }
@@ -258,7 +258,7 @@ void *work(void *params) {
                     snprintf(
                         msg, BUF_BASESZ,
                         "[CLIENT %d] api_appendToFile(%s) (%lu bytes): %s",
-                        client_sock, path, request->buf_len, OP_OK);
+                        request->pid, path, request->buf_len, OP_OK);
                     if(logging(ds, errno, msg) == -1) {
                         perror(msg);
                     }
@@ -284,16 +284,16 @@ void *work(void *params) {
                     break;
                 }
                 // creo il file solo se era stato aperto con la flag O_CREATEFILE
-                if(api_writeFile(ds, path, client_sock, request->buf_len, buf) == -1) {
+                if(api_writeFile(ds, path, client_sock, request->pid, request->buf_len, buf) == -1) {
                     // %s: logging
-                    snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_writeFile(%s): %s", client_sock, path, OP_FAIL);
+                    snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_writeFile(%s): %s", request->pid, path, OP_FAIL);
                     if(logging(ds, errno, msg) == -1) {
                         perror(msg);
                     }
                 }
                 else {
                     // write OK
-                    snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_writeFile(%s) (%lu bytes): %s", client_sock, path, request->buf_len, OP_OK);
+                    snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_writeFile(%s) (%lu bytes): %s", request->pid, path, request->buf_len, OP_OK);
                     if(logging(ds, errno, msg) == -1) {
                         perror(msg);
                     }
@@ -311,16 +311,16 @@ void *work(void *params) {
         case LOCK_FILE: { // unlock file
             // La mutua esclusione sul file viene garantita solo se il file era aperto
             // pre questo client e non era lockato da altri client
-            if(api_lockFile(ds, path, client_sock) == -1) {
+            if(api_lockFile(ds, path, client_sock, request->pid) == -1) {
                 // %s: logging
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", client_sock, path, OP_FAIL);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 // lock OK
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", client_sock, path, OP_OK);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", request->pid, path, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
@@ -329,16 +329,16 @@ void *work(void *params) {
         }
         case UNLOCK_FILE: { // unlock file
             // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
-            if(api_unlockFile(ds, path, client_sock) == -1) {
+            if(api_unlockFile(ds, path, client_sock, request->pid) == -1) {
                 // %s: logging
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_unlockFile(%s): %s", client_sock, path, OP_FAIL);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_unlockFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 // lock OK
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_unlockFile(%s): %s", client_sock, path, OP_OK);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_unlockFile(%s): %s", request->pid, path, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
@@ -347,16 +347,16 @@ void *work(void *params) {
         }
         case REMOVE_FILE: { // remove file
             // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
-            if(api_rmFile(ds, path, client_sock) == -1) {
+            if(api_rmFile(ds, path, client_sock, request->pid) == -1) {
                 // %s: logging
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_removeFile(%s): %s", client_sock, path, OP_FAIL);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_removeFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 // lock OK
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_removeFile(%s): %s", client_sock, path, OP_OK);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_removeFile(%s): %s", request->pid, path, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }

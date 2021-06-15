@@ -73,6 +73,13 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
         // Altrimenti la connessione ha avuto successo: devo inserire il client
         // nella struttura dati della API che memorizza le connessioni
         else {
+            // Devo anche inviare il PID del client connesso al server
+            int client_pid = getpid();
+            if(writen(conn_sock, &client_pid, sizeof(int)) != sizeof(int)) {
+                // fallita scrittura PID: connessione chiusa lato server ed operazione fallisce
+                return -1;
+            }
+            // aggiungo il client
             if(!clients_info) {
                 // è il primo client connesso al server, per cui devo inizializzare clients_info
                 if(init_api(sockname) == -1) {
@@ -82,8 +89,6 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
                     return -1;
                 }
             }
-            // aggiungo il client
-            int client_pid = getpid();
             if(add_client(conn_sock, client_pid) == -1) {
                 // fallito inserimento del client: impossibile aprire connnessione
                 return -1;
@@ -103,15 +108,11 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 int closeConnection(const char *sockname) {
     // prima controllo che il nome del socket sia quello giusto
     if(sockname && strncmp(clients_info->sockname, sockname, strlen(sockname)) == 0) {
-        // Verifico che questo client sia connesso
-        int cPID = getpid();
-        int pos;
-        if((pos = isConnected(cPID)) == -1) {
-            // errore: client non connesso
+       // Verifico che il client sia connesso al server
+        int csock = isConnected();
+        if(csock == -1) {
             return -1;
         }
-        // pos ora contiene la posizione del client, per cui posso accedere a clients_info
-        int csock = clients_info->client_id[2 * pos];
 
         // preparo la richiesta
         struct request_t *request = newrequest(CLOSE_CONN, 0, 0, 0);
@@ -128,7 +129,8 @@ int closeConnection(const char *sockname) {
         }
 
         // Rimuovo traccia della connessione anche nella API
-        if(rm_client(cPID) == -1) {
+        int myPID = getpid();
+        if(rm_client(myPID) == -1) {
             // errore: impossibile chiudere correttamente il socket
             return -1;
         }
@@ -143,15 +145,11 @@ int closeConnection(const char *sockname) {
 
 // Apre il file pathname (se presente nel server e solo per il client che la invia)
 int openFile(const char *pathname, int flags) {
-    // Verifico che questo client sia connesso
-    int cPID = getpid();
-    int pos;
-    if((pos = isConnected(cPID)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // pos ora contiene la posizione del client, per cui posso accedere a clients_info
-    int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta
     struct request_t *request = newrequest(OPEN_FILE, flags, strlen(pathname) + 1, 0);
@@ -160,10 +158,11 @@ int openFile(const char *pathname, int flags) {
         return -1;
     }
     // Scrivo la richiesta sul socket
-    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+    if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
         return -1;
     }
-    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+    size_t slen = strlen(pathname) + 1;
+    if(writen(csock, pathname, slen) != slen) {
         return -1;
     }
 
@@ -172,7 +171,7 @@ int openFile(const char *pathname, int flags) {
     if(!reply) {
         return -1;
     }
-    if(readn(csock, reply, sizeof(struct reply_t)) == -1) {
+    if(readn(csock, reply, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         return -1;
     }
     if(reply->status != REPLY_YES) {
@@ -189,15 +188,11 @@ int openFile(const char *pathname, int flags) {
 
 // invia al server la richiesta di chiusura del file pathname (solo per il client che la invia)
 int closeFile(const char *pathname) {
-    // Verifico che questo client sia connesso
-    int cPID = getpid();
-    int pos;
-    if((pos = isConnected(cPID)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // pos ora contiene la posizione del client, per cui posso accedere a clients_info
-    int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta
     struct request_t *request = newrequest(CLOSE_FILE, 0, strlen(pathname) + 1, 0);
@@ -206,10 +201,11 @@ int closeFile(const char *pathname) {
         return -1;
     }
     // Scrivo la richiesta sul socket
-    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+    if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
         return -1;
     }
-    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+    size_t slen = strlen(pathname) + 1;
+    if(writen(csock, pathname, slen) != slen) {
         return -1;
     }
 
@@ -218,7 +214,7 @@ int closeFile(const char *pathname) {
     if(!reply) {
         return -1;
     }
-    if(readn(csock, reply, sizeof(struct reply_t)) == -1) {
+    if(readn(csock, reply, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         return -1;
     }
     if(reply->status != REPLY_YES) {
@@ -237,15 +233,11 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     if(!buf) {
         return -1;
     }
-    // controllo che questo client sia connesso
-    int pos = -1;
-    int pid = getpid(); // prendo il pid del client chiamante
-    if((pos = isConnected(pid)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // ottengo il suo socket
-    int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta (flags non sono utilizzate, quindi passo 0)
     struct request_t *request = newrequest(READ_FILE, 0, strlen(pathname) + 1, 0);
@@ -254,10 +246,11 @@ int readFile(const char *pathname, void **buf, size_t *size) {
         return -1;
     }
     // Scrivo la richiesta sul socket
-    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+    if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
         return -1;
     }
-    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+    size_t slen = strlen(pathname) + 1;
+    if(writen(csock, pathname, slen) != slen) {
         return -1;
     }
 
@@ -266,7 +259,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     if(!reply) {
         return -1;
     }
-    if(read(csock, reply, sizeof(struct reply_t)) == -1) {
+    if(readn(csock, reply, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         // errore nella risposta
         return -1;
     }
@@ -298,15 +291,11 @@ int readFile(const char *pathname, void **buf, size_t *size) {
 // legge n files qualsiasi dal server (nessun limite se n<=0) e
 // se dirname non è NULL allora li salva in dirname utilizzando come nome file il loro path nel server
 int readNFiles(int N, const char *dirname) {
-    // Verifico che questo client sia connesso
-    int cPID = getpid();
-    int pos;
-    if((pos = isConnected(cPID)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // pos ora contiene la posizione del client, per cui posso accedere a clients_info
-    int csock = clients_info->client_id[2 * pos];
 
     // Invio n richieste: uso il campo flags (intero) per specificarne il numero
     struct request_t *req = newrequest(READ_N_FILES, N, 0, 0);
@@ -387,16 +376,11 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     if(!buf || size <= 0) {
         return -1;
     }
-
-    // controllo che questo client sia connesso
-    int pos = -1;
-    int pid = getpid(); // prendo il pid del client chiamante
-    if((pos = isConnected(pid)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // ottengo il suo socket
-    int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta (flags non utilizzate)
     struct request_t *request = newrequest(APPEND_FILE, 0, strlen(pathname) + 1, size);
@@ -405,12 +389,13 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
         return -1;
     }
     // Scrivo la richiesta sul socket
-    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+    if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
         free(request);
         return -1;
     }
     // Di seguito scrivo il path del file da modificare ed i dati da concatenare
-    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+    size_t slen = strlen(pathname) + 1;
+    if(writen(csock, pathname, slen) != slen) {
         free(request);
         return -1;
     }
@@ -425,7 +410,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     if(!rep) {
         return -1;
     }
-    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
+    if(readn(csock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         // errore nella risposta
         free(rep);
         return -1;
@@ -490,15 +475,11 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
 
 // Invia al server la richiesta di scrittura (creazione) del file pathname
 int writeFile(const char *pathname, const char *dirname) {
-    // controllo che questo client sia connesso
-    int pos = -1;
-    int pid = getpid(); // prendo il pid del client chiamante
-    if((pos = isConnected(pid)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // ottengo il suo socket
-    int csock = clients_info->client_id[2 * pos];
 
     // Apro il file con path pathname e ne leggo i dati in un buffer
     int file_fd;
@@ -541,7 +522,8 @@ int writeFile(const char *pathname, const char *dirname) {
         return -1;
     }
     // Scrivo il path del file da creare sul socket
-    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+    size_t slen = strlen(pathname) + 1;
+    if(writen(csock, pathname, slen) != slen) {
         free(request);
         return -1;
     }
@@ -559,7 +541,7 @@ int writeFile(const char *pathname, const char *dirname) {
     if(!rep) {
         return -1;
     }
-    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
+    if(readn(csock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         // errore nella risposta
         free(rep);
         return -1;
@@ -624,15 +606,11 @@ int writeFile(const char *pathname, const char *dirname) {
 
 // invia al server la richiesta di acquisire la mutua esclusione sul file pathname
 int lockFile(const char *pathname) {
-    // controllo che questo client sia connesso
-    int pos = -1;
-    int pid = getpid(); // prendo il pid del client chiamante
-    if((pos = isConnected(pid)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // ottengo il suo socket
-    int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta
     struct request_t *request = newrequest(LOCK_FILE, 0, strlen(pathname) + 1, 0);
@@ -640,35 +618,60 @@ int lockFile(const char *pathname) {
         // errore di allocazione
         return -1;
     }
-    // Scrivo la richiesta sul socket
-    if(writen(csock, request, sizeof(struct request_t)) == -1) {
-        free(request);
-        return -1;
-    }
-    // Scrivo il path del file su cui acquisire la lock sul socket
-    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
-        free(request);
-        return -1;
-    }
-    free(request);
-
-    // Attendo la risposta dal server
+    // Alloco memoria per la risposta del server
     struct reply_t *rep = malloc(sizeof(struct reply_t));
     if(!rep) {
-        return -1;
-    }
-    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
-        // errore nella risposta
-        free(rep);
-        return -1;
-    }
-    if(rep->status == REPLY_NO) {
-        // operazione negata
-        free(rep);
+        free(request);
         return -1;
     }
 
+    struct timespec delay;
+    memset(&delay, 0, sizeof(delay));
+    delay.tv_sec = 0;
+    delay.tv_nsec = 100000; // delay di 100 millisecondi = 100000 nanosecondi
+
+    // Flag per indicare che la mutua esclusione è stata acquisita
+    int lock_failed = 1;
+    do {
+        // Scrivo la richiesta sul socket
+        if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
+            // errore di scrittura richiesta
+            free(request);
+            return -1;
+        }
+        // Scrivo il path del file su il client vuole acquisire mutua esclusione
+        size_t slen = strlen(pathname) + 1;
+        if(writen(csock, pathname, slen) != slen) {
+            // errore di scrittura path
+            free(request);
+            return -1;
+        }
+        // Leggo la risposta del server
+        if(readn(csock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
+            // errore nella lettura della risposta
+            free(rep);
+            return -1;
+        }
+        if(rep->status == REPLY_YES) {
+            // operazione consentita: il client ha la mutua esclusione su pathname
+            lock_failed = 0; // quindi posso terminare l'operazione
+            printf("lock acquisita su %s\n", pathname);
+        }
+        // Se la lock fallisce la api aspetta 100ms e poi tenta di nuovo di effettuare l'operazione
+        else {
+            printf("Fallita acquisizione lock su %s: riprovo tra 100ms\n", pathname);
+            if(nanosleep(&delay, NULL) == -1) {
+                // syscall interrotta da un segnale: lock fallisce
+                int saved_errno = errno;
+                free(request);
+                free(rep);
+                errno = saved_errno;
+                return -1;
+            }
+        }
+    } while(lock_failed);
     free(rep);
+    free(request);
 
     // Operazione consentita
     return 0;
@@ -676,15 +679,11 @@ int lockFile(const char *pathname) {
 
 // invia al server la richiesta di rilasciare la mutua esclusione sul file pathname
 int unlockFile(const char *pathname) {
-    // controllo che questo client sia connesso
-    int pos = -1;
-    int pid = getpid(); // prendo il pid del client chiamante
-    if((pos = isConnected(pid)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // ottengo il suo socket
-    int csock = clients_info->client_id[2 * pos];
 
     // preparo la richiesta
     struct request_t *request = newrequest(UNLOCK_FILE, 0, strlen(pathname) + 1, 0);
@@ -693,12 +692,13 @@ int unlockFile(const char *pathname) {
         return -1;
     }
     // Scrivo la richiesta sul socket
-    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+    if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
         free(request);
         return -1;
     }
     // Scrivo il path del file su cui rilasciare la lock sul socket
-    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+    size_t slen = strlen(pathname) + 1;
+    if(writen(csock, pathname, slen) != slen) {
         free(request);
         return -1;
     }
@@ -709,7 +709,7 @@ int unlockFile(const char *pathname) {
     if(!rep) {
         return -1;
     }
-    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
+    if(readn(csock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         // errore nella risposta
         free(rep);
         return -1;
@@ -719,25 +719,19 @@ int unlockFile(const char *pathname) {
         free(rep);
         return -1;
     }
-
     free(rep);
 
     // Operazione consentita
     return 0;
 }
 
-// invia al server la richiesta di rimozione del file dal server (solo se ha la lock su tale file)
+// invia al server la richiesta di rimozione del file dal server (solo se ha lock su tale file)
 int removeFile(const char *pathname) {
-    // controllo che questo client sia connesso
-    int pos = -1;
-    int pid = getpid(); // prendo il pid del client chiamante
-    if((pos = isConnected(pid)) == -1) {
-        // errore: client non connesso
+    // Verifico che il client sia connesso al server
+    int csock = isConnected();
+    if(csock == -1) {
         return -1;
     }
-    // ottengo il suo socket
-    int csock = clients_info->client_id[2 * pos];
-
     // preparo la richiesta
     struct request_t *request = newrequest(REMOVE_FILE, 0, strlen(pathname) + 1, 0);
     if(!request) {
@@ -745,12 +739,13 @@ int removeFile(const char *pathname) {
         return -1;
     }
     // Scrivo la richiesta sul socket
-    if(writen(csock, request, sizeof(struct request_t)) == -1) {
+    if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
         free(request);
         return -1;
     }
     // Scrivo il path del file da rimuovere
-    if(writen(csock, pathname, strlen(pathname) + 1) == -1) {
+    size_t slen = strlen(pathname) + 1;
+    if(writen(csock, pathname, slen) != slen) {
         free(request);
         return -1;
     }
@@ -761,7 +756,7 @@ int removeFile(const char *pathname) {
     if(!rep) {
         return -1;
     }
-    if(read(csock, rep, sizeof(struct reply_t)) == -1) {
+    if(readn(csock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         // errore nella risposta
         free(rep);
         return -1;
@@ -771,7 +766,6 @@ int removeFile(const char *pathname) {
         free(rep);
         return -1;
     }
-
     free(rep);
 
     // Operazione consentita

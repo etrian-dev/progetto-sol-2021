@@ -75,6 +75,7 @@ void free_file(void *file); // Il parametro ha tipo void* perché viene usata in
 
 // Struttura dati che contiene informazioni riguardo ad un client connesso al server (attraverso il socket)
 struct client_info {
+    int PID;               // il PID del client, che lo identifica all'interno del server
     int socket;            // il socket su cui il client è connesso (intero > 0)
     char last_op;          // il tipo dell'ultima operazione eseguita con successo da questo client
     // 0 di default
@@ -155,45 +156,46 @@ void free_serv_ds(struct fs_ds_t *server_ds);
 int add_connection(struct fs_ds_t *ds, const int csock);
 // Funzione che rimuove il client sul socket csock da quelli connessi
 // Ritorna 0 se ha successo, -1 altrimenti
-int rm_connection(struct fs_ds_t *ds, const int csock);
-// Funzione che aggiorna lo stato del client sul socket csock con l'ultima operazione
-// terminata con successo
+int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid);
+// Funzione che aggiorna lo stato del client con l'ultima operazione terminata con successo
 // Ritorna 0 se ha successo, -1 altrimenti
-int update_client_op(struct fs_ds_t *ds, const int sock, const char op, const int op_flags, const char *op_path);
+int update_client_op(struct fs_ds_t *ds, const int csock, const int cpid, const char op, const int op_flags, const char *op_path);
 
 //-----------------------------------------------------------------------------------
 // Operazioni sui file (implementazione delle funzionalità della API)
 
 // Apre il file con path pathname (se presente) per il socket passato come parametro con le flag richieste
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, int flags);
+int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID, int flags);
 // Chiude il file con path pathname (se presente) per il socket passato come parametro
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID);
 // Legge il file con path pathname (se presente nel server) e lo invia lungo il socket client_sock
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID);
 // Legge n file nel server (quelli meno recenti per come è implementata) e li invia al client
 // Se n<=0 allora legge tutti i file presenti nel server
 // Se ha successo ritorna il numero di file letti, -1 altrimenti
-int api_readN(struct fs_ds_t *ds, const int n, const int client_sock);
+int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int client_PID);
 // Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_appendToFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf);
+int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
+    const int client_sock,const int client_PID, const size_t size, void *buf);
 // Se l'operazione precedente del client client_sock (completata con successo) era stata
 // openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)
 // altrimenti crea un nuovo file contenente i dati buf (chiama appendToFile internamente)
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
-int api_writeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const size_t size, void *buf);
+int api_writeFile(struct fs_ds_t *ds, const char *pathname,
+    const int client_sock, const int client_PID, const size_t size, void *buf);
 // Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_sock
 // Ritorna 0 se ha successo, -1 altrimenti
-int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock);
+int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
 // Toglie la mutua esclusione sul file pathname (solo se era lockato da client_sock)
 // Ritorna 0 se ha successo, -1 altrimenti
-int api_unlockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock);
+int api_unlockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
 // Rimuove dal server il file con path pathname, se presente e lockato da client_sock
 // Ritorna 0 se ha successo, -1 altrimenti
-int api_rmFile(struct fs_ds_t *ds, const char *pathname, const int client_sock);
+int api_rmFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID);
 
 //-----------------------------------------------------------------------------------
 // Varie funzioni di utilità implementate in api_backend-utils.c
