@@ -117,6 +117,24 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
                 // Esiste almeno una richiesta di scrittura => Se compare -D è ok
                 has_w = 1;
                 break;
+            case 'l': // l'argomento dell'opzione -l è una lista di file (almeno 1)
+                if(process_filelist(params->oplist, optarg, LOCK_FILE) == -1) {
+                    // errore da riportare su stderr, ma continuo a processare
+                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+                }
+                break;
+            case 'u': // l'argomento dell'opzione -u è una lista di file (almeno 1)
+                if(process_filelist(params->oplist, optarg, UNLOCK_FILE) == -1) {
+                    // errore da riportare su stderr, ma continuo a processare
+                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+                }
+                break;
+            case 'c': // l'argomento dell'opzione -r è una lista di file (almeno 1)
+                if(process_filelist(params->oplist, optarg, REMOVE_FILE) == -1) {
+                    // errore da riportare su stderr, ma continuo a processare
+                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+                }
+                break;
             case 'w': { // l'argomento dell'opzione -w è una directory (ed opzionalmente un intero)
                 char *save_stat = NULL;
                 char *dirname = strtok_r(optarg, ",", &save_stat);

@@ -25,7 +25,7 @@
 \t\tLa semantica è di interpretare src come stringa se l'apertura di src come file fallisce\n"
 
 // stringa delle opzioni per getopt
-#define CLIENT_OPSTRING ":hf:D:d:R:r:W:w:a:t:p"
+#define CLIENT_OPSTRING ":hf:D:d:R:r:W:w:l:u:c:a:t:p"
 // i due punti iniziali per distinguere tra opzione non riconosciuta e argomento mancante
 
 // definisco una struttura che conterrà i valori delle opzioni specificate

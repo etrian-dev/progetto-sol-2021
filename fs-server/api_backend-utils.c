@@ -269,7 +269,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
 
             if(enqueue(ds->cache_q, victim->data, victim->data_sz, -1) == -1) {
                 // Consistenza cache compromessa: terminare il server
-                perror("Consistenza cache compromessa: terminazione del server");
+                perror("[SERVER] Consistenza cache compromessa: terminazione del server");
                 pthread_kill(pthread_self(), SIGKILL);
             }
 
@@ -306,8 +306,8 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
 
     // aggiorno il numero di chiamate (che hanno avuto successo) dell'algorimto di rimpiazzamento
     if(success > 0) ds->cache_triggered++;
-    if(logging(ds, 0, "Capacity miss: espulsi i seguenti file") == -1) {
-        perror("Capacity miss: espulsi i seguenti file");
+    if(logging(ds, 0, "[SERVER] Capacity miss: espulsi i seguenti file") == -1) {
+        perror("[SERVER] Capacity miss: espulsi i seguenti file");
     }
     struct node_t *victim = (*paths)->head;
     struct node_t *vdata = (*files)->head;

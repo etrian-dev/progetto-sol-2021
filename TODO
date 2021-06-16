@@ -1,12 +1,9 @@
 SERVER:
 
-FIX read non consentite nonostante sia stato aperto con successo in mututa esclusione il file
-(probabilmente per via di un test in readFile su condizione scritta prima di usare PID)
-(o forse in find_file?)
+Fix lock/unlockFile nel server: processi client concorrenti si scambiano la lock e non proseguono
 
 Fix terminazione soft_term (SIGHUP)
 Garantire atomicità della appendToFile (?)
-Testare algoritmo rimpiazzamento cache (circa OK)
 
 Testare/implementare LOCK/UNLOCK/REMOVE
 

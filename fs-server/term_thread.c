@@ -20,7 +20,7 @@ void *term_thread(void *params) {
             || sigaddset(&mask_term, SIGQUIT) != 0)
     {
         // Fallito settaggio della maschera
-        perror("Fallito settaggio della maschera");
+        perror("[SERVER] Fallito settaggio della maschera");
         return (void*)1;
     }
 

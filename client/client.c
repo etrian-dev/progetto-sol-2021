@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
                     if(openFile(path, 0) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
+                              fprintf(stderr, "[%d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
                               perror("openFile");
                              )
                         break;
@@ -87,17 +87,17 @@ int main(int argc, char **argv) {
                     if(readFile(path, &buf, &file_sz) == -1) {
                         // errore di lettura
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile leggere il file \"%s\"\n", getpid(), path);
+                              fprintf(stderr, "[%d]: Impossibile leggere il file \"%s\"\n", getpid(), path);
                               perror("readFile");
                              )
                     }
                     // Mostro i dati letti
-                    PRINT(options->prints_on, printf("Letto il file \"%s\" (%lu bytes)\n", path, file_sz);)
+                    PRINT(options->prints_on, fprintf(stdout, "Letto il file \"%s\" (%lu bytes)\n", path, file_sz);)
 
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
+                              fprintf(stderr, "[%d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
                               perror("closeFile");
                              )
                     }
@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
                     if(openFile(path, O_CREATEFILE|O_LOCKFILE) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire (scrivere) il file \"%s\"\n", getpid(), path);
+                              fprintf(stderr, "[%d]: Impossibile aprire (scrivere) il file \"%s\"\n", getpid(), path);
                               perror("openFile");
                              )
                         break;
@@ -119,9 +119,9 @@ int main(int argc, char **argv) {
                     if(writeFile(path, options->dir_swapout) == -1) {
                         // errore di lettura
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
-                              perror("writeFile");
-                             )
+                            fprintf(stderr, "[%d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
+                            perror("writeFile");
+                        )
                     }
 
                     PRINT(options->prints_on, printf("Scritto il file \"%s\"\n", path);)
@@ -129,9 +129,9 @@ int main(int argc, char **argv) {
                     if(closeFile(path) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                              perror("closeFile");
-                             )
+                            fprintf(stderr, "[%d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
+                            perror("closeFile");
+                        )
                     }
                     break;
                 }
@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
                         if(!buf) {
                             // errore nella duplicazione della stringa
                             PRINT(options->prints_on,
-                                  fprintf(stderr, "[CLIENT %d]: Impossibile duplicare \"%s\"\n", getpid(), src);
+                                  fprintf(stderr, "[%d]: Impossibile duplicare \"%s\"\n", getpid(), src);
                                   perror("strndup");
                                  )
                             break;
@@ -168,7 +168,7 @@ int main(int argc, char **argv) {
                         if(fstat(file_fd, &info) == -1) {
                             // impossibile ottenere informazioni
                             PRINT(options->prints_on,
-                                  fprintf(stderr, "[CLIENT %d]: Impossibile ottenere info sul file \"%s\"\n", getpid(), src);
+                                  fprintf(stderr, "[%d]: Impossibile ottenere info sul file \"%s\"\n", getpid(), src);
                                   perror("fstat");
                                  )
                             break;
@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
                             if((buf = malloc(file_sz)) == NULL) {
                                 // impossibile allocare il buffer per il file da concatenare
                                 PRINT(options->prints_on,
-                                      fprintf(stderr, "[CLIENT %d]: Allocazione buffer fallita\n", getpid());
+                                      fprintf(stderr, "[%d]: Allocazione buffer fallita\n", getpid());
                                       perror("malloc");
                                      )
                                 break;
@@ -194,7 +194,7 @@ int main(int argc, char **argv) {
                             if(written == -1) {
                                 // impossibile leggere il file
                                 PRINT(options->prints_on,
-                                      fprintf(stderr, "[CLIENT %d]: Lettura file fallita\n", getpid());
+                                      fprintf(stderr, "[%d]: Lettura file fallita\n", getpid());
                                       perror("read");
                                      )
                                 free(buf);
@@ -203,7 +203,7 @@ int main(int argc, char **argv) {
                         }
                         else {
                             // non è un file regolare
-                            PRINT(options->prints_on, fprintf(stderr, "[CLIENT %d]: \"%s\" non è un file regolare\n", getpid(), src);)
+                            PRINT(options->prints_on, fprintf(stderr, "[%d]: \"%s\" non è un file regolare\n", getpid(), src);)
                             free(buf);
                             break;
                         }
@@ -212,38 +212,109 @@ int main(int argc, char **argv) {
                     // e buf contiene i dati da scrivere e file_sz la dimensione di buf
 
                     // apro il file nel server
-                    // TODO: flag O_LOCK?
                     if(openFile(dest, 0) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile aprire il file \"%s\"\n", getpid(), dest);
+                              fprintf(stderr, "[%d]: Impossibile aprire il file \"%s\"\n", getpid(), dest);
                               perror("openFile");
                              )
                         break;
                     }
-
                     // file aperto: scrivo in append il file e fornisco la cartella dove salvare eventuali file espulsi
                     if(appendToFile(dest, buf, file_sz, options->dir_swapout) == -1) {
                         // errore di append
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile concatenare il file \"%s\"\n", getpid(), dest);
+                              fprintf(stderr, "[%d]: Impossibile concatenare il file \"%s\"\n", getpid(), dest);
                               perror("appendToFile");
                              )
                     }
 
-                    PRINT(options->prints_on, printf("Concatenato \"%s\" (%lu bytes) al file \"%s\"\n", src, file_sz, path);)
+                    PRINT(options->prints_on, fprintf(stdout, "Concatenato \"%s\" (%lu bytes) al file \"%s\"\n", src, file_sz, path);)
 
                     if(closeFile(dest) == -1) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
-                              fprintf(stderr, "[CLIENT %d]: Impossibile chiudere il file \"%s\"\n", getpid(), dest);
-                              perror("closeFile");
-                             )
+                            fprintf(stderr, "[%d]: Impossibile chiudere il file \"%s\"\n", getpid(), dest);
+                            perror("closeFile");
+                        )
+                    }
+                    break;
+                }
+                case LOCK_FILE: {
+                    // Tenta di aprire il file con flag O_LOCKFILE
+                    if(openFile(path, O_LOCKFILE) == -1) {
+                        // errore di apertura: log su stderr
+                        PRINT(options->prints_on,
+                            fprintf(stderr, "[%d]: Impossibile aprire il file in modo locked\"%s\"\n", getpid(), path);
+                            perror("openFile");
+                        )
+                    }
+                    // Tenta di acquisire la mutua esclusione sul file (indipendentemente dall'esito della openFile)
+                    // La API prova ripetutamente a farlo ogni 100 millisecondi
+                    if(lockFile(path) == -1) {
+                        // Errore nel settare mutua esclusione
+                        PRINT(options->prints_on,
+                            fprintf(stderr, "[%d]: Impossibile settare mutua esclusione sul file \"%s\"\n", getpid(), path);
+                            perror("lockFile");
+                        )
+                    }
+                    else {
+                        PRINT(options->prints_on,
+                            fprintf(stdout, "[%d]: Mutua esclusione sul file \"%s\" acquisita con successo\n", getpid(), path);
+                        )
+                    }
+                }
+                case UNLOCK_FILE: {
+                    // Tenta di aprire il file con flag O_LOCKFILE
+                    if(openFile(path, O_LOCKFILE) == -1) {
+                        // errore di apertura: log su stderr
+                        PRINT(options->prints_on,
+                            fprintf(stderr, "[%d]: Impossibile aprire il file in modo locked\"%s\"\n", getpid(), path);
+                            perror("openFile");
+                        )
+                    }
+                    // Rilascia la mutua esclusione sul file (indipendentemente dall'esito della openFile)
+                    if(unlockFile(path) == -1) {
+                        // Errore nel rimuovere mutua esclusione (o il client non la aveva settata o altro)
+                        PRINT(options->prints_on,
+                            fprintf(stderr, "[%d]: Impossibile rimuovere mutua esclusione dal file \"%s\"\n", getpid(), path);
+                            perror("unlockFile");
+                        )
+                    }
+                    else {
+                        PRINT(options->prints_on,
+                            fprintf(stdout, "[%d]: Mutua esclusione tolta sul file \"%s\"\n", getpid(), path);
+                        )
+                    }
+                }
+                case REMOVE_FILE: {
+                    // Tenta di aprire il file con flag O_LOCKFILE
+                    if(openFile(path, O_LOCKFILE) == -1) {
+                        // errore di apertura: log su stderr
+                        PRINT(options->prints_on,
+                            fprintf(stderr, "[%d]: Impossibile aprire il file in modo locked\"%s\"\n", getpid(), path);
+                            perror("openFile");
+                        )
+                    }
+                    // Tenta di rimuovere il file dal server indipendentemente dall'esito dell'operazione precedente
+                    if(removeFile(path) == -1) {
+                        // Errore nel rimuovere il file dal server
+                        // può essere causato dal non aver aperto il file o non essere in possesso
+                        // della mutua esclusione su di esso
+                        PRINT(options->prints_on,
+                            fprintf(stderr, "[%d]: Impossibile rimuovere il file \"%s\" dal filserver\n", getpid(), path);
+                            perror("removeFile");
+                        )
+                    }
+                    else {
+                        PRINT(options->prints_on,
+                            fprintf(stdout, "[%d]: Rimozione del file \"%s\" completata con successo\n", getpid(), path);
+                        )
                     }
                     break;
                 }
                 default:
-                    fprintf(stderr, "Operazione non implementata");
+                    fprintf(stderr, "\'%c\': Operazione non implementata\n", op_type);
                 }
 
                 // libero memoria allocata per il file

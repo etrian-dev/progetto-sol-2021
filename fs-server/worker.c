@@ -40,6 +40,7 @@ void *work(void *params) {
                     // Fallita operazione di unlock
                     pthread_kill(pthread_self(), SIGKILL);
                 }
+                printf("worker %lu terminato\n", pthread_self());
                 return NULL;
             }
             pthread_cond_wait(&(ds->new_job), &(ds->mux_jobq));
@@ -133,16 +134,38 @@ void *work(void *params) {
             // tolgo questo socket dalla struttura dati del server
             if(rm_connection(ds, client_sock, request->pid) == -1) {
                 // Fallita rimozione client
-                snprintf(msg, BUF_BASESZ, "Fallita rimozione client con socket %d", client_sock);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] Disconnessione dal socket %d: %s", request->pid, client_sock, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
-                // chiudo anche il socket su cui si era connesso (in realtà lo fa anche il client stesso)
+                // Connessione con il client chiusa con successo
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] Disconnessione dal socket %d: %s", request->pid, client_sock, OP_OK);
+                if(logging(ds, errno, msg) == -1) {
+                    perror(msg);
+                }
+                // chiudo il socket su cui si era connesso (in realtà lo fa anche il client stesso)
                 close(client_sock);
                 // Inverto il segno se la richiesta è stata completata con successo
                 client_sock = -client_sock;
+            }
+            // Quando un client si disconnette tutti i file sui quali aveva la mutua esclusione la perdono
+            int i = 0;
+            icl_entry_t *tmp_el = NULL;
+            void *key = NULL;
+            struct fs_filedata_t *file = NULL;
+            icl_hash_foreach(ds->fs_table, i, tmp_el, key, file) {
+                pthread_mutex_lock(&(file->mux_file));
+                while(file->modifying == 1) {
+                    pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+                }
+                file->modifying = 1;
+                if(file->lockedBy == request->pid) {
+                    file->lockedBy = -1;
+                }
+                file->modifying = 0;
+                pthread_mutex_unlock(&(file->mux_file));
             }
             break;
         }
@@ -349,14 +372,14 @@ void *work(void *params) {
             // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
             if(api_rmFile(ds, path, client_sock, request->pid) == -1) {
                 // %s: logging
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_removeFile(%s): %s", request->pid, path, OP_FAIL);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_rmFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 // lock OK
-                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_removeFile(%s): %s", request->pid, path, OP_OK);
+                snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_rmFile(%s): %s", request->pid, path, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
@@ -364,7 +387,7 @@ void *work(void *params) {
             break;
         }
         default:
-            snprintf(msg, BUF_BASESZ, "[WARNING] Operazione non riconosciuta proveniente dal client %d", client_sock);
+            snprintf(msg, BUF_BASESZ, "[SERVER] Operazione non riconosciuta proveniente dal client %d", client_sock);
             if(logging(ds, errno, msg) == -1) {
                 perror(msg);
             }

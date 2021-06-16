@@ -655,11 +655,10 @@ int lockFile(const char *pathname) {
         if(rep->status == REPLY_YES) {
             // operazione consentita: il client ha la mutua esclusione su pathname
             lock_failed = 0; // quindi posso terminare l'operazione
-            printf("lock acquisita su %s\n", pathname);
         }
         // Se la lock fallisce la api aspetta 100ms e poi tenta di nuovo di effettuare l'operazione
         else {
-            printf("Fallita acquisizione lock su %s: riprovo tra 100ms\n", pathname);
+            fprintf(stderr, "Fallita acquisizione lock su %s: riprovo tra 100ms\n", pathname);
             if(nanosleep(&delay, NULL) == -1) {
                 // syscall interrotta da un segnale: lock fallisce
                 int saved_errno = errno;

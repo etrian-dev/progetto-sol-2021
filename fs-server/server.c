@@ -26,8 +26,8 @@ void clean_server(struct serv_params *params, struct fs_ds_t *ds);
 int accept_connection(const int serv_sock);
 // Legge dal socket del client (client_fd) la richiesta e la inserisce nella coda per servirla
 int processRequest(struct fs_ds_t *server_ds, const int client_sock);
-// Chiude tutti gli fd in set, tranne feedpipe e termpipe, rimuovendoli anche dal set
-void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const int maxsock);
+// Chiude tutti gli fd in set, rimuovendoli anche dal set
+void close_fd(fd_set *set, const int maxfd);
 // Stampa su stdout delle statistiche di utilizzo del server
 void stats(struct serv_params *params, struct fs_ds_t *ds);
 
@@ -177,10 +177,10 @@ int main(int argc, char **argv) {
     int fd;
     int max_fd_idx;
     if(listen_connections > server_ds->feedback[0]) {
-    max_fd_idx = listen_connections;
-}
-if(server_ds->termination[0] > max_fd_idx) {
-    max_fd_idx = server_ds->termination[0];
+        max_fd_idx = listen_connections;
+    }
+    if(server_ds->termination[0] > max_fd_idx) {
+        max_fd_idx = server_ds->termination[0];
     }
 
     // Esco da questo while soltanto se uno dei segnali di terminazione viene
@@ -227,11 +227,11 @@ if(server_ds->termination[0] > max_fd_idx) {
                     FD_CLR(listen_connections, &fd_read);
                     break; // altri socket pronti sono esaminati solo dopo aver aggiornato il set
                 }
-                // In caso di terminazione veloce chiudo (quasi) tutti i descrittori
-                // Viene effettuata di default anche se è stato letto un altro valore
+                // In caso di terminazione veloce chiudo tutti i descrittori
+                // Viene effettuata di default anche se è stato letto un valore che non sia FAST_TERM dalla pipe
                 else {
                     // Lascio aperti soltanti il descrittore per il feedback e per la terminazione
-                    close_most_fd(&fd_read, server_ds->feedback[0], server_ds->termination[0], max_fd_idx + 1);
+                    close_fd(&fd_read, max_fd_idx + 1);
 
                     if(pthread_mutex_lock(&(server_ds->mux_jobq)) == -1) {
                         if(logging(server_ds, errno, "Fallito lock coda di richieste") == -1) {
@@ -324,11 +324,6 @@ if(server_ds->termination[0] > max_fd_idx) {
                 }
                 // Verifico se il client che si è disconnesso era l'ultimo rimasto dopo un SIGHUP ricevuto
                 else {
-                    char msg[BUF_BASESZ];
-                    snprintf(msg, BUF_BASESZ, "Disconnesso il client sul socket %d", -sock);
-                    if(logging(server_ds, 0, msg) == -1) {
-                        perror(msg);
-                    }
                     if(sock < 0 && server_ds->slow_term == 1 && server_ds->connected_clients == 0) {
                         // In tal caso i worker sono terminati e posso saltare alla join
                         goto term;
@@ -479,17 +474,17 @@ int processRequest(struct fs_ds_t *server_ds, const int client_sock) {
     return 0;
 }
 
-void close_most_fd(fd_set *set, const int feedpipe, const int termpipe, const int maxsock) {
+void close_fd(fd_set *set, const int maxfd) {
     // chiudo tutti i fd su cui opera la select tranne quelli di feedback e di terminazione
     int i;
-    for(i = 0; i <= maxsock; i++) {
-        if(!(i == feedpipe || i == termpipe) && FD_ISSET(i, set)) {
+    for(i = 0; i <= maxfd; i++) {
+        if(FD_ISSET(i, set)) {
             if(close(i) == -1) {
                 fprintf(stderr, "Impossibile chiudere il fd %d\n", i);
             }
-            FD_CLR(i, set);
         }
     }
+    FD_ZERO(set);
 }
 
 // Stampa su stdout delle statistiche di utilizzo del server
@@ -510,7 +505,6 @@ void stats(struct serv_params *params, struct fs_ds_t *ds) {
     printf("File presenti nel server alla terminazione (ordinati dal meno recente al più recente):\n");
     struct node_t *path = ds->cache_q->head;
     struct fs_filedata_t *file = NULL;
-    long int i = 0;
     while(path) {
         file = find_file(ds, (char*)path->data);
         printf("\"%s\"", (char*)path->data);
@@ -518,7 +512,7 @@ void stats(struct serv_params *params, struct fs_ds_t *ds) {
             printf(" (%lu bytes)\n", file->size);
         }
         else {
-            printf(": Impossibile recuperare il file (inconsistenza tra hashtable e coda di file\n");
+            printf(": Impossibile recuperare il file (inconsistenza tra hashtable e coda di file)\n");
         }
         path = path->next;
     }

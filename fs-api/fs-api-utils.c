@@ -224,12 +224,14 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
         }
     }
 
-    if((dir && !dir_abspath) || chdir(dir_abspath) == -1) {
-        perror("chdir error");
-        free(cwd);
-        free(dir_abspath);
-        free(paths_cpy);
-        return -1;
+    if(dir){
+        if(!dir_abspath || chdir(dir_abspath) == -1) {
+            perror("fs-api-utils.c: write_swp(): chdir error");
+            free(cwd);
+            free(dir_abspath);
+            free(paths_cpy);
+            return -1;
+        }
     }
 
     // La risposta contiene il numero di file inviati dal server nel campo nbuffers
@@ -282,16 +284,18 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
     }
 
     // ripristino la directory originale
-    if(chdir(cwd) == -1) {
-        // errore nel cambio di directory
-        perror("Errore ripristino directory");
-        i = -1;
+    if(cwd) {
+        if(chdir(cwd) == -1) {
+            // errore nel cambio di directory
+            perror("fs-api-utils.c: write_swp(): chdir(): errore ripristino directory");
+            i = -1;
+        }
     }
 
     // libero memoria
     free(paths_cpy);
-    free(cwd);
-    free(dir_abspath);
+    if(cwd) free(cwd);
+    if(dir_abspath) free(dir_abspath);
 
     return i;
 }

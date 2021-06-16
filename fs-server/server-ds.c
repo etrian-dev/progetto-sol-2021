@@ -98,12 +98,15 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
             free(server_ds->active_clients);
         }
 
-        // chiudo le pipe
-        if( close(server_ds->feedback[0]) == -1
+        // chiudo le pipe se avevo slow_term (altrimenti erano già state chiuse)
+        if(server_ds->slow_term == 1) {
+            if( close(server_ds->feedback[0]) == -1
                 || close(server_ds->feedback[1]) == -1
                 || close(server_ds->termination[0]) == -1
-                || close(server_ds->termination[1] == -1)) {
-            perror("Impossibile chiudere una pipe");
+                || close(server_ds->termination[1] == -1))
+            {
+                perror("Impossibile chiudere una pipe");
+            }
         }
 
         free(server_ds);

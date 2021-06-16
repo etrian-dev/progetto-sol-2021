@@ -1,18 +1,13 @@
 // header utilità
 #include <utils.h>
-// multithreading headers
-#include <pthread.h>
 // system call headers
 #include <sys/types.h>
-#include <sys/un.h>
-#include <sys/socket.h>
 #include <unistd.h>
 // headers libreria standard
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 #include <stddef.h>
 
 // sorgente contenente varie funzioni di utilità
@@ -142,8 +137,12 @@ int readn(int fd, void *ptr, size_t n) {
     int nread;
     nleft = n;
     while (nleft > 0) {
+        errno = 0; // reset errno to handle EINTR internally
         if((nread = read(fd, ptr, nleft)) < 0) {
-            if (nleft == n) return -1; /* error, return -1 */
+            if(errno == EINTR) {
+                continue; // write was interrupted by a signal: retry
+            }
+            else if (nleft == n) return -1; /* error, return -1 */
             else break; /* error, return amount read so far */
         } else if (nread == 0) break; /* EOF */
         nleft -= nread;
@@ -157,11 +156,15 @@ int writen(int fd, void *ptr, size_t n) {
     int nwritten;
     nleft = n;
     while (nleft > 0) {
+        errno = 0; // reset errno to handle EINTR internally
         if((nwritten = write(fd, ptr, nleft)) < 0) {
-            if (nleft == n) return -1; /* error, return -1 */
+            if(errno == EINTR) {
+                continue; // write was interrupted by a signal: retry
+            }
+            else if (nleft == n) return -1; /* error, return -1 */
             else break; /* error, return amount written so far */
         } else if (nwritten == 0) break;
-        nleft -= nwritten;
+        nleft -= nwritten; /* EOF */
         ptr += nwritten;
     }
     return(n - nleft); /* return >= 0 */
