@@ -213,7 +213,7 @@ int main(int argc, char **argv) {
             if(fd == server_ds->termination[0] && FD_ISSET(fd, &fd_read_cpy)) {
                 // Devo leggere dalla pipe per capire quale tipo di terminazione (veloce o lenta)
                 int term;
-                if(read(server_ds->termination[0], &term, sizeof(term)) == -1) {
+                if(readn(server_ds->termination[0], &term, sizeof(term)) != sizeof(term)) {
                     perror("Manager thread: Impossibile leggere tipo di terminazione");
                     pthread_kill(pthread_self(), SIGKILL); // terminazione brutale
                 }
@@ -225,6 +225,11 @@ int main(int argc, char **argv) {
                     // devono essere comunque servite le richieste dei client connessi, quindi tolgo
                     // solo listen_connections da quelli ascoltati dalla select
                     FD_CLR(listen_connections, &fd_read);
+
+                    // Se non vi è alcun worker connesso vado subito alla terminazione (aspetto i worker)
+                    if(server_ds->connected_clients == 0) {
+                        goto term;
+                    }
                     break; // altri socket pronti sono esaminati solo dopo aver aggiornato il set
                 }
                 // In caso di terminazione veloce chiudo tutti i descrittori
@@ -490,6 +495,16 @@ void close_fd(fd_set *set, const int maxfd) {
 // Stampa su stdout delle statistiche di utilizzo del server
 void stats(struct serv_params *params, struct fs_ds_t *ds) {
     puts("======= RIEPILOGO DELL\'ESECUZIONE =======");
+    // Ottengo il tempo corrente
+    time_t now = time(NULL);
+    // ottengo timestamp di avvio sotto forma di stringa
+    char date_tm[27];
+    memset(date_tm, 0, 27 * sizeof(char));
+    ctime_r(&(ds->start_tm), date_tm);
+    char *newln = strrchr(date_tm, '\n');
+    *newln = '\0';
+    printf("Server avviato %s: tempo di esecuzione %lds\n", date_tm, ((long int)now - (long int)ds->start_tm));
+    printf("Numero di thread workers: %ld\n", params->thread_pool);
     printf("Socket del server: %s\n", params->sock_path);
     printf("File di log: %s\n", params->log_path);
     printf("Client connessi al momento della terminazione: %lu\n", ds->connected_clients);

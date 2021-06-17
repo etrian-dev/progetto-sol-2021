@@ -59,8 +59,6 @@ test2: all
 	chmod +x makeconf.sh
 	# Creo il file di configurazione del server per il test2
 	./makeconf.sh 4 1 10 test2.sock test2.log test2.conf
-	# Lancio il server in background
-	./fs-server.out -f test2.conf &
 	# Lancio i client che testano le operazioni del server
 	chmod +x test2.sh
 	./test2.sh test2.sock

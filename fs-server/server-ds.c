@@ -32,6 +32,9 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
         return -1;
     }
 
+    // Setto il timestamp iniziale
+    (*server_ds)->start_tm = time(NULL);
+
     // creo la pipe per il feedback tra thread worker e manager
     if(pipe((*server_ds)->feedback) == -1) {
         return -1;

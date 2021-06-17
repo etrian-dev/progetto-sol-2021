@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <icl_hash.h> // per hashtable
 #include <utils.h> // per la coda sincronizzata
+#include <time.h> // per time_t
 
 //-----------------------------------------------------------------------------------
 // Definizioni relative al parsing del file di configurazione
@@ -92,6 +93,9 @@ struct client_info {
 
 // Struttura dati condivisa del server
 struct fs_ds_t {
+    // Timestamp del tempo di avvio del server (solo dopo allocazione di questa struttura)
+    time_t start_tm;
+
     // Vale sempre la relazione max_files >= max_nfiles >= curr_files
     // Massimo numero di file che possono essere presenti nel server contemporaneamente
     size_t max_files;

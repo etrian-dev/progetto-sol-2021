@@ -40,8 +40,7 @@ void *work(void *params) {
                     // Fallita operazione di unlock
                     pthread_kill(pthread_self(), SIGKILL);
                 }
-                printf("worker %lu terminato\n", pthread_self());
-                return NULL;
+                return (void*)0;
             }
             pthread_cond_wait(&(ds->new_job), &(ds->mux_jobq));
         }
@@ -167,6 +166,16 @@ void *work(void *params) {
                 file->modifying = 0;
                 pthread_mutex_unlock(&(file->mux_file));
             }
+
+            // Se era l'ultimo client connesso ed era in corso la terminazione
+            // allora devo terminare il server, pertanto segnalo
+            // la coda (che sarà vuota) a tutti i worker e poi termino il thread
+            //if(ds->connected_clients == 0 && ds->slow_term == 1) {
+                //LOCK_OR_KILL(ds, ds->mux_jobq, ds->job_queue);
+                //pthread_cond_broadcast(&(ds->new_job));
+                //UNLOCK_OR_KILL(ds, ds->mux_jobq);
+                //return (void*)0;
+            //}
             break;
         }
         case OPEN_FILE: { // operazione di apertura di un file
