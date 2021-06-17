@@ -12,7 +12,7 @@
 // If some step fails returns -1, otherwise the socket's file descriptor is returned
 int sock_init(const char *addr, const size_t len) {
     // first create a socket and get a fd for it
-    int sock_fd;
+    int sock_fd = -1;
     // creates a socket to communicate between local processes with a stream type
     // "reliable, two-way, connection-based byte stream" (see man 2 socket)
     if((sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {

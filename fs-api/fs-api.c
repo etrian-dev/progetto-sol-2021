@@ -658,7 +658,7 @@ int lockFile(const char *pathname) {
         }
         // Se la lock fallisce la api aspetta 100ms e poi tenta di nuovo di effettuare l'operazione
         else {
-            fprintf(stderr, "Fallita acquisizione lock su %s: riprovo tra 100ms\n", pathname);
+            fprintf(stderr, "[%d] Fallita acquisizione lock su \"%s\": riprovo tra 100ms\n", getpid(), pathname);
             if(nanosleep(&delay, NULL) == -1) {
                 // syscall interrotta da un segnale: lock fallisce
                 int saved_errno = errno;

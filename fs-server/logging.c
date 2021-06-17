@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h> // per stampare il timestamp nel log
+#include <time.h>
 
 // File contenente l'implementazione della funzione per effettuare il logging delle operazioni
 // effettuate dai client e dal server

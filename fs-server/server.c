@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
         parse_status = parse_config(&run_params, NULL);
     }
 
-    int errcode; // variabile usata per salvare errno e poi ritornare dal main con tale valore
+    int errcode = 0; // variabile usata per salvare errno e poi ritornare dal main con tale valore
 
     // errore di parsing: lo riporto su standard error ed esco con tale codice di errore
     if(parse_status == -1) {

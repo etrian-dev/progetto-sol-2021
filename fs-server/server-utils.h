@@ -34,7 +34,7 @@ struct serv_params {
 #define SOCK_PATH_DFL "./server.sock"
 #define LOG_PATH_DFL "./server.log"
 // definisco anche un limite superiore (ragionevole) alla lunghezza dei path di default
-#define DFL_PATHLEN 50
+#define DFL_PATHLEN 100
 
 // Funzione per il parsing del file di configurazione
 // Prova a leggere e fare il parsing del file conf_fpath (path relativo).
@@ -121,14 +121,15 @@ struct fs_ds_t {
 
     // Coda per l'implementazione della politica di rimpiazzamento FIFO
     struct Queue *cache_q;
-    // Lock e cond variables per l'accesso in ME
+    // Lock per l'accesso in ME
     pthread_mutex_t mux_cacheq;
-    pthread_cond_t new_cacheq;
 
     // Array contenenti informazioni sui client connessi
     struct client_info *active_clients;
     // Il numero di client connessi al momento (ovvero la dimensione dell'array sopra)
     size_t connected_clients;
+    // mutex per accedere alla struttura dati che contiene le informazioni dei client connessi
+    pthread_mutex_t mux_clients;
 
     // Numero di volte che l'algoritmo di rimpiazzamento dei file è stato eseguito con successo
     size_t cache_triggered;
@@ -145,6 +146,7 @@ struct fs_ds_t {
     // Mutex per la scrittura in ME sul file di log
     pthread_mutex_t mux_log;
 };
+
 // Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
 // ed alloca e inizializza la struttura server_ds passata tramite doppio puntatore.
 // Ritorna 0 se ha successo, -1 altrimenti
@@ -160,6 +162,23 @@ int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid);
 // Funzione che aggiorna lo stato del client con l'ultima operazione terminata con successo
 // Ritorna 0 se ha successo, -1 altrimenti
 int update_client_op(struct fs_ds_t *ds, const int csock, const int cpid, const char op, const int op_flags, const char *op_path);
+
+//-----------------------------------------------------------------------------------
+//Gestione del logging
+
+// Funzione per effettuare il logging: prende come parametri
+// La struttura dati del server (ds)
+// Il codice di errore (corrisponderà ad errno oppure 0 se è un errore di utilizzo del server)
+// La stringa da stampare nel file di log (null-terminated)
+// La funzione ritorna 0 se ha successo, -1 se riscontra un errore (setta errno)
+int logging(struct fs_ds_t *ds, int errcode, char *message);
+
+//-----------------------------------------------------------------------------------
+// Funzioni per tentare di fare lock/unlock e riportare l'errore prima di terminare il server se falliscono
+// Se obj fosse NULL e la lock fallisce allora ho deallocato obj contenente la variabile di lock
+// (questo avviene per i file rimossi su cui altri thread stavano aspettando di avere lock)
+void LOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t mutex, void *obj);
+void UNLOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t mutex);
 
 //-----------------------------------------------------------------------------------
 // Operazioni sui file (implementazione delle funzionalità della API)
@@ -181,19 +200,19 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
     const int client_sock,const int client_PID, const size_t size, void *buf);
-// Se l'operazione precedente del client client_sock (completata con successo) era stata
-// openFile(pathname, O_CREATEFILE) allora il file pathname viene troncato (ritorna a dimensione nulla)
-// altrimenti crea un nuovo file contenente i dati buf (chiama appendToFile internamente)
+// Se l'operazione precedente del client client_PID (completata con successo) era stata
+// openFile(pathname, O_CREATEFILE|O_LOCKFILE) allora il file pathname viene troncato e
+// viene scritto il contenuto di buf, di dimensione size
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_writeFile(struct fs_ds_t *ds, const char *pathname,
     const int client_sock, const int client_PID, const size_t size, void *buf);
-// Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_sock
+// Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_PID
 // Ritorna 0 se ha successo, -1 altrimenti
 int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
-// Toglie la mutua esclusione sul file pathname (solo se era lockato da client_sock)
+// Toglie la mutua esclusione sul file pathname (solo se era lockato da client_PID)
 // Ritorna 0 se ha successo, -1 altrimenti
 int api_unlockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
-// Rimuove dal server il file con path pathname, se presente e lockato da client_sock
+// Rimuove dal server il file con path pathname, se presente e lockato da client_PID
 // Ritorna 0 se ha successo, -1 altrimenti
 int api_rmFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID);
 
@@ -203,10 +222,9 @@ int api_rmFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, 
 // Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
 // Altrimenti ritorna NULL
 struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname);
-// Inserisce nel fileserver il file path con contenuto buf, di dimensione size, proveniente dal socket client
-// Se l'inserimento riesce allora ritorna un puntatore al file originale e rimpiazza i dati con buf
-// Se buf == NULL allora crea un file vuoto, ritornando il file creato
-// Se l'operazione fallisce ritorna NULL
+// Se buf == NULL crea un nuovo file vuoto aperto dal client passato come parametro
+// Se buf != NULL concatena buf, di dimensione size, al file con pathname path già presente nel server
+// In entrambi i casi ritorna un puntatore al file se ha successo, NULL altrimenti
 struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const int flags, const void *buf, const size_t size, const int client);
 // Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
 // newsz byte, in modo tale da avere una occupazione in memoria inferiore a
@@ -216,15 +234,5 @@ struct fs_filedata_t *insert_file(struct fs_ds_t *ds, const char *path, const in
 // parametro alla funzione, altrimenti se l'algoritmo di rimpiazzamento fallisce
 // esse non sono allocate e comunque lasciate in uno stato inconsistente
 int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files);
-
-//-----------------------------------------------------------------------------------
-//Gestione del logging
-
-// Funzione per effettuare il logging: prende come parametri
-// La struttura dati del server (ds)
-// Il codice di errore (corrisponderà ad errno a meno di casi particolari)
-// La stringa da stampare nel file di log (null-terminated)
-// La funzione ritorna 0 se ha successo, -1 se riscontra un errore (setta errno)
-int logging(struct fs_ds_t *ds, int errcode, char *message);
 
 #endif

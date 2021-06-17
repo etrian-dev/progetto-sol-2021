@@ -15,7 +15,7 @@ void cleanup_conf(FILE *fp, char *buf); // entrambi gli argomenti possono essere
 int parse_config(struct serv_params *params, const char *conf_fpath) {
     // Se è stato fornito un path per il file di configurazione lo leggo
     // Altrimenti apro quello di default
-    FILE *conf_fp = NULL;
+    FILE *conf_fp;
     if(conf_fpath) {
         conf_fp = fopen(conf_fpath, "r");
         if(!conf_fp) {

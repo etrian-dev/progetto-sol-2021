@@ -24,8 +24,8 @@ delay=200
 # Siccome input1.txt è lockato dal client mandato in esecuzione in precedenza è probabile dover attendere che la mutua esclusione sia
 # rilasciata prima di poter aprire e rimuovere quel file
 ./client.out -p -t $delay -f $1 -l testcases/inputs/input1.txt \
--a "testcases/inputs/input1.txt:test\ntest\ntest" -u testcases/inputs/input1.txt \
--c testcases/inputs/input1.txt,testcases/inputs/input0.txt,testcases/zzzzzzzzzzz
+-a "testcases/inputs/input1.txt:test\ntest\ntest" \
+-c testcases/inputs/input1.txt,testcases/inputs/input0.txt,testcases/zzzzzzzzzzz &
 # Scrive nel server tutti i file presenti nella directory testcases (e ricorsivamente nelle sottodirectory)
 # Eventuali file espulsi per capacity misses vengono buttati via dal client
 # (anche se in questo caso non succede: vi sono 50 file per un totale di 17 Mbytes,
@@ -33,14 +33,14 @@ delay=200
 ./client.out -p -t $delay -f $1 -w testcases,0
 # Legge tutti i file presenti nel server (tutti quelli in testcases) e li salva nella directory save_reads
 mkdir save_reads
-#./client.out -p -t $delay -f $1 -R 0 -d save_reads
+./client.out -p -t $delay -f $1 -R 0 -d save_reads
 
 # Ottengo il PID del server
 # In questo caso il server sta eseguendo con valgrind, perciò il pid è quello di valgrind.bin
 server_pid=$(pidof valgrind.bin)
 # Quindi invia il segnale di terminazione lenta al server (SIGHUP)
+printf "\n\n\n******* SIGHUP inviato a $(ps --no-headers -o command $server_pid) *******\n"
 kill -2 $server_pid
-echo "SIGHUP inviato a $server_pid"
 # aspetta la terminazione del server e poi termina lo script
 while [ "x"$(ps --no-headers -o comm $server_pid) != "x" ]; do
     sleep 1

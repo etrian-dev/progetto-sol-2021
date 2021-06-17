@@ -18,8 +18,8 @@ mkdir save_reads
 
 server_pid=$(pidof ./fs-server.out)
 # Quindi invia il segnale di terminazione al server
+printf "\n\n\n******* SIGHUP inviato a $(ps --no-headers -o command $server_pid) *******\n"
 kill -2 $server_pid
-echo "SIGHUP inviato a $server_pid"
 # aspetta la terminazione del server e poi termina lo script
 while [ "x"$(ps --no-headers -o comm $server_pid) != "x" ]; do
     sleep 1

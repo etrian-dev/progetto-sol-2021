@@ -77,7 +77,6 @@ int main(int argc, char **argv) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
                               fprintf(stderr, "[%d]: Impossibile aprire il file \"%s\"\n", getpid(), path);
-                              perror("openFile");
                              )
                         break;
                     }
@@ -88,7 +87,6 @@ int main(int argc, char **argv) {
                         // errore di lettura
                         PRINT(options->prints_on,
                               fprintf(stderr, "[%d]: Impossibile leggere il file \"%s\"\n", getpid(), path);
-                              perror("readFile");
                              )
                     }
                     // Mostro i dati letti
@@ -98,7 +96,6 @@ int main(int argc, char **argv) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
                               fprintf(stderr, "[%d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                              perror("closeFile");
                              )
                     }
                     break;
@@ -110,7 +107,6 @@ int main(int argc, char **argv) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
                               fprintf(stderr, "[%d]: Impossibile aprire (scrivere) il file \"%s\"\n", getpid(), path);
-                              perror("openFile");
                              )
                         break;
                     }
@@ -120,7 +116,6 @@ int main(int argc, char **argv) {
                         // errore di lettura
                         PRINT(options->prints_on,
                             fprintf(stderr, "[%d]: Impossibile scrivere il file \"%s\"\n", getpid(), path);
-                            perror("writeFile");
                         )
                     }
 
@@ -130,7 +125,6 @@ int main(int argc, char **argv) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
                             fprintf(stderr, "[%d]: Impossibile chiudere il file \"%s\"\n", getpid(), path);
-                            perror("closeFile");
                         )
                     }
                     break;
@@ -185,13 +179,7 @@ int main(int argc, char **argv) {
                                 break;
                             }
                             // leggo il file nel buffer
-                            size_t tot = file_sz;
-                            int written = 0;
-                            while(written != -1 && tot > 0) {
-                                written = readn(file_fd, buf + file_sz - tot, tot);
-                                tot -= written;
-                            }
-                            if(written == -1) {
+                            if(writen(file_fd, buf, file_sz) != file_sz) {
                                 // impossibile leggere il file
                                 PRINT(options->prints_on,
                                       fprintf(stderr, "[%d]: Lettura file fallita\n", getpid());
@@ -216,7 +204,6 @@ int main(int argc, char **argv) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
                               fprintf(stderr, "[%d]: Impossibile aprire il file \"%s\"\n", getpid(), dest);
-                              perror("openFile");
                              )
                         break;
                     }
@@ -225,7 +212,6 @@ int main(int argc, char **argv) {
                         // errore di append
                         PRINT(options->prints_on,
                               fprintf(stderr, "[%d]: Impossibile concatenare il file \"%s\"\n", getpid(), dest);
-                              perror("appendToFile");
                              )
                     }
 
@@ -235,7 +221,6 @@ int main(int argc, char **argv) {
                         // errore di chiusura: log su stderr
                         PRINT(options->prints_on,
                             fprintf(stderr, "[%d]: Impossibile chiudere il file \"%s\"\n", getpid(), dest);
-                            perror("closeFile");
                         )
                     }
                     break;
@@ -245,8 +230,7 @@ int main(int argc, char **argv) {
                     if(openFile(path, O_LOCKFILE) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[%d]: Impossibile aprire il file in modo locked\"%s\"\n", getpid(), path);
-                            perror("openFile");
+                            fprintf(stderr, "[%d]: Impossibile aprire il file in modo locked \"%s\"\n", getpid(), path);
                         )
                     }
                     // Tenta di acquisire la mutua esclusione sul file (indipendentemente dall'esito della openFile)
@@ -255,7 +239,6 @@ int main(int argc, char **argv) {
                         // Errore nel settare mutua esclusione
                         PRINT(options->prints_on,
                             fprintf(stderr, "[%d]: Impossibile settare mutua esclusione sul file \"%s\"\n", getpid(), path);
-                            perror("lockFile");
                         )
                     }
                     else {
@@ -263,14 +246,14 @@ int main(int argc, char **argv) {
                             fprintf(stdout, "[%d]: Mutua esclusione sul file \"%s\" acquisita con successo\n", getpid(), path);
                         )
                     }
+                    break;
                 }
                 case UNLOCK_FILE: {
                     // Tenta di aprire il file con flag O_LOCKFILE
                     if(openFile(path, O_LOCKFILE) == -1) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
-                            fprintf(stderr, "[%d]: Impossibile aprire il file in modo locked\"%s\"\n", getpid(), path);
-                            perror("openFile");
+                            fprintf(stderr, "[%d]: Impossibile aprire il file in modo locked \"%s\"\n", getpid(), path);
                         )
                     }
                     // Rilascia la mutua esclusione sul file (indipendentemente dall'esito della openFile)
@@ -278,7 +261,6 @@ int main(int argc, char **argv) {
                         // Errore nel rimuovere mutua esclusione (o il client non la aveva settata o altro)
                         PRINT(options->prints_on,
                             fprintf(stderr, "[%d]: Impossibile rimuovere mutua esclusione dal file \"%s\"\n", getpid(), path);
-                            perror("unlockFile");
                         )
                     }
                     else {
@@ -286,6 +268,7 @@ int main(int argc, char **argv) {
                             fprintf(stdout, "[%d]: Mutua esclusione tolta sul file \"%s\"\n", getpid(), path);
                         )
                     }
+                    break;
                 }
                 case REMOVE_FILE: {
                     // Tenta di aprire il file con flag O_LOCKFILE
@@ -293,7 +276,6 @@ int main(int argc, char **argv) {
                         // errore di apertura: log su stderr
                         PRINT(options->prints_on,
                             fprintf(stderr, "[%d]: Impossibile aprire il file in modo locked\"%s\"\n", getpid(), path);
-                            perror("openFile");
                         )
                     }
                     // Tenta di rimuovere il file dal server indipendentemente dall'esito dell'operazione precedente
@@ -303,7 +285,6 @@ int main(int argc, char **argv) {
                         // della mutua esclusione su di esso
                         PRINT(options->prints_on,
                             fprintf(stderr, "[%d]: Impossibile rimuovere il file \"%s\" dal filserver\n", getpid(), path);
-                            perror("removeFile");
                         )
                     }
                     else {
@@ -401,7 +382,6 @@ int main(int argc, char **argv) {
                     else {
                         fprintf(stderr, "[CLIENT %d]: Impossibile leggere %ld files\n", getpid(), options->nread);
                     }
-                    perror("readNFiles");
                 )
             }
             else {

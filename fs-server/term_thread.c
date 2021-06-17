@@ -25,7 +25,7 @@ void *term_thread(void *params) {
     }
 
     // aspetto un segnale di terminazione con sigwait
-    int signal = -1;
+    int signal = 0;
     if(sigwait(&mask_term, &signal) == 0) {
         int term = 0;
         // terminazione veloce: devono essere chiuse le connessioni esistenti

@@ -5,6 +5,7 @@
 // multithreading headers
 #include <pthread.h>
 // system call headers
+#include <signal.h> // per SIGKILL
 #include <unistd.h>
 // headers libreria standard
 #include <stdio.h>
@@ -54,9 +55,9 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     pthread_mutex_init(&((*server_ds)->mux_jobq), NULL);
     pthread_mutex_init(&((*server_ds)->mux_cacheq), NULL);
     pthread_mutex_init(&((*server_ds)->mux_log), NULL);
-    // inizializzo cond variables
+    pthread_mutex_init(&((*server_ds)->mux_clients), NULL);
+    // inizializzo cond variable
     pthread_cond_init(&((*server_ds)->new_job), NULL);
-    pthread_cond_init(&((*server_ds)->new_cacheq), NULL);
 
     // Inizializzo le code
     (*server_ds)->job_queue = queue_init();
@@ -80,7 +81,7 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
         // libero la hash table
         if(icl_hash_destroy(server_ds->fs_table, free, free_file) != 0) {
             // errore nel liberare memoria
-            perror("Impossibile liberare ht");
+            perror("[SERVER] Impossibile liberare tabella hash");
         }
         // libero le code di job e di cache
         if(server_ds->job_queue) {
@@ -105,7 +106,7 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
                 || close(server_ds->termination[0]) == -1
                 || close(server_ds->termination[1] == -1))
             {
-                perror("Impossibile chiudere una pipe");
+                perror("[SERVER] Impossibile chiudere una pipe");
             }
         }
 

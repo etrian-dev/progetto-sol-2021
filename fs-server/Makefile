@@ -7,7 +7,7 @@ LIBS = -lfs-api -lutilities -licl_hash -lpthread
 
 SERVER = ../fs-server.out
 
-$(SERVER): server.o worker.o api_backend.o api_backend-utils.o term_thread.o sock_init.o server-ds.o parse_config.o logging.o
+$(SERVER): server.o worker.o api_backend.o api_backend-utils.o term_thread.o sock_init.o server-ds.o parse_config.o lock_unlock.o logging.o
 	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -o $@ $^ $(LIBS)
 	-mv $^ ../objs
 server.o: server.c
@@ -25,6 +25,8 @@ sock_init.o: sock_init.c
 server-ds.o: server-ds.c
 	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -c -o $@ $<
 parse_config.o: parse_config.c
+	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -c -o $@ $<
+lock_unlock.o: lock_unlock.c
 	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -c -o $@ $<
 logging.o: logging.c
 	$(CC) $(CFLAGS) $(HEADERS) $(LIBPATH) -c -o $@ $<

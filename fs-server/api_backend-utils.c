@@ -50,13 +50,14 @@ struct fs_filedata_t *newfile(const int client, const int flags) {
 // Altrimenti ritorna NULL
 struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
     // cerco il file nella hash table
-    struct fs_filedata_t *file = icl_hash_find(ds->fs_table, (void *)fname);
+    struct fs_filedata_t *file = NULL;
+    file = icl_hash_find(ds->fs_table, (void *)fname);
     return file;
 }
 
-// Inserisce nel fileserver il file path con contenuto buf, di dimensione size, proveniente dal socket client
-// Se buf == NULL allora crea un file vuoto
-// Se l'operazione fallisce ritorna NULL, altrimenti ritorna un puntatore al file creato/modificato
+// Se buf == NULL crea un nuovo file vuoto aperto dal client passato come parametro
+// Se buf != NULL concatena buf, di dimensione size, al file con pathname path già presente nel server
+// In entrambi i casi ritorna un puntatore al file se ha successo, NULL altrimenti
 struct fs_filedata_t *insert_file(
     struct fs_ds_t *ds,
     const char *path,
@@ -84,50 +85,38 @@ struct fs_filedata_t *insert_file(
             return NULL;
         }
 
-        pthread_mutex_lock(&(ds->mux_files)); // TODO: error checking
-
-        // Incremento il numero di file aperti nel server
+        // Aggiorno il numero di files presenti nel server
+        LOCK_OR_KILL(ds, ds->mux_files, ds);
         ds->curr_files++;
-        // Se necessario modifico il massimo numero di file aperti contemporaneamente
-        // durante l'uptime del server
         if(ds->curr_files > ds->max_nfiles) {
             ds->max_nfiles = ds->curr_files;
         }
+        UNLOCK_OR_KILL(ds, ds->mux_files);
 
-        pthread_mutex_unlock(&(ds->mux_files)); // TODO: error checking
-
-        // Inserisco il pathname del file anche nella coda della cache
-        if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
-            // Fallita operazione di lock
-            free(key);
-            free_file(file);
-            return NULL;
-        }
-
-        int queued = -1;
+        // Inserisco il pathname del file nella coda di file
+        LOCK_OR_KILL(ds, ds->mux_cacheq, ds->cache_q);
         // non utilizzo il parametro socket, per cui lo posso settare ad un socket non valido (-1)
+        int queued = -1;
         queued = enqueue(ds->cache_q, key, strlen(path) + 1, -1);
-
-        if(pthread_mutex_unlock(&(ds->mux_cacheq)) == -1) {
-            // Fallita operazione di unlock
-            queued = -1;
-        }
+        UNLOCK_OR_KILL(ds, ds->mux_cacheq);
 
         if(queued == -1) {
-            // fallito inserimento in coda
+            // Inserimento in coda fallito
             free(key);
-            free_file(file);
+            free(file);
             return NULL;
         }
-
-        res = icl_hash_insert(ds->fs_table, key, file);
+        else {
+            // Inserimento in coda riuscito: inserisco il file nella tabella hash
+            res = icl_hash_insert(ds->fs_table, key, file);
+        }
     }
-    // Altrimenti devo aggiornare il file (in seguito ad una appendToFile)
+    // Altrimenti devo aggiornare i dati del file
     else {
         // recupero il file
         struct fs_filedata_t *oldfile = find_file(ds, path);
         if(oldfile) {
-            pthread_mutex_lock(&(oldfile->mux_file));
+            LOCK_OR_KILL(ds, oldfile->mux_file, file);
             while(oldfile->modifying == 1) {
                 pthread_cond_wait(&(oldfile->mod_completed), &(oldfile->mux_file));
             }
@@ -148,30 +137,27 @@ struct fs_filedata_t *insert_file(
             oldfile->size += size;
 
             oldfile->modifying = 0;
-            pthread_mutex_unlock(&(oldfile->mux_file));
+            UNLOCK_OR_KILL(ds, oldfile->mux_file);
 
-            pthread_mutex_lock(&(ds->mux_mem));
             // devo aggiornare anche la quantità di memoria occupata nel server
+            LOCK_OR_KILL(ds, ds->mux_mem, ds);
             ds->curr_mem += size;
             // aggiorno se necessario anche la massima quantità di memoria occupata
             if(ds->curr_mem > ds->max_used_mem) {
                 ds->max_used_mem = ds->curr_mem;
             }
-            pthread_mutex_unlock(&(ds->mux_mem));
+            UNLOCK_OR_KILL(ds, ds->mux_mem);
         }
 
-        file = oldfile;
-        res = oldfile;
+        file = res = oldfile; // se ho avuto successo allora saranno != NULL
     }
-
-    // NOTA: non assicuro la consistenza della coda di file con la hash table, ma a patto di controllare
-    // sempre il risultato di find_file non ho problemi per file nella coda che
-    // non siano anche effettivamente nella hashtable
+    // NOTA: non controllo la consistenza della coda di file con la hash table,
+    // ma a patto di controllare sempre il risultato di find_file non ho problemi
+    // per path di file presenti nella coda che non siano anche nella hashtable
     if(!res) {
         free_file(file);
         return NULL;
     }
-
     return file; // ritorno il puntatore al file inserito
 }
 
@@ -182,8 +168,8 @@ struct fs_filedata_t *insert_file(
 // parametro alla funzione, altrimenti se l'algoritmo di rimpiazzamento fallisce
 // esse non sono allocate e comunque lasciate in uno stato inconsistente
 int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files) {
-    // È possibile che il file possa non entrare nel quantitativo di memoria
-    // assegnato al server all'avvio. In tal caso l'algoritmo fallisce (e qualunque operazione collegata)
+    // È possibile che il file sia più grande del quantitativo di memoria massimo fissato all'avvio.
+    // In tal caso l'algoritmo fallisce (e qualunque operazione collegata)
     if(newsz > ds->max_mem) {
         return -1;
     }
@@ -204,25 +190,19 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
     int num_evicted = 0;
     // Almeno un file deve essere espulso se chiamo l'algoritmo, perciò uso un do-while
     int errno_saved = 0;
-    pthread_mutex_lock(&(ds->mux_mem));
+
+    // siccome il test sulla memoria occupata è nella guardia del while ed anche nel corpo
+    // modifico la memoria eseguo tutto il ciclo in mutua esclusione sulle variabili
+    // che controllano l'occupazione di memoria all'interno del server
+    LOCK_OR_KILL(ds, ds->mux_mem, ds);
     do {
         // Secondo la politica FIFO la vittima è la testa della coda cache_q
-        if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
-            // Fallita operazione di lock
-            free_Queue(*paths);
-            free_Queue(*files);
-            return -1;
-        }
+        LOCK_OR_KILL(ds, ds->mux_cacheq, ds->cache_q);
+        // non dovrebbe ritornare NULL (ragionevolmente) in quanto ho chiamato l'algoritmo perché avevo
+        // file che occupavano la memoria del server
+        struct node_t *victim = pop(ds->cache_q);
+        UNLOCK_OR_KILL(ds, ds->mux_cacheq);
 
-        // ottengo il path del file da togliere in victim->data
-        struct node_t *victim = pop(ds->cache_q); // non dovrebbe ritornare NULL (ragionevolmente)
-
-        if(pthread_mutex_unlock(&(ds->mux_cacheq)) == -1) {
-            // Fallita operazione di unlock
-            free_Queue(*paths);
-            free_Queue(*files);
-            return -1;
-        }
         if(!victim) {
             // pop ha ritornato NULL per qualche motivo
             free_Queue(*paths);
@@ -230,66 +210,42 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
             return -1;
         }
 
-        // Rimuove il file con questo pathname dalla ht
-        // prima devo cercarlo per sapere la sua size (mutex interna a find_file)
+        // Rimuovo il file con questo pathname dalla ht
         struct fs_filedata_t *fptr = find_file(ds, victim->data);
+
+        LOCK_OR_KILL(ds, fptr->mux_file, fptr);
+        while(fptr->modifying == -1) {
+            pthread_cond_wait(&(fptr->mod_completed), &(fptr->mux_file));
+        }
         size_t sz = fptr->size;
 
-        if(pthread_mutex_lock(&(fptr->mux_file)) == -1) {
-            free(victim->data);
-            free(victim);
-            return -1;
-        }
-
-        // Notare che la memoria occupata dal file non viene liberata subito e mantengo un puntatore al file
+        // NOTA: la memoria occupata dal file non viene liberata subito e mantengo un puntatore al file
         // Libero invece la memoria occupata dalla chiave, dato che non è più utile
         if((success = icl_hash_delete(ds->fs_table, victim->data, free, NULL)) != -1) {
             // rimozione OK, decremento numero file nel server e quantità di memoria occupata
-            pthread_mutex_lock(&(ds->mux_files));
+            LOCK_OR_KILL(ds, ds->mux_files, ds);
             ds->curr_files--;
-            pthread_mutex_unlock(&(ds->mux_files));
+            UNLOCK_OR_KILL(ds, ds->mux_files);
 
-            ds->curr_mem -= sz;
+            ds->curr_mem -= sz; // già in ME sulla memoria
         }
         else {
             errno_saved = errno; // salvo errore
-        }
-
-        if(pthread_mutex_unlock(&(fptr->mux_file)) == -1) {
             success = -1;
-        }
-        if(success == -1) {
-            free_Queue(*paths);
-            free_Queue(*files);
-            // Per mantenere la cache consistente è necessario reinserire i path estratti nella coda
-            if(pthread_mutex_lock(&(ds->mux_cacheq)) == -1) {
-                // Fallita operazione di lock
-                return -1;
-            }
-
-            if(enqueue(ds->cache_q, victim->data, victim->data_sz, -1) == -1) {
-                // Consistenza cache compromessa: terminare il server
-                perror("[SERVER] Consistenza cache compromessa: terminazione del server");
-                pthread_kill(pthread_self(), SIGKILL);
-            }
-
-            if(pthread_mutex_unlock(&(ds->mux_cacheq)) == -1) {
-                // Fallita operazione di unlock
-                return -1;
-            }
-            // Consistenza della cache ripristinata
-            return -1;
+            UNLOCK_OR_KILL(ds, fptr->mux_file);
+            break;
         }
 
-        // Aggiorno le code con il nuovo file espulso
-        if(enqueue(*paths, victim->data, strlen((char*)victim->data) + 1, -1) == -1) {
-            // fallito inserimento del path del file in coda
+        // Inserisco nelle code il file espulso
+        if(enqueue(*files, fptr, sizeof(struct fs_filedata_t), -1) == -1) {
+            // fallito inserimento del file in coda
             errno_saved = errno;
             success = -1;
             break;
         }
-        if(enqueue(*files, fptr, sizeof(struct fs_filedata_t), -1) == -1) {
-            // fallito inserimento del file in coda
+        UNLOCK_OR_KILL(ds, fptr->mux_file);
+        if(enqueue(*paths, victim->data, strlen((char*)victim->data) + 1, -1) == -1) {
+            // fallito inserimento del path del file in coda
             errno_saved = errno;
             success = -1;
             break;
@@ -302,30 +258,33 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         num_evicted++; // ho espulso con successo un altro file, quindi incremento il contatore
     }
     while(ds->curr_mem + newsz >= ds->max_mem);
-    pthread_mutex_unlock(&(ds->mux_mem));
+    UNLOCK_OR_KILL(ds, ds->mux_mem);
 
     // aggiorno il numero di chiamate (che hanno avuto successo) dell'algorimto di rimpiazzamento
-    if(success > 0) ds->cache_triggered++;
-    if(logging(ds, 0, "[SERVER] Capacity miss: espulsi i seguenti file") == -1) {
-        perror("[SERVER] Capacity miss: espulsi i seguenti file");
-    }
-    struct node_t *victim = (*paths)->head;
-    struct node_t *vdata = (*files)->head;
-    char msg[BUF_BASESZ];
-    while(victim) {
-        snprintf(msg, BUF_BASESZ, "\"%s\" di %lu bytes", (char*)victim->data, ((struct fs_filedata_t *)vdata->data)->size);
-        if(logging(ds, 0, msg) == -1) {
-            perror(msg);
+    if(success != -1) {
+        if(num_evicted > 0) ds->cache_triggered++;
+        // Effettuo il logging dell'operazione stampando il messaggio ed i file espulsi
+        if(logging(ds, 0, "[SERVER] Capacity miss: espulsi i seguenti file") == -1) {
+            perror("[SERVER] Capacity miss: espulsi i seguenti file");
         }
-        victim = victim->next;
-        vdata = vdata->next;
+        struct node_t *victim = (*paths)->head;
+        struct node_t *vdata = (*files)->head;
+        char msg[BUF_BASESZ]; // buffer di dimensione fissa: dovrebbe avere una capacita sufficiente per i path
+        while(victim) {
+            snprintf(msg, BUF_BASESZ, "\"%s\" (%lu bytes)", (char*)victim->data, ((struct fs_filedata_t *)vdata->data)->size);
+            if(logging(ds, 0, msg) == -1) {
+                perror(msg);
+            }
+            victim = victim->next;
+            vdata = vdata->next;
+        }
+    }
+    else {
+        errno = errno_saved; // ripristino errno
+        if(logging(ds, errno, "[SERVER] Capacity miss: Errore nell'espulsione di file") == -1) {
+            perror("[SERVER] Capacity miss: Errore nell'espulsione di file");
+        }
     }
 
-    errno = errno_saved;
-
-    if(num_evicted > 0) {
-        ds->cache_triggered++;
-    }
-
-    return num_evicted;
+    return num_evicted; // ritorno al chiamante il numero di file espulsi dalla cache
 }

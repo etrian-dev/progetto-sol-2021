@@ -87,7 +87,7 @@ void *work(void *params) {
                 char *cwd = malloc(BUF_BASESZ * sizeof(char));
                 if(!cwd) {
                     // errore di allocazione
-                    return -1;
+                    return (void*)-1;
                 }
                 size_t dir_sz = BUF_BASESZ;
                 errno = 0; // resetto errno per esaminare eventuali errori
