@@ -170,12 +170,12 @@ void *work(void *params) {
             // Se era l'ultimo client connesso ed era in corso la terminazione
             // allora devo terminare il server, pertanto segnalo
             // la coda (che sarà vuota) a tutti i worker e poi termino il thread
-            //if(ds->connected_clients == 0 && ds->slow_term == 1) {
-                //LOCK_OR_KILL(ds, ds->mux_jobq, ds->job_queue);
-                //pthread_cond_broadcast(&(ds->new_job));
-                //UNLOCK_OR_KILL(ds, ds->mux_jobq);
-                //return (void*)0;
-            //}
+            if(ds->connected_clients == 0 && ds->slow_term == 1) {
+                LOCK_OR_KILL(ds, ds->mux_jobq, ds->job_queue);
+                pthread_cond_broadcast(&(ds->new_job));
+                UNLOCK_OR_KILL(ds, ds->mux_jobq);
+                return (void*)0;
+            }
             break;
         }
         case OPEN_FILE: { // operazione di apertura di un file

@@ -658,7 +658,17 @@ int lockFile(const char *pathname) {
         }
         // Se la lock fallisce la api aspetta 100ms e poi tenta di nuovo di effettuare l'operazione
         else {
-            fprintf(stderr, "[%d] Fallita acquisizione lock su \"%s\": riprovo tra 100ms\n", getpid(), pathname);
+            // Se ho -1 in nbuffers significa che il file non è presente nel server, quindi ritorno
+            // dall'operazione per evitare di andare in deadlock
+            if(rep->nbuffers == -1) {
+                fprintf(stderr, "[%d] Fallita acquisizione lock su \"%s\": file non presente nel server\n", getpid(), pathname);
+                free(request);
+                free(rep);
+                return -1;
+            }
+            else {
+                fprintf(stderr, "[%d] Fallita acquisizione lock su \"%s\": riprovo tra 100ms\n", getpid(), pathname);
+            }
             if(nanosleep(&delay, NULL) == -1) {
                 // syscall interrotta da un segnale: lock fallisce
                 int saved_errno = errno;

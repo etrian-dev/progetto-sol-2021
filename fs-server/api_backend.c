@@ -468,7 +468,6 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
         // file non trovato
-        reply = newreply(REPLY_NO, 0, NULL);
         if(logging(ds, 0, "api_appendToFile: file non trovato") == -1) {
             perror("api_appendToFile: file non trovato");
         }
@@ -499,7 +498,6 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
                 i++;
             }
         }
-
         file->modifying = 0;
         UNLOCK_OR_KILL(ds, file->mux_file);
     }
@@ -523,7 +521,6 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
     }
     // Operazione negata
     else {
-        reply = newreply(REPLY_NO, 0, NULL);
         success = -1;
         // Buffer di dimensione maggiore del massimo quantitativo di memoria
         if(size > ds->max_mem) {
@@ -579,6 +576,8 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
                 if(success == 0) {
                     // devo quindi concatenare gli nevicted path dei file in all_paths e separarli con '\n'
                     build_pathstr(&all_paths, paths, nevicted);
+                    // quindi posso deallocare la lista di path
+                    free_Queue(evicted_paths);
                     // aggiorno info client
                     if(update_client_op(ds, client_sock, client_PID, APPEND_FILE, 0, pathname) == -1) {
                         // fallito aggiornamento stato client
@@ -623,34 +622,24 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
         // scrivo i file espulsi
         if(success == 0 && reply->status == REPLY_YES && reply->nbuffers > 0 && evicted) {
             // Parto dal primo puntatore a file da scrivere presente nella lista e lo invio sul socket
-            struct node_t *n = evicted->head;
-            i = 0;
-            while(n) {
+            struct node_t *n = NULL;
+            while((n = pop(evicted)) != NULL) {
                 struct fs_filedata_t *file = (struct fs_filedata_t *)n->data;
                 if(writen(client_sock, file->data, file->size) != file->size) {
                     // fallita scrittura
                     success = -1;
                     break;
                 }
-                n = n->next;
-                i++;
+                // libero il file e passo al prossimo
+                free_file(file);
+                free(n);
             }
+            free(evicted);
         }
         free(reply);
     }
 
-    // posso quindi liberare gli array di supporto e le code
-    if(evicted_paths) free_Queue(evicted_paths);
-    if(evicted) {
-        // libero manualmente la coda perchè non posso usare una semplice free per i dati
-        struct node_t *n = evicted->head;
-        while(n) {
-            free_file(n->data);
-            n->data = NULL; // metto a NULL per evitare una eventuale doppia free successivamente
-            n = n->next;
-        }
-        free_Queue(evicted);
-    }
+    // posso quindi liberare gli array di supporto
     if(sizes) free(sizes);
     if(paths) free(paths);
     if(all_paths) free(all_paths);
@@ -710,8 +699,8 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock,
     // Cerco il file nel fileserver
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(!file) {
-        // file non trovato
-        rep = newreply(REPLY_NO, 0, NULL);
+        // file non trovato: setto a -1 il secondo campo per indicare che il file non è nel server
+        rep = newreply(REPLY_NO, -1, NULL);
     }
     else {
         LOCK_OR_KILL(ds, file->mux_file, file);

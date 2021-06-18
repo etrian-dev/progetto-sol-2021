@@ -237,11 +237,27 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         }
 
         // Inserisco nelle code il file espulso
-        if(enqueue(*files, fptr, sizeof(struct fs_filedata_t), -1) == -1) {
-            // fallito inserimento del file in coda
-            errno_saved = errno;
-            success = -1;
-            break;
+        struct node_t *fnode = malloc(sizeof(struct node_t));
+        if(fnode) {
+            fnode->data = fptr;
+            fnode->data_sz = fptr->size;
+            fnode->next = NULL;
+            if(!(*files)->head) {
+                (*files)->head = fnode;
+            }
+            if((*files)->tail) {
+                (*files)->tail->next = fnode;
+            }
+            (*files)->tail = fnode;
+        }
+        else {
+            UNLOCK_OR_KILL(ds, fptr->mux_file);
+            UNLOCK_OR_KILL(ds, ds->mux_mem);
+            free_Queue(*paths);
+            free_Queue(*files);
+            free(victim->data);
+            free(victim);
+            return -1;
         }
         UNLOCK_OR_KILL(ds, fptr->mux_file);
         if(enqueue(*paths, victim->data, strlen((char*)victim->data) + 1, -1) == -1) {
@@ -251,7 +267,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
             break;
         }
 
-        // posso liberare il nodo contenente il path
+        // posso liberare il nodo contenente il path ed il file
         free(victim->data);
         free(victim);
 

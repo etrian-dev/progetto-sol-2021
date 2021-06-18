@@ -252,9 +252,6 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
             break;
         }
 
-        // SOLO DEBUG
-        fprintf(stdout, "Ricevuto il file %s di %lu bytes\n", abs_filepath, sizes[i]);
-
         // Se era stata fornito il path allora devo creare il file (opero su path relativi alla directory)
         if(dir) {
             int file_fd;
@@ -270,10 +267,6 @@ int write_swp(const int server, const char *dir, int nbufs, const size_t *sizes,
                 close(file_fd);
                 break;
             }
-            else {
-                fprintf(stdout, "Scritto il file %s\n", fname);
-            }
-            //if(fname) free(fname);
             close(file_fd);
             file_fd = -1;
         }

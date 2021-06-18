@@ -1,20 +1,29 @@
 #!/bin/bash
 
-# Lancio il server in background
-valgrind --leak-check=full ./fs-server.out -f test2.conf &
-server_pid=$!
-# Un breve delay per assicurare che il server sia partito
-sleep 1
 # Script per testare il server. Il socket al quale i client si devono connettere è il
 # primo parametro passato allo script
 
-# Scrive nel server tutti i file presenti nella directory testcases, usando come directory
-# per salvare eventuali file espulsi la directory save_writes creata
-mkdir save_writes
-mkdir save_reads
+# Lancio il server in background
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all ./fs-server.out -f test2.conf &
+server_pid=$!
+# Un breve delay per assicurare che il server sia partito
+sleep 1
+
+# se non presenti crea la directory save_reads e save_writes e save_writes_2
+if [ ! -d save_reads ]; then
+    mkdir save_reads
+fi
+if [ ! -d save_writes ]; then
+    mkdir save_writes
+fi
+if [ ! -d save_writes_2 ]; then
+    mkdir save_writes_2
+fi
+
 ./client.out -p -f $1 -w testcases,0 -D save_writes
 ./client.out -p -f $1 -R 5
-./client.out -p -f $1 -R 0 -d save_reads
+./client.out -p -f $1 -R 0 -d save_reads &
+./client.out -p -f $1 -W "testcases/pic" -D save_writes_2
 
 # Quindi invia il segnale di terminazione al server
 printf "\n\n\n******* SIGHUP inviato a $(ps --no-headers -o command $server_pid) *******\n"
