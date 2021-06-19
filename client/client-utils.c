@@ -20,17 +20,64 @@
 #define NPOS_DFL 10
 
 // inizializza i parametri a valori di default
-void init_params(struct client_opts *params) {
+struct client_opts *init_params(void) {
+    struct client_opts *params = calloc(1, sizeof(struct client_opts));
     if(params) {
-        // prima resetto tutto a zero
-        memset(params, 0, sizeof(*params));
-        params->nread = -1; // default del numero di file da leggere non limitato
-        params->nwrite = -1; // default del numero di file da scrivere non limitato
-
         params->oplist = calloc(1, sizeof(struct Queue));
         // un eventuale errore di allocazione non comporta errori fatali in quanto
         // rimangono comunque NULL i puntatori, per cui è necessario soltanto controllare
         // di allocarli prima di usarli
+    }
+
+    return params;
+}
+
+// Alloca ed inizializza i parametri di una nuova operazione, ritornando un puntatore ad essa
+struct operation *newop(const char t, const long int max, struct Queue *list, char *dir, char *swp) {
+    struct operation *op = calloc(1, sizeof(struct operation));
+    if(!op) {
+        return NULL;
+    }
+    op->type = t;
+    op->max_n = max;
+    if(dir) {
+        if(string_dup(&(op->dir_op), dir) == -1) {
+            free(op);
+            return NULL;
+        }
+    }
+    if(swp) {
+        if(string_dup(&(op->dir_swp), swp) == -1) {
+            free(op->dir_op);
+            free(op);
+            return NULL;
+        }
+    }
+    if(list) {
+        // Se è già stata preparata una coda allora assegno direttamente il puntatore
+        op->flist = list;
+    }
+    else {
+        // alloco una nuova coda vuota
+        op->flist = queue_init();
+        if(!(op->flist)) {
+            free(op->dir_op);
+            free(op->dir_swp);
+            free(op);
+            return NULL;
+        }
+    }
+    return op;
+}
+
+// libera l'operazione op
+void free_op(struct operation **op) {
+    if(*op) {
+        if((*op)->dir_op) free((*op)->dir_op);
+        if((*op)->dir_swp) free((*op)->dir_swp);
+        if((*op)->flist) free_Queue((*op)->flist);
+        free(*op);
+        *op = NULL;
     }
 }
 
@@ -38,13 +85,6 @@ void init_params(struct client_opts *params) {
 // Ritorna 0 se ha successo (e riempie i campi della struttura params)
 // Altrimenti ritorna -1
 int get_client_options(int nargs, char **args, struct client_opts *params) {
-    // inizializzo la struttura con i valori di default ed alloca code
-    init_params(params);
-
-    // flag per determinare se determinate opzioni sono ammissibili in funzione di altre
-    int has_w, has_r;
-    has_w = has_r = 0;
-
     if(nargs > 1) {
         // processa tutte le opzioni da riga di comando
         int opchar;
@@ -53,35 +93,50 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
             switch(opchar) {
             case 'h': // trovata l'opzione -h, quindi sarà mostrato il messaggio di help
                 params->help_on = 1;
-                break;
+                return 0; // non è necessario proseguire con il processing
             case 'f': // l'argomento di f è il path del socket per comunicare con il server
                 if(string_dup(&(params->fs_socket), optarg) == -1) {
-                    // errore nella duplicazione del path
+                    // errore nella duplicazione del path del socket
                     return -1;
                 }
                 break;
-            case 'D': // l'argomento di -D è la directory in cui salvare i file vittima dello swapout
-                // siccome deve essere usata insieme a -w o -W la validazione di
-                // questa opzione avviene solo quando tutti gli argomenti sono stati processati
-                if(string_dup(&(params->dir_swapout), optarg) == -1) {
-                    // errore nella duplicazione
-                    return -1;
+            case 'D':   // l'argomento di -D è la directory in cui salvare i file vittima dello swapout
+            case 'd': { // l'argomento di -d è la directory in cui salvare i file letti
+                // gestisco le due opzioni insieme, perché entrambe devono seguire -w o -W
+                // oppure -r o -R rispettivamente
+                int success = 0;
+                if(params->oplist->head && params->oplist->head->data) {
+                    struct operation *last_op = (struct operation *)params->oplist->head->data;
+                    if(opchar == 'D' && (last_op->type == 'w' || last_op->type == 'W')) {
+                        if(string_dup(&(last_op->dir_swp), optarg) == -1) {
+                            // errore nella duplicazione della directory di salvataggio
+                            success = -1;
+                        }
+                    }
+                    else if(opchar == 'd' && (last_op->type == 'r' || last_op->type == 'R')) {
+                        if(string_dup(&(last_op->dir_swp), optarg) == -1) {
+                            // errore nella duplicazione della directory di salvataggio
+                            success = -1;
+                        }
+                    }
+                    else {
+                        // L'operazione precedente non era -w, -W, -r o -R, per cui non va bene avere -D o -d
+                        success = -1;
+                    }
+                }
+                if(success == -1) {
+                    return success;
                 }
                 break;
-            case 'd': // l'argomento di -d è la directory in cui salvare i file letti dal server
-                // siccome deve essere usata insieme a -r o -R la validazione di
-                // questa opzione avviene solo quando tutti gli argomenti sono stati processati
-                if(string_dup(&(params->dir_save_reads), optarg) == -1) {
-                    // errore nella duplicazione
-                    return -1;
-                }
-                break;
-            case 'R': // l'argomento di -R è il numero massimo di file da leggere
+            }
+            case 'R': { // l'argomento di -R è il numero massimo di file da leggere
                 // Se l'argomento non è fornito (optarg NULL) rimane al valore di default (-1)
                 // Se l'argomento è in realtà un'opzione (ovvero -R non ha argomenti)
                 // allora deve rimanere il valore di default
+                struct operation *read_N_op = NULL;
                 if(optarg && optarg[0] != '-') {
-		            retcode = isNumber(optarg, &(params->nread));
+                    long int num;
+		            retcode = isNumber(optarg, &num);
 		            if(retcode == 1) {
 		                // optarg non è un numero intero
 		                printf("\"-R %s\" non è corretta: \"%s\" non è un numero\n", optarg, optarg);
@@ -92,78 +147,76 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
 		                printf("\"-R %s\" non è corretta: \"%s\" causa overflow/underflow\n", optarg, optarg);
 		                return -1;
 		            }
-		            if(params->nread < 0) {
+		            if(num < 0) {
 		                // optarg è un numero intero, ma negativo e quindi non posso accettarlo
 		                printf("\"-R %s\" non è corretta: l'argomento deve essere >= 0\n", optarg);
 		                return -1;
 		            }
+                    // Altrimenti l'argomento num è ok: creo l'operazione
+                    read_N_op = newop(READ_N_FILES, num, NULL, NULL, NULL);
 		        }
-                // Esiste almeno una richiesta di lettura => Se compare -d è ok
-                has_r = 1;
-                break;
-            case 'r': // l'argomento dell'opzione -r è una lista di file (almeno 1)
-                if(process_filelist(params->oplist, optarg, READ_FILE) == -1) {
-                    // errore da riportare su stderr, ma continuo a processare
-                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+                else {
+                    read_N_op = newop(READ_N_FILES, -1, NULL, NULL, NULL);
                 }
-                // Esiste almeno una richiesta di lettura => Se compare -d è ok
-                has_r = 1;
-                break;
-            case 'W': // l'argomento dell'opzione -W è una lista di file (almeno 1)
-                if(process_filelist(params->oplist, optarg, WRITE_FILE) == -1) {
-                    // errore da riportare su stderr, ma continuo a processare
-                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+                // poi metto l'operazione in coda
+                if(!read_N_op) {
+                    return -1;
                 }
-                // Esiste almeno una richiesta di scrittura => Se compare -D è ok
-                has_w = 1;
-                break;
-            case 'l': // l'argomento dell'opzione -l è una lista di file (almeno 1)
-                if(process_filelist(params->oplist, optarg, LOCK_FILE) == -1) {
-                    // errore da riportare su stderr, ma continuo a processare
-                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+                if(enqueue(params->oplist, read_N_op, sizeof(struct operation), -1), -1) {
+                    // fallito inserimento in coda
+                    free_op(&read_N_op);
+                    return -1;
                 }
                 break;
-            case 'u': // l'argomento dell'opzione -u è una lista di file (almeno 1)
-                if(process_filelist(params->oplist, optarg, UNLOCK_FILE) == -1) {
-                    // errore da riportare su stderr, ma continuo a processare
-                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
+            }
+            case 'r':   // l'argomento dell'opzione -r è una lista di file (almeno 1)
+            case 'a':   // l'argomento dell'opzione -a è una lista di coppie di file (almeno una coppia)
+            case 'W':   // l'argomento dell'opzione -W è una lista di file (almeno 1)
+            case 'l':   // l'argomento dell'opzione -l è una lista di file (almeno 1)
+            case 'u':   // l'argomento dell'opzione -u è una lista di file (almeno 1)
+            case 'c': { // l'argomento dell'opzione -c è una lista di file (almeno 1)
+                char type;
+                switch(opchar) {
+                case 'r': type = READ_FILE; break;
+                case 'a': type = APPEND_FILE; break;
+                case 'W': type = WRITE_FILE; break;
+                case 'l': type = LOCK_FILE; break;
+                case 'u': type = UNLOCK_FILE; break;
+                case 'c': type = REMOVE_FILE; break;
+                }
+                if(process_filelist(params->oplist, optarg, type) == -1) {
+                    return -1;
                 }
                 break;
-            case 'c': // l'argomento dell'opzione -r è una lista di file (almeno 1)
-                if(process_filelist(params->oplist, optarg, REMOVE_FILE) == -1) {
-                    // errore da riportare su stderr, ma continuo a processare
-                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
-                }
-                break;
+            }
             case 'w': { // l'argomento dell'opzione -w è una directory (ed opzionalmente un intero)
                 char *save_stat = NULL;
                 char *dirname = strtok_r(optarg, ",", &save_stat);
                 char *maxfiles = strtok_r(NULL, " ", &save_stat);
                 long int nfiles = 0;
+                struct operation *op_wdir = NULL;
 
-                if(string_dup(&(params->dir_write), dirname) == -1) {
-                    // errore nella duplicazione
+                retcode = isNumber(maxfiles, &nfiles);
+                if(maxfiles && retcode == 0 && nfiles > 0) {
+                    op_wdir = newop('w', nfiles, NULL, dirname, NULL);
+                }
+                else if(maxfiles && retcode == 0 && nfiles == 0) {
+                    op_wdir = newop('w', -1, NULL, dirname, NULL);
+                }
+                else {
                     return -1;
                 }
-                if(maxfiles && isNumber(maxfiles, &nfiles) == 0 && nfiles > 0) {
-                    params->nwrite = nfiles;
-                }
-                if(nfiles < 0) {
+                // metto in coda l'operazione
+                if(!op_wdir) {
                     return -1;
                 }
-                // Se il massimo numero di file è 0 o non specificato assumo nessun limite
-                // argomento opzionale mancante => resta max_write = -1 di default
-
-                // Esiste almeno una richiesta di scrittura => Se compare -D è ok
-                has_w = 1;
+                if(enqueue(params->oplist, op_wdir, sizeof(struct operation), -1), -1) {
+                    // fallito inserimento in coda
+                    free_op(&op_wdir);
+                    return -1;
+                }
                 break;
             }
-            case 'a': // l'argomento dell'opzione -a è una lista di coppie dest, src
-                if(process_filelist(params->oplist, optarg, APPEND_FILE) == -1) {
-                    // errore da riportare su stderr, ma continuo a processare
-                    fprintf(stderr, "Errore: %s\n", strerror(errno)); // TODO: migliorare
-                }
-                break;
             case 't': // l'argomento (intero, positivo) di -t è il delay tra le richieste
                 retcode = isNumber(optarg, &(params->rdelay));
                 if(retcode == 1) {
@@ -180,33 +233,14 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
             case 'p': // la presenza dell'opzione -p fa stampare al client tutte le operazioni su stdout
                 params->prints_on = 1;
                 break;
-            // TODO: -l, -u, -c
             // situazioni di errore
             case ':': // parametro mancante in un'opzione che lo richiede
-                if(optopt != 'R') { // il parametro per -R è opzionale, quindi questo messaggio lo stampo solo per le altre opzioni
-                    printf("Parametro mancante per l'opzione %c\n", optopt);
-                    return -1;
-                }
-                break;
+                printf("Parametro mancante per l'opzione %c\n", optopt);
+                return -1;
             default: // opzione non riconosciuta
                 printf("Opzione %c non riconosciuta\n", optopt);
                 return -1;
             }
-        }
-
-        // -D può essere non nullo sse compaiono richieste di scrittura
-        if(params->dir_swapout && !has_w) {
-            // errore nello specificare le opzioni: lo comunico all'utente e stampo messaggio di help
-            fprintf(stderr, "Errore: nessun file da scrivere specificato, quindi -D non deve comparire\n"); // TODO: migliorare
-            params->help_on = 1;
-            return -1;
-        }
-        // Stessa cosa, ma per lettura
-        if(params->dir_save_reads && !has_r) {
-            // errore nello specificare le opzioni: lo comunico all'utente e stampo messaggio di help
-            fprintf(stderr, "Errore: nessun file da leggere specificato, quindi -d non deve comparire\n"); // TODO: migliorare
-            params->help_on = 1;
-            return -1;
         }
     }
 
@@ -221,60 +255,42 @@ int process_filelist(struct Queue *ops, char *arg, char op_type) {
             return -1;
         }
     }
-
     // creo una nuova operazione, che aggiungerò in coda alla lista
-    struct operation *newop = malloc(sizeof(struct operation));
-    if(!newop) {
+    struct operation *op = newop(op_type, -1, NULL, NULL, NULL);
+    if(!op) {
         // errore di allocazione
         return -1;
     }
-    // creo la lista di file
-    newop->flist = queue_init();
-    if(!(newop->flist)) {
-        // errore di allocazione
-        return -1;
-    }
-    // assegno il tipo di operazione
-    newop->type = op_type;
-
     // parsing della stringa arg, i cui token sono separati da ','
     char *save_stat = NULL;
     char *token = strtok_r(arg, ",", &save_stat);
     while(token) {
         // aggiungo il token alla coda
         // non è rilevante memorizzare alcun socket, per cui l'ultimo argomento può essere ignorato
-        if(enqueue(newop->flist, token, strlen(token) + 1, 0) == -1) {
+        if(enqueue(op->flist, token, strlen(token) + 1, 0) == -1) {
             // fallito inserimento in coda di un file: notifico l'utente su stderr
-            fprintf(stderr, "Fallito inserimento del file \"%s\" in coda\n", token);
+            fprintf(stderr, "[%d]: Fallito inserimento del file \"%s\" in coda\n", getpid(), token);
         }
         // Ottengo il successivo token nella lista
         token = strtok_r(NULL, ",", &save_stat);
     }
-
     // Aggiungo l'operazione in coda a ops
-    if(enqueue(ops, newop, sizeof(struct operation), 0) == -1) {
+    if(enqueue(ops, op, sizeof(struct operation), 0) == -1) {
         // fallito inserimento in coda di un file: notifico l'utente su stderr
-        fprintf(stderr, "Fallito inserimento della lista di file nella coda\n");
+        fprintf(stderr, "[%d]: Fallito inserimento della lista di file nella coda\n", getpid());
     }
-
     // Lista di file parsata senza errori
     return 0;
 }
 
-// libera una coda di code
-void free_QQ(struct Queue *qq) {
-    struct node_t *el = NULL;
-    while((el = pop(qq)) != NULL) {
-        free_Queue((struct Queue *)el);
-    }
-    free(qq);
-}
-
 void free_client_opt(struct client_opts *options) {
     free(options->fs_socket);
-    free(options->dir_write);
-    free(options->dir_save_reads);
-    free(options->dir_swapout);
+    struct node_t *n = NULL;
+    while((n = pop(options->oplist)) != NULL) {
+        free_op(n->data);
+        free(n);
+    }
+    free(options->oplist);
     free(options);
 }
 

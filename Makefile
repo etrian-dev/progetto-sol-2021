@@ -1,6 +1,6 @@
 #Makefile per la compilazione del progetto
 CC = gcc -std=c99 -D_GNU_SOURCE=1
-CFLAGS = -g -Wall -pedantic
+CFLAGS = -g -Wall -Wextra -pedantic
 HEADERS = -I .
 # directory in cui sono create le librerie condivise
 LIBPATH = -L ./libs

@@ -25,7 +25,7 @@
 \t\tLa semantica è di interpretare src come stringa se l'apertura di src come file fallisce\n"
 
 // stringa delle opzioni per getopt
-#define CLIENT_OPSTRING ":hf:D:d:R:r:W:w:l:u:c:a:t:p"
+#define CLIENT_OPSTRING ":hf:R:r:W:w:l:u:c:a:t:d:D:p"
 // i due punti iniziali per distinguere tra opzione non riconosciuta e argomento mancante
 
 // definisco una struttura che conterrà i valori delle opzioni specificate
@@ -34,29 +34,31 @@ struct client_opts {
     short int prints_on;              // default: 0 (non stampa le operazioni su stdout)
     char *fs_socket;                  // default: NULL
     long int rdelay;                  // default: 0 (interpretato come numero di millisecondi)
-
-    long int nread;                   // default: -1 (interpretato come opzione non settata)
-    // nread == 0 invece è interpretato come nessun limite superiore al numero di file da leggere
-    long int nwrite;                  // default: 0 (interpretato come nessun limite)
-
-    char *dir_save_reads;             // default: NULL
-    char *dir_write;                  // default: NULL
-    char *dir_swapout;                // default: NULL
-
+    // coda di operazioni richieste dal client tramite gli argromenti da riga di comando
     struct Queue *oplist;             // default: NULL
 };
 // definisco una struttura che contiene l'operazione richiesta e la lista di file su cui effettuarla
 struct operation {
-    char type;
-    struct Queue *flist;
+    char type;                        // tipo di operazione richiesta
+    long int max_n;                   // numero di file da leggere/scrivere massimo (settato se rilevante)
+    struct Queue *flist;              // lista di file ai quali applicare l'operazione
+    char *dir_op;                     // directory su cui operare (per l'opzione -w)
+    char *dir_swp;                    // directory in cui salvare i file letti/espulsi (opzioni -d e -D)
 };
 
+// Alloca ed inizializza i parametri di una nuova operazione, ritornando un puntatore ad essa
+struct operation *newop(const char t, const long int max, struct Queue *list, char *dir, char *swp);
+// libera l'operazione op
+void free_op(struct operation **op);
+
+// alloca ed inizializza la struttura contenente le opzioni del client
+struct client_opts *init_params(void);
 // nargs è argc, args è argv del programma client: i parametri sono restituiti nella struttura
 int get_client_options(int nargs, char **args, struct client_opts *params);
-
+// Inserisce nella coda ops la lista di file contenuti nella stringa arg in una
+// struct operation con tipo op_type
 int process_filelist(struct Queue *ops, char *arg, char op_type);
-
-// Libera la struttura
+// Libera la struttura contenente le opzioni del client
 void free_client_opt(struct client_opts *options);
 
 // funzione per visitare ricorsivamente a partire da basedir al più nleft files
