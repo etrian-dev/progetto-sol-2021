@@ -93,6 +93,8 @@ int main(int argc, char **argv) {
 
     // Creo il socket sul quale il server ascolta connessioni
     int listen_connections;
+    // se presente tolgo il socket prima di ricrearlo
+    unlink(run_params.sock_path);
     if((listen_connections = sock_init(run_params.sock_path, strlen(run_params.sock_path))) == -1) {
         errcode = errno; // salvo l'errore originato dalla funzione sock_init per ritornarlo
         if(logging(server_ds, errno, "[SERVER]: Impossibile creare socket per ascolto connessioni") == -1) {
@@ -102,27 +104,13 @@ int main(int argc, char **argv) {
         }
         return errcode;
     }
-    //-------------------------------------------------------------------------------
-    // Con la creazione del thread di terminazione il processo diventa multithreaded
-
-    // Creo il thread che gestisce la terminazione
-    pthread_t term_tid;
-    // passo al thread la struttura dati condivisa server_ds
-    if(pthread_create(&term_tid, NULL, term_thread, server_ds) == -1) {
-        errcode = errno;
-        if(logging(server_ds, errno, "[SERVER]: Impossibile creare il thread di terminazione") == -1) {
-            // in questo caso va bene usare strerror, nonostante sia MT-unsafe, poichè viene
-            // chiamata se e solo se la creazione del thread fallisce (e comunque termino il server subito dopo)
-            errno = errcode;
-            fprintf(stderr, "[SERVER]: Impossibile creare il thread di terminazione: %s\n", strerror(errno));
-            clean_server(&run_params, server_ds);
-        }
-        return errcode;
-    }
 
     // adesso disabilito tutti i segnali per il thread manager e per quelli da esso creati (workers)
     sigset_t mask_sigs;
-    if(sigfillset(&mask_sigs) == -1) {
+    if(sigemptyset(&mask_sigs) == -1
+        || sigaddset(&mask_sigs, SIGHUP) == -1
+        || sigaddset(&mask_sigs, SIGINT) == -1
+        || sigaddset(&mask_sigs, SIGQUIT) == -1) {
         errcode = errno;
         if(logging(server_ds, errno, "[MANAGER THREAD]: Impossibile creare maschera segnali") == -1) {
             errno = errcode;
@@ -139,6 +127,24 @@ int main(int argc, char **argv) {
         }
         // cleanup e poi esco
         clean_server(&run_params, server_ds);
+        return errcode;
+    }
+
+    //-------------------------------------------------------------------------------
+    // Con la creazione del thread di terminazione il processo diventa multithreaded
+
+    // Creo il thread che gestisce la terminazione
+    pthread_t term_tid;
+    // passo al thread la struttura dati condivisa server_ds
+    if(pthread_create(&term_tid, NULL, term_thread, server_ds) == -1) {
+        errcode = errno;
+        if(logging(server_ds, errno, "[SERVER]: Impossibile creare il thread di terminazione") == -1) {
+            // in questo caso va bene usare strerror, nonostante sia MT-unsafe, poichè viene
+            // chiamata se e solo se la creazione del thread fallisce (e comunque termino il server subito dopo)
+            errno = errcode;
+            fprintf(stderr, "[SERVER]: Impossibile creare il thread di terminazione: %s\n", strerror(errno));
+            clean_server(&run_params, server_ds);
+        }
         return errcode;
     }
 
@@ -538,13 +544,13 @@ void stats(struct serv_params *params, struct fs_ds_t *ds) {
     printf("Massimo numero di client connessi contemporaneamente: %lu\n", ds->max_connections);
     puts("======= MEMORIA =======");
     printf("Massima quantità di memoria %lu Mbyte (%lu byte)\n", ds->max_mem/1048576, ds->max_mem);
-    printf("Memoria in uso al momento della terminazione: %lu Mbyte (%lu byte)\n", ds->curr_mem/1048576, ds->curr_mem);
     printf("Massima quantità di memoria occupata : %lu Mbyte (%lu byte)\n", ds->max_used_mem/1048576, ds->max_used_mem);
+    printf("Memoria in uso al momento della terminazione: %lu Mbyte (%lu byte)\n", ds->curr_mem/1048576, ds->curr_mem);
     printf("Chiamate algoritmo di rimpiazzamento FIFO: %lu\n", ds->cache_triggered);
     puts("======= FILES =======");
     printf("Massimo numero di file %lu\n", ds->max_files);
-    printf("File aperti al momento della terminazione: %lu\n", ds->curr_files);
     printf("Massimo numero di file aperti durante l'esecuzione: %lu\n", ds->max_nfiles);
+    printf("File presenti nel server al momento della terminazione: %lu\n", ds->curr_files);
     printf("File presenti nel server alla terminazione (ordinati dal meno recente al più recente):\n");
     struct node_t *path = ds->cache_q->head;
     struct fs_filedata_t *file = NULL;

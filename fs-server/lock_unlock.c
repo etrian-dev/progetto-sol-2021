@@ -22,6 +22,10 @@ void LOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t *mutex, void *obj) {
             free_serv_ds(ds);
             pthread_kill(pthread_self(), SIGKILL);
         }
+        // Se obj (l'oggetto condiviso) fosse stato liberato e settato a NULL allora la funzione
+        // non provoca la terminazione se pthread_mutex_lock fallisce, perché è quello che deve
+        // accadere. Sarà compito del chiamante stabilire cosa fare e controllare che obj
+        // sia o meno NULL al termine della chiamata
     }
 }
 void UNLOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t *mutex) {

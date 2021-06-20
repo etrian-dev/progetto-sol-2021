@@ -175,10 +175,6 @@ void *work(void *params) {
             // la coda (che sarà vuota) a tutti i worker e poi termino il thread
             LOCK_OR_KILL(ds, &(ds->mux_clients), ds->active_clients);
             if(ds->connected_clients == 0 && ds->slow_term == 1) {
-                LOCK_OR_KILL(ds, &(ds->mux_jobq), ds->job_queue);
-                pthread_cond_broadcast(&(ds->new_job));
-                UNLOCK_OR_KILL(ds, &(ds->mux_jobq));
-
                 term = 1; // il worker dovrà terminare
             }
             UNLOCK_OR_KILL(ds, &(ds->mux_clients));

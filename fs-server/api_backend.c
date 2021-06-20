@@ -48,6 +48,9 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         LOCK_OR_KILL(ds, &(ds->mux_files), ds);
         if(ds->curr_files == ds->max_files) {
             reply = newreply(REPLY_NO, 0, NULL);
+            if(logging(ds, 0, "openFile: Raggiunto il numero massimo di files") == -1) {
+                perror("openFile: Raggiunto il numero massimo di files");
+            }
             success = -1;
         }
         UNLOCK_OR_KILL(ds, &(ds->mux_files));
@@ -93,22 +96,35 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         int isOpen = 0;
         // Cerco questo socket tra quelli che hanno aperto il file
         LOCK_OR_KILL(ds, &(file->mux_file), file);
-        while(file->modifying == 1) {
-            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+        // Il file potrebbe essere stato eliminato durante l'attesa della lock
+        if(!file) {
+            isOpen = 0;
         }
-        while(!isOpen && i < file->nopened) {
-            if(file->openedBy[i] == client_PID) {
-                isOpen = 1;
+        else {
+            while(file->modifying == 1) {
+                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
             }
-            i++;
+            while(!isOpen && i < file->nopened) {
+                if(file->openedBy[i] == client_PID) {
+                    isOpen = 1;
+                }
+                i++;
+            }
+            UNLOCK_OR_KILL(ds, &(file->mux_file));
         }
-        UNLOCK_OR_KILL(ds, &(file->mux_file));
 
         if(isOpen) {
             // File già aperto da questo client: l'operazione di apertura fallisce
             reply = newreply(REPLY_NO, 0, NULL);
-            if(logging(ds, 0, "openFile: file già aperto dal client") == -1) {
-                perror("openFile: file già aperto dal client");
+            if(file) {
+                if(logging(ds, 0, "openFile: file già aperto dal client") == -1) {
+                    perror("openFile: file già aperto dal client");
+                }
+            }
+            else {
+                if(logging(ds, 0, "openFile: file non presente nel server") == -1) {
+                    perror("openFile: file non presente nel server");
+                }
             }
             success = -1;
         }
@@ -116,42 +132,51 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             // Il File non era aperto da questo client: lo apro
             LOCK_OR_KILL(ds, &(file->mux_file), file);
             // Aspetto che altre modifiche siano completate prima di procedere all'apertura
-            while(file->modifying == 1) {
-                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
-            }
-            file->modifying = 1;
-
-            int *newentry = realloc(file->openedBy, sizeof(int) * (file->nopened + 1));
-            if(!newentry) {
-                // fallita allocazione nuovo spazio per fd
+            if(!file) {
                 reply = newreply(REPLY_NO, 0, NULL);
-                if(logging(ds, 0, "openFile: apertura file non riuscita") == -1) {
-                    perror("openFile: apertura file non riuscita");
+                if(logging(ds, 0, "openFile:file non presente nel server") == -1) {
+                    perror("openFile: file non presente nel server");
                 }
                 success = -1;
             }
             else {
-                // Apertura OK: setto il file come aperto dal socket
-                file->openedBy = newentry;
-                file->openedBy[file->nopened] = client_PID;
-                file->nopened++;
-                // Se necessario setto lock (non è in stato locked per nessun altro client)
-                if(flags & O_LOCKFILE) {
-                    file->lockedBy = client_PID;
+                while(file->modifying == 1) {
+                    pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
                 }
-                // aggiorno info client
-                if(update_client_op(ds, client_sock, client_PID, OPEN_FILE, flags, pathname) == -1) {
-                    // fallito aggiornamento stato client
-                    if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
-                        perror("Fallito aggiornamento stato client");
+                file->modifying = 1;
+
+                int *newentry = realloc(file->openedBy, sizeof(int) * (file->nopened + 1));
+                if(!newentry) {
+                    // fallita allocazione nuovo spazio per fd
+                    reply = newreply(REPLY_NO, 0, NULL);
+                    if(logging(ds, 0, "openFile: apertura file non riuscita") == -1) {
+                        perror("openFile: apertura file non riuscita");
                     }
+                    success = -1;
+                }
+                else {
+                    // Apertura OK: setto il file come aperto dal socket
+                    file->openedBy = newentry;
+                    file->openedBy[file->nopened] = client_PID;
+                    file->nopened++;
+                    // Se necessario setto lock (non è in stato locked per nessun altro client)
+                    if(flags & O_LOCKFILE) {
+                        file->lockedBy = client_PID;
+                    }
+                    // aggiorno info client
+                    if(update_client_op(ds, client_sock, client_PID, OPEN_FILE, flags, pathname) == -1) {
+                        // fallito aggiornamento stato client
+                        if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                            perror("Fallito aggiornamento stato client");
+                        }
+                    }
+
+                    reply = newreply(REPLY_YES, 0, NULL);
                 }
 
-                reply = newreply(REPLY_YES, 0, NULL);
+                file->modifying = 0;
+                UNLOCK_OR_KILL(ds, &(file->mux_file));
             }
-
-            file->modifying = 0;
-            UNLOCK_OR_KILL(ds, &(file->mux_file));
         }
     }
 
@@ -182,50 +207,62 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
     if(!file) {
     	// il file non è presente nel server (quindi non posso chiuderlo)
     	reply = newreply(REPLY_NO, 0, NULL);
+        if(logging(ds, 0, "closeFile: file non presente nel server") == -1) {
+            perror("closeFile: file non presente nel server");
+        }
     	success = -1;
     }
     else {
         LOCK_OR_KILL(ds, &(file->mux_file), file);
-        while(file->modifying == 1) {
-            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
-        }
-        file->modifying = 1;
-
-   		// file presente: devo controllare se il client che richiede la sua chiusura
-        // lo abbia aperto in precedenza
-        size_t i = 0;
-   		while(i < file->nopened && file->openedBy[i] != client_PID) {
-   			i++;
-   		}
-   		if(i == file->nopened) {
-   			// il client non aveva aperto questo file, quindi l'operazione fallisce
-   			reply = newreply(REPLY_NO, 0, NULL);
-   			success = -1;
-   		}
-        else {
-            // altrimenti il file era aperto: lo chiudo per questo socket
-            for(; i < file->nopened - 1; i++) {
-                file->openedBy[i] = file->openedBy[i+1];
+        if(!file) {
+            reply = newreply(REPLY_NO, 0, NULL);
+            if(logging(ds, 0, "closeFile: file non presente nel server") == -1) {
+                perror("closeFile: file non presente nel server");
             }
-            file->nopened--;
-            // rialloco (restringo) l'array e se non è più aperto da alcun client lo dealloco
-            if(file->nopened == 0) {
-                free(file->openedBy);
-                file->openedBy = NULL;
+            success = -1;
+        }
+        else {
+            while(file->modifying == 1) {
+                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+            }
+            file->modifying = 1;
+
+            // file presente: devo controllare se il client che richiede la sua chiusura
+            // lo abbia aperto in precedenza
+            size_t i = 0;
+            while(i < file->nopened && file->openedBy[i] != client_PID) {
+                i++;
+            }
+            if(i == file->nopened) {
+                // il client non aveva aperto questo file, quindi l'operazione fallisce
+                reply = newreply(REPLY_NO, 0, NULL);
+                success = -1;
             }
             else {
-                file->openedBy = realloc(file->openedBy, file->nopened * sizeof(int));
-            }
-            // Se il file viene chiuso dal client che aveva la mutua esclusione su di esso la resetto
-            if(file->lockedBy == client_PID) {
-                file->lockedBy = -1;
-            }
+                // altrimenti il file era aperto: lo chiudo per questo socket
+                for(; i < file->nopened - 1; i++) {
+                    file->openedBy[i] = file->openedBy[i+1];
+                }
+                file->nopened--;
+                // rialloco (restringo) l'array e se non è più aperto da alcun client lo dealloco
+                if(file->nopened == 0) {
+                    free(file->openedBy);
+                    file->openedBy = NULL;
+                }
+                else {
+                    file->openedBy = realloc(file->openedBy, file->nopened * sizeof(int));
+                }
+                // Se il file viene chiuso dal client che aveva la mutua esclusione su di esso la resetto
+                if(file->lockedBy == client_PID) {
+                    file->lockedBy = -1;
+                }
 
-            // rispondo positivamente alla api
-            reply = newreply(REPLY_YES, 0, NULL);
+                // rispondo positivamente alla api
+                reply = newreply(REPLY_YES, 0, NULL);
+            }
+            file->modifying = 0;
+            UNLOCK_OR_KILL(ds, &(file->mux_file));
         }
-        file->modifying = 0;
-        UNLOCK_OR_KILL(ds, &(file->mux_file));
    	}
 
    	if(reply) {
@@ -254,10 +291,10 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     if(file == NULL) {
         // chiave non trovata => ritorna errore
         reply = newreply(REPLY_NO, 0, NULL);
-        if(logging(ds, 0, "readFile: file non trovato") == -1) {
-            perror("readFile: file non trovato");
+        if(logging(ds, 0, "readFile: file non presente nel server") == -1) {
+            perror("readFile: file non presente nel server");
         }
-        success = -1;
+    	success = -1;
     }
     // file trovato: guardo se era stato aperto da questo client
     else {
@@ -265,17 +302,22 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         i = isOpen = 0;
 
         LOCK_OR_KILL(ds, &(file->mux_file), file);
-        while(file->modifying == 1) {
-            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+        if(!file) {
+            isOpen = 0;
         }
-
-        while(!isOpen && i < file->nopened) {
-            if(file->openedBy[i] == client_PID) {
-                isOpen = 1; // aperto da questo client
+        else {
+            while(file->modifying == 1) {
+                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
             }
-            i++;
+
+            while(!isOpen && i < file->nopened) {
+                if(file->openedBy[i] == client_PID) {
+                    isOpen = 1; // aperto da questo client
+                }
+                i++;
+            }
+            UNLOCK_OR_KILL(ds, &(file->mux_file));
         }
-        UNLOCK_OR_KILL(ds, &(file->mux_file));
 
         // Se è stato aperto da questo client allora posso leggerlo
         if(isOpen) {
@@ -305,8 +347,15 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         else {
             // Operazione negata: il client non aveva aperto il file
             reply = newreply(REPLY_NO, 0, NULL);
-            if(logging(ds, 0, "readFile: il file non era aperto") == -1) {
-                perror("readFile: il file non era aperto");
+            if(file) {
+                if(logging(ds, 0, "readFile: il file non era aperto") == -1) {
+                    perror("readFile: il file non era aperto");
+                }
+            }
+            else {
+                if(logging(ds, 0, "readFile: file non presente nel server") == -1) {
+                    perror("readFile: file non presente nel server");
+                }
             }
             success = -1;
         }
@@ -392,7 +441,6 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
             build_pathstr(&all_paths, paths, num_sent);
         }
 
-
         if(rep) {
             // scrivo la risposta
             if(writen(client_sock, rep, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
@@ -468,38 +516,43 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
     struct fs_filedata_t *file = find_file(ds, pathname);
     if(file == NULL) {
         // file non trovato
-        if(logging(ds, 0, "api_appendToFile: file non trovato") == -1) {
-            perror("api_appendToFile: file non trovato");
+        if(logging(ds, 0, "api_appendToFile: file non presente nel server") == -1) {
+            perror("api_appendToFile: file non presente nel server");
         }
         success = -1;
     }
     else {
         LOCK_OR_KILL(ds, &(file->mux_file), file);
-        while(file->modifying == 1) {
-            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
-        }
-        file->modifying = 1;
-
-        // file trovato: se era lockato da un altro client allora non posso modificarlo
-        if(file->lockedBy != -1 && file->lockedBy != client_PID) {
-            reply = newreply(REPLY_NO, 0, NULL);
-            if(logging(ds, 0, "api_appendToFile: file lockato da un altro client") == -1) {
-                perror("api_appendToFile: file lockato da un altro client");
-            }
+        if(!file) {
             success = -1;
         }
         else {
-            i = 0;
-            isOpen = 0; // flag per determinare se il file era aperto
-            while(!isOpen && i < file->nopened) {
-                if(file->openedBy[i] == client_PID) {
-                    isOpen = 1; // aperto da questo client
-                }
-                i++;
+            while(file->modifying == 1) {
+                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
             }
+            file->modifying = 1;
+
+            // file trovato: se era lockato da un altro client allora non posso modificarlo
+            if(file->lockedBy != -1 && file->lockedBy != client_PID) {
+                reply = newreply(REPLY_NO, 0, NULL);
+                if(logging(ds, 0, "api_appendToFile: file lockato da un altro client") == -1) {
+                    perror("api_appendToFile: file lockato da un altro client");
+                }
+                success = -1;
+            }
+            else {
+                i = 0;
+                isOpen = 0; // flag per determinare se il file era aperto
+                while(!isOpen && i < file->nopened) {
+                    if(file->openedBy[i] == client_PID) {
+                        isOpen = 1; // aperto da questo client
+                    }
+                    i++;
+                }
+            }
+            file->modifying = 0;
+            UNLOCK_OR_KILL(ds, &(file->mux_file));
         }
-        file->modifying = 0;
-        UNLOCK_OR_KILL(ds, &(file->mux_file));
     }
 
     int nevicted = 0; // numero di file espulsi
@@ -528,9 +581,14 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
                 perror("api_appendToFile: buffer troppo grande");
             }
         }
-        else {
+        else if(file){
             if(logging(ds, 0, "api_appendToFile: il file non era stato aperto") == -1) {
                 perror("api_appendToFile: il file non era stato aperto");
+            }
+        }
+        else {
+            if(logging(ds, 0, "api_appendToFile: file non presente nel server") == -1) {
+                perror("api_appendToFile: file non presente nel server");
             }
         }
     }
@@ -659,6 +717,8 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname,
     struct reply_t *reply = NULL;
     // controllo se l'ultima operazione di questo client (completata con successo)
     // fosse stata una openFile(pathname, O_CREATEFILE|O_LOCKFILE)
+    LOCK_OR_KILL(ds, &(ds->mux_clients), ds);
+
     size_t pos = 0;
     while(  pos < ds->connected_clients
             && !(ds->active_clients[pos].PID == client_PID
@@ -671,6 +731,8 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname,
         reply = newreply(REPLY_NO, 0, NULL);
         success = -1;
     }
+
+    UNLOCK_OR_KILL(ds, &(ds->mux_clients));
 
     int ret;
     if(success == 0) {
@@ -693,6 +755,7 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname,
 // Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_PID
 // Ritorna 0 se ha successo, -1 altrimenti
 int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
+    int success = 0;
     // La risposta del server
     struct reply_t *rep = NULL;
 
@@ -701,80 +764,105 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock,
     if(!file) {
         // file non trovato: setto a -1 il secondo campo per indicare che il file non è nel server
         rep = newreply(REPLY_NO, -1, NULL);
+        success = -1;
     }
     else {
         LOCK_OR_KILL(ds, &(file->mux_file), file);
-        while(file->modifying == 1) {
-            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
-        }
-        file->modifying = 1;
-
-        // Se era lockato da questo client o era libero setto lock
-        if(file->lockedBy == -1 || file->lockedBy == client_PID) {
-            file->lockedBy = client_PID;
-            // L'operazione ha avuto esito positivo
-            rep = newreply(REPLY_YES, 0, NULL);
+        if(!file) {
+            rep = newreply(REPLY_NO, -1, NULL);
+            success = -1;
         }
         else {
-            // Lockato da un altro client
-            rep = newreply(REPLY_NO, 0, NULL);
+            while(file->modifying == 1) {
+                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+            }
+            file->modifying = 1;
+
+            // Se era lockato da questo client o era libero setto lock
+            if(file->lockedBy == -1 || file->lockedBy == client_PID) {
+                file->lockedBy = client_PID;
+                // L'operazione ha avuto esito positivo
+                rep = newreply(REPLY_YES, 0, NULL);
+            }
+            else {
+                // Lockato da un altro client
+                rep = newreply(REPLY_NO, 0, NULL);
+                success = -1;
+            }
+
+            file->modifying = 0;
+            UNLOCK_OR_KILL(ds, &(file->mux_file));
+            // aggiorno operazioni client
+            if(success == 0) {
+                update_client_op(ds, client_sock, client_PID, LOCK_FILE, O_LOCKFILE, pathname);
+            }
         }
-
-        file->modifying = 0;
-        UNLOCK_OR_KILL(ds, &(file->mux_file));
-
     }
     if(!rep) {
         // Se non posso inviare la risposta allora non setto la lock
-        file->lockedBy = -1;
+        if(file) file->lockedBy = -1;
         return -1;
     }
     else {
-        update_client_op(ds, client_sock, client_PID, LOCK_FILE, O_LOCKFILE, pathname);
         if(writen(client_sock, rep, sizeof(*rep)) != sizeof(*rep)) {
             return -1;
         }
         free(rep);
     }
 
-    return 0;
+    return success;
 }
 // Toglie la mutua esclusione sul file pathname (solo se era lockato da client_PID)
 // Ritorna 0 se ha successo, -1 altrimenti
 int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID) {
+    int success = 0;
     // La risposta del server
     struct reply_t *rep = NULL;
 
     // Cerco il file nel fileserver
     struct fs_filedata_t *file = find_file(ds, pathname);
-
-    LOCK_OR_KILL(ds, &(file->mux_file), file);
-    while(file->modifying == 1) {
-        pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
-    }
-    file->modifying = 1;
-
-    if(file->lockedBy == client_PID) {
-        // Se il file era lockato da questo client allora rimuovo la lock
-        file->lockedBy = -1;
-
-        rep = newreply(REPLY_YES, 0, NULL);
-        if(!rep) {
-            // Se non posso inviare la risposta ripristino la lock e faccio fallire l'operazione
-            file->lockedBy = client_PID;
-            return -1;
-        }
+    if(!file) {
+        // file non trovato
+        rep = newreply(REPLY_NO, 0, NULL);
+        success = -1;
     }
     else {
-        // file non trovato o lockato da qualche altro client
-        rep = newreply(REPLY_NO, 0, NULL);
+        LOCK_OR_KILL(ds, &(file->mux_file), file);
+        if(!file) {
+            rep = newreply(REPLY_NO, 0, NULL);
+            success = -1;
+        }
+        else {
+            while(file->modifying == 1) {
+                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
+            }
+            file->modifying = 1;
+
+            if(file->lockedBy == client_PID) {
+                // Se il file era lockato da questo client allora rimuovo la lock
+                file->lockedBy = -1;
+                rep = newreply(REPLY_YES, 0, NULL);
+                if(!rep) {
+                    // Se non posso inviare la risposta ripristino la lock e faccio fallire l'operazione
+                    file->lockedBy = client_PID;
+                    return -1;
+                }
+            }
+            else {
+                // file lockato da qualche altro client
+                rep = newreply(REPLY_NO, 0, NULL);
+                success = -1;
+            }
+
+            file->modifying = 0;
+            UNLOCK_OR_KILL(ds, &(file->mux_file));
+
+            if(success == 0) {
+                update_client_op(ds, client_sock, client_PID, UNLOCK_FILE, 0, pathname);
+            }
+        }
     }
-
-    file->modifying = 0;
-    UNLOCK_OR_KILL(ds, &(file->mux_file));
-
     if(rep) {
-        update_client_op(ds, client_sock, client_PID, UNLOCK_FILE, 0, pathname);
         if(writen(client_sock, rep, sizeof(*rep)) != sizeof(*rep)) {
             free(rep);
             return -1;
@@ -782,89 +870,108 @@ int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_so
         free(rep);
     }
 
-    return 0;
+    return success;
 }
 
 // Rimuove dal server il file con path pathname, se presente e lockato da client_PID
 // Ritorna 0 se ha successo, -1 altrimenti
 int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
+    int success = 0;
     // La risposta del server
     struct reply_t *rep = NULL;
 
     // Cerco il file nel fileserver
     struct fs_filedata_t *file = find_file(ds, pathname);
-
     if(!file) {
         // file non trovato
-        rep = newreply(REPLY_NO, 0, NULL);
+        success = -1;
     }
     else {
-
         LOCK_OR_KILL(ds, &(file->mux_file), file);
-        while(file->modifying == 1) {
-            pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
-        }
-        file->modifying = 1;
-
-        if(file->lockedBy != client_PID) {
-            // file non lockato da questo client
-            rep = newreply(REPLY_NO, 0, NULL);
-            UNLOCK_OR_KILL(ds, &(file->mux_file)); // operazione non consentita
+        if(!file) {
+            success = -1;
         }
         else {
-            // Se il file era lockato da questo client allora lo rimuovo (prima tolgo lock)
-            struct fs_filedata_t *tmptr = file; // copio in un temporaneo il puntatore
-            file = NULL; // metto file a NULL
-            //pthread_mutex_unlock(&(file->mux_file)); // rilascio lock
-            free_file(tmptr); // dealloco file
-            int table = icl_hash_delete(ds->fs_table, (void*)pathname, free, NULL); // lo tolgo dalla ht
-            // lo tolgo anche dalla coda
-            LOCK_OR_KILL(ds, &(ds->mux_cacheq), ds->cache_q);
-            struct node_t *curr = ds->cache_q->head;
-            struct node_t *prev = NULL;
-            int cache = -1;
-            while(curr) {
-                if(strcmp((char*)curr->data, pathname) == 0) {
-                    struct node_t *tmp = curr;
-                    if(prev) {
-                        // sto rimuovendo un altro elemento della lista (non la testa)
-                        prev->next = curr->next;
-                    }
-                    else {
-                        // sto rimuovendo la testa della lista
-                        ds->cache_q->head = curr->next;
-                    }
-                    if(curr == ds->cache_q->tail) {
-                        // Se sto rimuovendo la coda devo aggiornare la coda
-                        ds->cache_q->tail = prev;
-                    }
-                    // libero tmp (curr)
-                    free(tmp->data);
-                    free(tmp);
-                    tmp = NULL;
-                    cache = 0; // setto per indicare che ho rimosso con successo dalla cache
-                    break;
-                }
-                prev = curr;
-                curr = curr->next;
+            while(file->modifying == 1) {
+                pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
             }
-            UNLOCK_OR_KILL(ds, &(ds->mux_cacheq));
+            file->modifying = 1;
 
-            if(table == 0) {
-                rep = newreply(REPLY_YES, 0, NULL);
+            if(file->lockedBy != client_PID) {
+                // file non lockato da questo client
+                UNLOCK_OR_KILL(ds, &(file->mux_file));
+                success = -1;
             }
             else {
-                rep = newreply(REPLY_NO, 0, NULL);
-            }
+                // Se il file era lockato da questo client allora lo rimuovo
+                struct fs_filedata_t *tmptr = file; // copio in un temporaneo il puntatore
+                file = NULL; // metto file a NULL
+                int table = icl_hash_delete(ds->fs_table, (void*)pathname, free, NULL); // lo tolgo dalla ht
+                free_file(tmptr); // dealloco il file
 
-            if(cache == -1) {
-                // consistenza della cache non garantita!
-                // Non termino il server ma effettuo il log dell'evento
-                if(logging(ds, 0, "[SERVER] api_rmFile: Consistenza cache persa") == -1) {
-                    perror("[SERVER] api_rmFile: Consistenza cache persa");
+                // Tolgo anche il path dalla coda
+                LOCK_OR_KILL(ds, &(ds->mux_cacheq), ds->cache_q);
+                struct node_t *curr = ds->cache_q->head;
+                struct node_t *prev = NULL;
+                int cache = -1;
+                while(curr) {
+                    if(strcmp((char*)curr->data, pathname) == 0) {
+                        struct node_t *tmp = curr;
+                        if(prev) {
+                            // sto rimuovendo un altro elemento della lista (non la testa)
+                            prev->next = curr->next;
+                        }
+                        else {
+                            // sto rimuovendo la testa della lista
+                            ds->cache_q->head = curr->next;
+                        }
+                        if(curr == ds->cache_q->tail) {
+                            // Se sto rimuovendo la coda devo aggiornare la coda
+                            ds->cache_q->tail = prev;
+                        }
+                        // libero tmp (curr)
+                        free(tmp->data);
+                        free(tmp);
+                        tmp = NULL;
+                        cache = 0; // setto per indicare che ho rimosso con successo dalla cache
+                        break;
+                    }
+                    prev = curr;
+                    curr = curr->next;
+                }
+                UNLOCK_OR_KILL(ds, &(ds->mux_cacheq));
+
+                // Aggiorno numero file nel server
+                LOCK_OR_KILL(ds, &(ds->mux_files), ds->curr_files);
+                ds->curr_files--;
+                UNLOCK_OR_KILL(ds, &(ds->mux_files));
+
+                if(table == 0) {
+                    // tolto con successo dalla hashtable
+                    rep = newreply(REPLY_YES, 0, NULL);
+                }
+                else {
+                    // impossibile togliere il file dalla ht
+                    if(logging(ds, 0, "[SERVER] api_rmFile: Consistenza hash table persa") == -1) {
+                        perror("[SERVER] api_rmFile: Consistenza hash table persa");
+                    }
+                    success = -1;
+                }
+
+                if(cache == -1) {
+                    // consistenza della cache non garantita!
+                    // Non termino il server ma effettuo il log dell'evento
+                    if(logging(ds, 0, "[SERVER] api_rmFile: Consistenza cache persa") == -1) {
+                        perror("[SERVER] api_rmFile: Consistenza cache persa");
+                    }
+                    success = -1;
                 }
             }
         }
+    }
+
+    if(success == -1) {
+        rep = newreply(REPLY_NO, 0, NULL);
     }
 
     if(!rep) {
@@ -878,5 +985,5 @@ int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, c
         free(rep);
     }
 
-    return 0;
+    return success;
 }

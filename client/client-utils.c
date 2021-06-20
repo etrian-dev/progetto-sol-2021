@@ -107,13 +107,13 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
                 int success = 0;
                 if(params->oplist->tail && params->oplist->tail->data) {
                     struct operation *last_op = (struct operation *)params->oplist->tail->data;
-                    if(opchar == 'D' && (last_op->type == 'w' || last_op->type == 'W')) {
+                    if(opchar == 'D' && (last_op->type == 'w' || last_op->type == WRITE_FILE)) {
                         if(string_dup(&(last_op->dir_swp), optarg) == -1) {
                             // errore nella duplicazione della directory di salvataggio
                             success = -1;
                         }
                     }
-                    else if(opchar == 'd' && (last_op->type == 'r' || last_op->type == 'R')) {
+                    else if(opchar == 'd' && (last_op->type == READ_FILE || last_op->type == READ_N_FILES)) {
                         if(string_dup(&(last_op->dir_swp), optarg) == -1) {
                             // errore nella duplicazione della directory di salvataggio
                             success = -1;

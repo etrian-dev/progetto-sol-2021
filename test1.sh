@@ -23,15 +23,16 @@ if [ ! -d save_writes ]; then
 fi
 
 # Lancio vari client in background che testano singolarmente le opzioni implementate
+./client.out -h
 ./client.out -p -t $delay -f $1 -W testcases/inputs/input0.txt,testcases/inputs/input1.txt
 ./client.out -p -t $delay -f $1 -a "testcases/inputs/input1.txt:testcases/inputs/prova0.in,testcases/inputs/input1.txt:ciao mondo"
 ./client.out -p -t $delay -f $1 -r testcases/inputs/input1.txt -r testcases/pi.txt
 ./client.out -p -t $delay -f $1 -l testcases/inputs/input1.txt -u testcases/inputs/input1.txt
-./client.out -p -t $delay -f $1 -l testcases/inputs/input1.txt \
--c testcases/inputs/input1.txt,testcases/inputs/input0.txt,testcases/zzzzzzzzzzz
-./client.out -p -t $delay -f $1 -w testcases,0
-./client.out -p -t $delay -f $1 -R 0 -d save_reads
-./client.out -p -t $delay -f $1 -R 5 &
+./client.out -p -t $delay -f $1 -l testcases/inputs/input1.txt
+./client.out -p -t $delay -f $1 -w testcases,0 -D save_writes
+./client.out -p -t $delay -f $1 -R 0
+./client.out -p -t $delay -f $1 -R 5 -d save_reads
+./client.out -p -t $delay -f $1 -c testcases/inputs/input1.txt,testcases/inputs/input0.txt,testcases/zzzzzzzzzzz
 
 # Quindi invia il segnale di terminazione lenta al server (SIGHUP)
 printf "\n\n\n******* SIGHUP inviato a $(ps --no-headers -o command $server_pid) *******\n"

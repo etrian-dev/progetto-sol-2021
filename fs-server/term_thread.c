@@ -15,9 +15,9 @@ void *term_thread(void *params) {
     // preparo maschera per apettare segnali SIGHUP, SIGINT, SIGQUIT
     sigset_t mask_term;
     if( sigemptyset(&mask_term)
-            || sigaddset(&mask_term, SIGHUP) != 0
-            || sigaddset(&mask_term, SIGINT) != 0
-            || sigaddset(&mask_term, SIGQUIT) != 0)
+        || sigaddset(&mask_term, SIGHUP) != 0
+        || sigaddset(&mask_term, SIGINT) != 0
+        || sigaddset(&mask_term, SIGQUIT) != 0)
     {
         // Fallito settaggio della maschera
         perror("[SERVER] Fallito settaggio della maschera");

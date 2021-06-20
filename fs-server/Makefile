@@ -1,5 +1,5 @@
 CC = gcc -std=c99 -D_GNU_SOURCE=1
-CFLAGS = -g -Wall -Wextra -pedantic
+CFLAGS = -g -Wall -pedantic
 HEADERS = -I . -I .. -I ../icl_hash -I ../fs-api
 
 LIBPATH = -Wl,-rpath=./libs -L ../libs
