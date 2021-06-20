@@ -86,19 +86,19 @@ struct fs_filedata_t *insert_file(
         }
 
         // Aggiorno il numero di files presenti nel server
-        LOCK_OR_KILL(ds, ds->mux_files, ds);
+        LOCK_OR_KILL(ds, &(ds->mux_files), ds);
         ds->curr_files++;
         if(ds->curr_files > ds->max_nfiles) {
             ds->max_nfiles = ds->curr_files;
         }
-        UNLOCK_OR_KILL(ds, ds->mux_files);
+        UNLOCK_OR_KILL(ds, &(ds->mux_files));
 
         // Inserisco il pathname del file nella coda di file
-        LOCK_OR_KILL(ds, ds->mux_cacheq, ds->cache_q);
+        LOCK_OR_KILL(ds, &(ds->mux_cacheq), ds->cache_q);
         // non utilizzo il parametro socket, per cui lo posso settare ad un socket non valido (-1)
         int queued = -1;
         queued = enqueue(ds->cache_q, key, strlen(path) + 1, -1);
-        UNLOCK_OR_KILL(ds, ds->mux_cacheq);
+        UNLOCK_OR_KILL(ds, &(ds->mux_cacheq));
 
         if(queued == -1) {
             // Inserimento in coda fallito
@@ -116,7 +116,7 @@ struct fs_filedata_t *insert_file(
         // recupero il file
         struct fs_filedata_t *oldfile = find_file(ds, path);
         if(oldfile) {
-            LOCK_OR_KILL(ds, oldfile->mux_file, file);
+            LOCK_OR_KILL(ds, &(oldfile->mux_file), file);
             while(oldfile->modifying == 1) {
                 pthread_cond_wait(&(oldfile->mod_completed), &(oldfile->mux_file));
             }
@@ -137,16 +137,16 @@ struct fs_filedata_t *insert_file(
             oldfile->size += size;
 
             oldfile->modifying = 0;
-            UNLOCK_OR_KILL(ds, oldfile->mux_file);
+            UNLOCK_OR_KILL(ds, &(oldfile->mux_file));
 
             // devo aggiornare anche la quantità di memoria occupata nel server
-            LOCK_OR_KILL(ds, ds->mux_mem, ds);
+            LOCK_OR_KILL(ds, &(ds->mux_mem), ds);
             ds->curr_mem += size;
             // aggiorno se necessario anche la massima quantità di memoria occupata
             if(ds->curr_mem > ds->max_used_mem) {
                 ds->max_used_mem = ds->curr_mem;
             }
-            UNLOCK_OR_KILL(ds, ds->mux_mem);
+            UNLOCK_OR_KILL(ds, &(ds->mux_mem));
         }
 
         file = res = oldfile; // se ho avuto successo allora saranno != NULL
@@ -194,14 +194,14 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
     // siccome il test sulla memoria occupata è nella guardia del while ed anche nel corpo
     // modifico la memoria eseguo tutto il ciclo in mutua esclusione sulle variabili
     // che controllano l'occupazione di memoria all'interno del server
-    LOCK_OR_KILL(ds, ds->mux_mem, ds);
+    LOCK_OR_KILL(ds, &(ds->mux_mem), ds);
     do {
         // Secondo la politica FIFO la vittima è la testa della coda cache_q
-        LOCK_OR_KILL(ds, ds->mux_cacheq, ds->cache_q);
+        LOCK_OR_KILL(ds, &(ds->mux_cacheq), ds->cache_q);
         // non dovrebbe ritornare NULL (ragionevolmente) in quanto ho chiamato l'algoritmo perché avevo
         // file che occupavano la memoria del server
         struct node_t *victim = pop(ds->cache_q);
-        UNLOCK_OR_KILL(ds, ds->mux_cacheq);
+        UNLOCK_OR_KILL(ds, &(ds->mux_cacheq));
 
         if(!victim) {
             // pop ha ritornato NULL per qualche motivo
@@ -213,7 +213,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         // Rimuovo il file con questo pathname dalla ht
         struct fs_filedata_t *fptr = find_file(ds, victim->data);
 
-        LOCK_OR_KILL(ds, fptr->mux_file, fptr);
+        LOCK_OR_KILL(ds, &(fptr->mux_file), fptr);
         while(fptr->modifying == -1) {
             pthread_cond_wait(&(fptr->mod_completed), &(fptr->mux_file));
         }
@@ -223,16 +223,16 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         // Libero invece la memoria occupata dalla chiave, dato che non è più utile
         if((success = icl_hash_delete(ds->fs_table, victim->data, free, NULL)) != -1) {
             // rimozione OK, decremento numero file nel server e quantità di memoria occupata
-            LOCK_OR_KILL(ds, ds->mux_files, ds);
+            LOCK_OR_KILL(ds, &(ds->mux_files), ds);
             ds->curr_files--;
-            UNLOCK_OR_KILL(ds, ds->mux_files);
+            UNLOCK_OR_KILL(ds, &(ds->mux_files));
 
             ds->curr_mem -= sz; // già in ME sulla memoria
         }
         else {
             errno_saved = errno; // salvo errore
             success = -1;
-            UNLOCK_OR_KILL(ds, fptr->mux_file);
+            UNLOCK_OR_KILL(ds, &(fptr->mux_file));
             break;
         }
 
@@ -251,15 +251,15 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
             (*files)->tail = fnode;
         }
         else {
-            UNLOCK_OR_KILL(ds, fptr->mux_file);
-            UNLOCK_OR_KILL(ds, ds->mux_mem);
+            UNLOCK_OR_KILL(ds, &(fptr->mux_file));
+            UNLOCK_OR_KILL(ds, &(ds->mux_mem));
             free_Queue(*paths);
             free_Queue(*files);
             free(victim->data);
             free(victim);
             return -1;
         }
-        UNLOCK_OR_KILL(ds, fptr->mux_file);
+        UNLOCK_OR_KILL(ds, &(fptr->mux_file));
         if(enqueue(*paths, victim->data, strlen((char*)victim->data) + 1, -1) == -1) {
             // fallito inserimento del path del file in coda
             errno_saved = errno;
@@ -274,7 +274,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         num_evicted++; // ho espulso con successo un altro file, quindi incremento il contatore
     }
     while(ds->curr_mem + newsz >= ds->max_mem);
-    UNLOCK_OR_KILL(ds, ds->mux_mem);
+    UNLOCK_OR_KILL(ds, &(ds->mux_mem));
 
     // aggiorno il numero di chiamate (che hanno avuto successo) dell'algorimto di rimpiazzamento
     if(success != -1) {

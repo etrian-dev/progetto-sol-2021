@@ -3,6 +3,7 @@
 #define UTILS_H_INCLUDED
 
 #include <stddef.h>
+#include <time.h>
 
 // definisco una dimensione base dei buffer
 #define BUF_BASESZ 512
@@ -18,6 +19,8 @@ char *get_fullpath(const char *base, const char *name);
 int isNumber(const char* s, long* n);
 // Funzione per la duplicazione di una stringa allocata sullo heap
 int string_dup(char **dest, const char *src);
+// funzione di utilità per convertire msec in struct timespec
+void get_delay(const int msec, struct timespec *delay);
 
 // Definisco una coda come lista concatenata
 struct node_t {

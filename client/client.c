@@ -61,13 +61,19 @@ int main(int argc, char **argv) {
         }
         PRINT(options->prints_on, printf("[%d]: Connesso al server sul socket %s\n", PID, options->fs_socket);)
 
+        struct timespec waitfor; // struttura per delay
+        if(options->rdelay > 0) {
+            get_delay(options->rdelay, &waitfor);
+        }
+
         // Invio le richieste nell'ordine in cui sono state date al client
         struct node_t *req = NULL;
         struct node_t *elem = NULL;
         char *path = NULL;
+
         // Scorre la lista di operazioni richieste
         while((req = pop(options->oplist)) != NULL) {
-            // salvo l'operazione in una struttura per evitare di fare tanti casting
+            // salvo l'operazione in una struttura per evitare di fare tanti cast
             struct operation *op = (struct operation *)req->data;
             switch(op->type) {
             case 'w': { // l'opzione -w viene trattata in modo speciale
@@ -123,18 +129,18 @@ int main(int argc, char **argv) {
                 if((n = readNFiles(op->max_n, op->dir_swp)) == -1) {
                     // errore di lettura
                     PRINT(options->prints_on,
-                        if(op->max_n <= 0) {
-                            fprintf(stderr, "[%d]: Impossibile leggere alcun file da \"%s\"\n", PID, op->dir_swp);
-                        } else {
-                            fprintf(stderr, "[%d]: Impossibile leggere %ld files da \"%s\"\n", PID, op->max_n, op->dir_swp);
-                        }
+                    if(op->max_n <= 0) {
+                    fprintf(stderr, "[%d]: Impossibile leggere alcun file da \"%s\"\n", PID, op->dir_swp);
+                    } else {
+                        fprintf(stderr, "[%d]: Impossibile leggere %ld files da \"%s\"\n", PID, op->max_n, op->dir_swp);
+                    }
                          )
                 } else {
                     PRINT(options->prints_on,
-                        printf("[%d]: Ricevuti %d files dal server\n", PID, n);
-                        if(op->dir_swp) {
-                            printf("[%d]: Salvati nella directory \"%s\"\n", PID, op->dir_swp);
-                        }
+                          printf("[%d]: Ricevuti %d files dal server\n", PID, n);
+                    if(op->dir_swp) {
+                    printf("[%d]: Salvati nella directory \"%s\"\n", PID, op->dir_swp);
+                    }
                          )
                 }
                 break;
@@ -369,26 +375,30 @@ int main(int argc, char **argv) {
                         break;
                     }
                     }
-
-                    // libero memoria allocata per il nodo della lista
-                    free(elem->data);
-                    free(elem);
                 }
                 break;
-                default:
-                    fprintf(stderr, "\'%c\': Operazione non implementata\n", op->type);
+
             }
+            break;
+            default:
+                fprintf(stderr, "\'%c\': Operazione non implementata\n", op->type);
             }
-            // libero la memoria allocata per la richiesta
+            // libero la richiesta
             free_op(&op);
             free(req);
+            req = NULL;
+
+            // Aspetto un tempo dato dal delay settato tramite la riga di comando
+            if(options->rdelay > 0) {
+                nanosleep(&waitfor, NULL);
+            }
         }
-        // libero la lista di operazioni
         free(options->oplist);
+        options->oplist = NULL;
 
         // La connessione con il server viene chiusa
         if(closeConnection(options->fs_socket) == -1) {
-            PRINT(options->prints_on, fprintf(stderr, "[%d]: Impossible disconnettersi dal server", PID);)
+            PRINT(options->prints_on, fprintf(stderr, "[%d]: Impossible disconnettersi dal server\n", PID);)
             return 1;
         }
         PRINT(options->prints_on, printf("[%d]: Disconnesso dal server\n", PID));

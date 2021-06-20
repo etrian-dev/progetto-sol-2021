@@ -45,12 +45,12 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     if(!file && (flags & O_CREATEFILE)) {
         // Se ho già raggiunto il massimo numero di file memorizzabili allora la open fallisce
         // perché sto tentando di creare un nuovo file
-        LOCK_OR_KILL(ds, ds->mux_files, ds);
+        LOCK_OR_KILL(ds, &(ds->mux_files), ds);
         if(ds->curr_files == ds->max_files) {
             reply = newreply(REPLY_NO, 0, NULL);
             success = -1;
         }
-        UNLOCK_OR_KILL(ds, ds->mux_files);
+        UNLOCK_OR_KILL(ds, &(ds->mux_files));
 
         // Altrimenti posso crearlo
         if(success == 0) {
@@ -92,7 +92,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         size_t i = 0;
         int isOpen = 0;
         // Cerco questo socket tra quelli che hanno aperto il file
-        LOCK_OR_KILL(ds, file->mux_file, file);
+        LOCK_OR_KILL(ds, &(file->mux_file), file);
         while(file->modifying == 1) {
             pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
         }
@@ -102,7 +102,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             }
             i++;
         }
-        UNLOCK_OR_KILL(ds, file->mux_file);
+        UNLOCK_OR_KILL(ds, &(file->mux_file));
 
         if(isOpen) {
             // File già aperto da questo client: l'operazione di apertura fallisce
@@ -114,7 +114,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         }
         else {
             // Il File non era aperto da questo client: lo apro
-            LOCK_OR_KILL(ds, file->mux_file, file);
+            LOCK_OR_KILL(ds, &(file->mux_file), file);
             // Aspetto che altre modifiche siano completate prima di procedere all'apertura
             while(file->modifying == 1) {
                 pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
@@ -151,7 +151,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             }
 
             file->modifying = 0;
-            UNLOCK_OR_KILL(ds, file->mux_file);
+            UNLOCK_OR_KILL(ds, &(file->mux_file));
         }
     }
 
@@ -185,7 +185,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
     	success = -1;
     }
     else {
-        LOCK_OR_KILL(ds, file->mux_file, file);
+        LOCK_OR_KILL(ds, &(file->mux_file), file);
         while(file->modifying == 1) {
             pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
         }
@@ -225,7 +225,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
             reply = newreply(REPLY_YES, 0, NULL);
         }
         file->modifying = 0;
-        UNLOCK_OR_KILL(ds, file->mux_file);
+        UNLOCK_OR_KILL(ds, &(file->mux_file));
    	}
 
    	if(reply) {
@@ -264,7 +264,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         int i, isOpen;
         i = isOpen = 0;
 
-        LOCK_OR_KILL(ds, file->mux_file, file);
+        LOCK_OR_KILL(ds, &(file->mux_file), file);
         while(file->modifying == 1) {
             pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
         }
@@ -275,7 +275,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             }
             i++;
         }
-        UNLOCK_OR_KILL(ds, file->mux_file);
+        UNLOCK_OR_KILL(ds, &(file->mux_file));
 
         // Se è stato aperto da questo client allora posso leggerlo
         if(isOpen) {
@@ -334,14 +334,14 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
     // dato che è una lista concatenata con il solo forward pointer)
     int success = 0;
 
-    LOCK_OR_KILL(ds, ds->mux_cacheq, ds->cache_q);
+    LOCK_OR_KILL(ds, &(ds->mux_cacheq), ds->cache_q);
     struct node_t *curr = ds->cache_q->head; // l'indirizzo del nodo contenente il primo path
     int num_sent = 0; // num_sent conterrà il numero di file che invierò alla API
     while((n <= 0 || num_sent < n) && curr) {
         curr = curr->next;
         num_sent++;
     }
-    UNLOCK_OR_KILL(ds, ds->mux_cacheq);
+    UNLOCK_OR_KILL(ds, &(ds->mux_cacheq));
 
     // Alloco gli array contenenti rispettivamente:
     // puntatori ai file da inviare
@@ -358,7 +358,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
         success = -1;
     }
     else {
-        LOCK_OR_KILL(ds, ds->mux_cacheq, ds->cache_q);
+        LOCK_OR_KILL(ds, &(ds->mux_cacheq), ds->cache_q);
         curr = ds->cache_q->head;
         int i;
         for(i = 0; i < num_sent; i++) {
@@ -370,7 +370,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
             paths[i] = (char*)curr->data;
             curr = curr->next;
         }
-        UNLOCK_OR_KILL(ds, ds->mux_cacheq);
+        UNLOCK_OR_KILL(ds, &(ds->mux_cacheq));
 
         // Alloco la risposta contenente il numero di file e la lunghezza dei path concatenati
         rep = newreply(REPLY_YES, num_sent, paths);
@@ -474,7 +474,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
         success = -1;
     }
     else {
-        LOCK_OR_KILL(ds, file->mux_file, file);
+        LOCK_OR_KILL(ds, &(file->mux_file), file);
         while(file->modifying == 1) {
             pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
         }
@@ -499,16 +499,16 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
             }
         }
         file->modifying = 0;
-        UNLOCK_OR_KILL(ds, file->mux_file);
+        UNLOCK_OR_KILL(ds, &(file->mux_file));
     }
 
     int nevicted = 0; // numero di file espulsi
     // Controllo che le operazioni precedenti abbiano avuto successo e che il file possa effettivamente entrare in memoria
     if(success == 0 && isOpen && size <= ds->max_mem) {
         // Se la scrittura provoca capacity miss allora chiamo l'algoritmo di rimpiazzamento
-        LOCK_OR_KILL(ds, ds->mux_mem, ds);
+        LOCK_OR_KILL(ds, &(ds->mux_mem), ds);
         int nomem = (ds->curr_mem + size > ds->max_mem ? 1 : 0);
-        UNLOCK_OR_KILL(ds, ds->mux_mem);
+        UNLOCK_OR_KILL(ds, &(ds->mux_mem));
         if(nomem) {
             // i file (eventualmente) espulsi sono messi all'interno delle code
             if((nevicted = cache_miss(ds, size, &evicted_paths, &evicted)) == -1) {
@@ -703,7 +703,7 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock,
         rep = newreply(REPLY_NO, -1, NULL);
     }
     else {
-        LOCK_OR_KILL(ds, file->mux_file, file);
+        LOCK_OR_KILL(ds, &(file->mux_file), file);
         while(file->modifying == 1) {
             pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
         }
@@ -721,7 +721,7 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock,
         }
 
         file->modifying = 0;
-        UNLOCK_OR_KILL(ds, file->mux_file);
+        UNLOCK_OR_KILL(ds, &(file->mux_file));
 
     }
     if(!rep) {
@@ -748,7 +748,7 @@ int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_so
     // Cerco il file nel fileserver
     struct fs_filedata_t *file = find_file(ds, pathname);
 
-    LOCK_OR_KILL(ds, file->mux_file, file);
+    LOCK_OR_KILL(ds, &(file->mux_file), file);
     while(file->modifying == 1) {
         pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
     }
@@ -771,7 +771,7 @@ int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_so
     }
 
     file->modifying = 0;
-    UNLOCK_OR_KILL(ds, file->mux_file);
+    UNLOCK_OR_KILL(ds, &(file->mux_file));
 
     if(rep) {
         update_client_op(ds, client_sock, client_PID, UNLOCK_FILE, 0, pathname);
@@ -800,7 +800,7 @@ int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, c
     }
     else {
 
-        LOCK_OR_KILL(ds, file->mux_file, file);
+        LOCK_OR_KILL(ds, &(file->mux_file), file);
         while(file->modifying == 1) {
             pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
         }
@@ -809,7 +809,7 @@ int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, c
         if(file->lockedBy != client_PID) {
             // file non lockato da questo client
             rep = newreply(REPLY_NO, 0, NULL);
-            UNLOCK_OR_KILL(ds, file->mux_file); // operazione non consentita
+            UNLOCK_OR_KILL(ds, &(file->mux_file)); // operazione non consentita
         }
         else {
             // Se il file era lockato da questo client allora lo rimuovo (prima tolgo lock)
@@ -819,7 +819,7 @@ int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, c
             free_file(tmptr); // dealloco file
             int table = icl_hash_delete(ds->fs_table, (void*)pathname, free, NULL); // lo tolgo dalla ht
             // lo tolgo anche dalla coda
-            LOCK_OR_KILL(ds, ds->mux_cacheq, ds->cache_q);
+            LOCK_OR_KILL(ds, &(ds->mux_cacheq), ds->cache_q);
             struct node_t *curr = ds->cache_q->head;
             struct node_t *prev = NULL;
             int cache = -1;
@@ -848,7 +848,7 @@ int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, c
                 prev = curr;
                 curr = curr->next;
             }
-            UNLOCK_OR_KILL(ds, ds->mux_cacheq);
+            UNLOCK_OR_KILL(ds, &(ds->mux_cacheq));
 
             if(table == 0) {
                 rep = newreply(REPLY_YES, 0, NULL);

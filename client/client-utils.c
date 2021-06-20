@@ -105,8 +105,8 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
                 // gestisco le due opzioni insieme, perché entrambe devono seguire -w o -W
                 // oppure -r o -R rispettivamente
                 int success = 0;
-                if(params->oplist->head && params->oplist->head->data) {
-                    struct operation *last_op = (struct operation *)params->oplist->head->data;
+                if(params->oplist->tail && params->oplist->tail->data) {
+                    struct operation *last_op = (struct operation *)params->oplist->tail->data;
                     if(opchar == 'D' && (last_op->type == 'w' || last_op->type == 'W')) {
                         if(string_dup(&(last_op->dir_swp), optarg) == -1) {
                             // errore nella duplicazione della directory di salvataggio
@@ -162,7 +162,7 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
                 if(!read_N_op) {
                     return -1;
                 }
-                if(enqueue(params->oplist, read_N_op, sizeof(struct operation), -1), -1) {
+                if(enqueue(params->oplist, read_N_op, sizeof(struct operation), -1) == -1) {
                     // fallito inserimento in coda
                     free_op(&read_N_op);
                     return -1;
@@ -210,7 +210,7 @@ int get_client_options(int nargs, char **args, struct client_opts *params) {
                 if(!op_wdir) {
                     return -1;
                 }
-                if(enqueue(params->oplist, op_wdir, sizeof(struct operation), -1), -1) {
+                if(enqueue(params->oplist, op_wdir, sizeof(struct operation), -1) == -1) {
                     // fallito inserimento in coda
                     free_op(&op_wdir);
                     return -1;
@@ -287,10 +287,11 @@ void free_client_opt(struct client_opts *options) {
     free(options->fs_socket);
     struct node_t *n = NULL;
     while((n = pop(options->oplist)) != NULL) {
-        free_op(n->data);
+        struct operation *op = (struct operation *)n->data;
+        free_op(&op);
         free(n);
     }
-    free(options->oplist);
+    if(options->oplist) free(options->oplist);
     free(options);
 }
 

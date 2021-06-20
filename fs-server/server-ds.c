@@ -142,9 +142,13 @@ int add_connection(struct fs_ds_t *ds, const int csock) {
             return -1;
         }
     }
-    else {
+
+    LOCK_OR_KILL(ds, &(ds->mux_clients), ds->active_clients);
+
+    if(ds->active_clients) {
         struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * (ds->connected_clients + 1));
         if(!newptr) {
+            UNLOCK_OR_KILL(ds, &(ds->mux_clients));
             return -1;
         }
         ds->active_clients = newptr;
@@ -153,8 +157,7 @@ int add_connection(struct fs_ds_t *ds, const int csock) {
     // dal socket csock sul quale la connessione è stata appena accettata
     int cpid;
     if(readn(csock, &cpid, sizeof(int)) != sizeof(int)) {
-        // Nell'eventualità che non si riesca a reperire il PID il socket viene chiuso
-        close(csock);
+        UNLOCK_OR_KILL(ds, &(ds->mux_clients));
         return -1;
     }
     ds->active_clients[ds->connected_clients].PID = cpid; // PID identificherà il client
@@ -163,6 +166,13 @@ int add_connection(struct fs_ds_t *ds, const int csock) {
     ds->active_clients[ds->connected_clients].last_op_flags = 0;
     ds->active_clients[ds->connected_clients].last_op_path = NULL;
     ds->connected_clients++;
+
+    // Se necessario aggiorno il massimo numero di client connessi contemporaneamente
+    if(ds->connected_clients > ds->max_connections) {
+        ds->max_connections = ds->connected_clients;
+    }
+
+    UNLOCK_OR_KILL(ds, &(ds->mux_clients));
 
     return 0;
 }
@@ -173,6 +183,8 @@ int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid) {
     if(!ds) {
         return -1;
     }
+    LOCK_OR_KILL(ds, &(ds->mux_clients), ds->active_clients);
+
     // Se non vi era alcun client connesso allora non posso rimuovere csock
     if(!(ds->active_clients) || ds->connected_clients == 0) {
         return -1;
@@ -184,6 +196,7 @@ int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid) {
     }
     if(i == ds->connected_clients) {
         // client non trovato
+        UNLOCK_OR_KILL(ds, &(ds->mux_clients));
         return -1;
     }
     // libero il client trovato
@@ -209,10 +222,12 @@ int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid) {
         struct client_info *newptr = realloc(ds->active_clients, sizeof(struct client_info) * ds->connected_clients);
         if(!newptr) {
             // fallita riallocazione
+            UNLOCK_OR_KILL(ds, &(ds->mux_clients));
             return -1;
         }
         ds->active_clients = newptr;
     }
+    UNLOCK_OR_KILL(ds, &(ds->mux_clients));
 
     return 0;
 }
@@ -221,6 +236,7 @@ int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid) {
 // Ritorna 0 se ha successo, -1 altrimenti
 int update_client_op(struct fs_ds_t *ds, const int csock, const int cpid, const char op, const int op_flags, const char *op_path) {
     size_t i;
+    LOCK_OR_KILL(ds, &(ds->mux_clients), ds->active_clients);
     for(i = 0; i < ds->connected_clients; i++) {
         if(ds->active_clients[i].PID == cpid) {
             ds->active_clients[i].last_op = op;
@@ -232,11 +248,14 @@ int update_client_op(struct fs_ds_t *ds, const int csock, const int cpid, const 
             if(op_path) {
                 ds->active_clients[i].last_op_path = strndup(op_path, strlen(op_path) + 1);
                 if(!ds->active_clients[i].last_op_path) {
+                    UNLOCK_OR_KILL(ds, &(ds->mux_clients));
                     return -1;
                 }
             }
+            UNLOCK_OR_KILL(ds, &(ds->mux_clients));
             return 0;
         }
     }
+    UNLOCK_OR_KILL(ds, &(ds->mux_clients));
     return -1;
 }

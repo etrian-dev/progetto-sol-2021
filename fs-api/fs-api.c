@@ -53,7 +53,7 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
             errno = errno_saved;
             return -1;
         }
-        if(curr_time.tv_sec > abstime.tv_sec || curr_time.tv_nsec >= abstime.tv_nsec) {
+        if(curr_time.tv_sec > abstime.tv_sec || (curr_time.tv_sec == abstime.tv_sec && curr_time.tv_nsec >= abstime.tv_nsec)) {
             // esco perchè ho raggiunto (o superato) il tempo assoluto
             term = 1;
         }
@@ -63,11 +63,8 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
             // salvo errno generato da connect perchè potrebbe essere sovrascritto
             errno_saved = errno;
             // riprovo dopo aver aspettato il tempo delay
-            if(nanosleep(&delay, &sleep_left) == -1) {
-                if(errno == EINTR) {
-                    // nanosleep è stata interrotta da qualche segnale
-                    ; // TODO: cosa fare?
-                }
+            if(nanosleep(&delay, NULL) == -1) {
+                return -1;
             }
         }
         // Altrimenti la connessione ha avuto successo: devo inserire il client
@@ -81,7 +78,6 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
             }
             // aggiungo il client
             if(!clients_info) {
-                // è il primo client connesso al server, per cui devo inizializzare clients_info
                 if(init_api(sockname) == -1) {
                     errno_saved = errno; // salvo l'errore
                     close(conn_sock); // tento di chiudere il socket aperto
@@ -89,10 +85,8 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
                     return -1;
                 }
             }
-            if(add_client(conn_sock, client_pid) == -1) {
-                // fallito inserimento del client: impossibile aprire connnessione
-                return -1;
-            }
+            // clients_info già inizializzata: assegno il socket
+            clients_info->conn_sock = conn_sock;
             // tutto ok: connessione tra client e server stabilita
             return 0;
         }
@@ -100,7 +94,6 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
     // Tempo scaduto (curr_time >= abstime)
     // ripristino in errno l'ultimo errore incontrato
     errno = errno_saved;
-
     return -1;
 }
 
@@ -113,27 +106,22 @@ int closeConnection(const char *sockname) {
         if(csock == -1) {
             return -1;
         }
-
         // preparo la richiesta
         struct request_t *request = newrequest(CLOSE_CONN, 0, 0, 0);
         if(!request) {
             // errore di allocazione
             return -1;
         }
-
         // Scrivo la richiesta sul socket
         if(writen(csock, request, sizeof(struct request_t)) != sizeof(struct request_t)) {
             // errore di scrittura della richiesta
             free(request);
             return -1;
         }
-
         // Rimuovo traccia della connessione anche nella API
-        int myPID = getpid();
-        if(rm_client(myPID) == -1) {
-            // errore: impossibile chiudere correttamente il socket
-            return -1;
-        }
+        free(clients_info->sockname);
+        free(clients_info);
+        clients_info = NULL;
         // Rimozione OK
         return 0;
     }

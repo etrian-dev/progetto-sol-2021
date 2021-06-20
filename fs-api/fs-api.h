@@ -15,10 +15,7 @@
 // La API mantiene una struttura dati interna per associare ad ogni client il proprio socket
 struct conn_info {
     char *sockname;     // nome del socket (supposto univoco per tutta la sessione)
-    int *client_id;     // array di coppie (socket fd, client PID) allocato in modo contiguo
-    // NOTA: la regola è di mettere prima il fd del socket, poi il PID del client
-    size_t capacity;    // mantiene la capacità dell'array sovrastante
-    size_t count;       // conta il numero di client connessi in questo momento
+    int conn_sock;     // array di coppie (socket fd, client PID) allocato in modo contiguo
 };
 #define NCLIENTS_DFL 10 // il numero di slot preallocati per clients
 
@@ -29,15 +26,10 @@ extern struct conn_info *clients_info;
 
 // Inizializza la struttura dati della API con il socket passato come argomento
 int init_api(const char *sname);
-// Funzione che aggiunge un nuovo client a quelli connessi (di cui tiene traccia la API)
-int add_client(const int conn_fd, const int pid);
-// Funzione che rimuove un client da quelli connessi
-int rm_client(const int pid);
 // Funzione che ritorna il socket su cui il client che l'ha chiamata è connesso
 // e -1 se il client non connesso
 int isConnected(void);
-// funzione di utilità per convertire msec in struct timespec
-void get_delay(const int msec, struct timespec *delay);
+
 
 // definizione delle operazioni implementate dalla API
 #define CLOSE_CONN '!' // usata in closeConnection per segnalare al server di terminare la connessione col client

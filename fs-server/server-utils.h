@@ -132,6 +132,7 @@ struct fs_ds_t {
     struct client_info *active_clients;
     // Il numero di client connessi al momento (ovvero la dimensione dell'array sopra)
     size_t connected_clients;
+    size_t max_connections;
     // mutex per accedere alla struttura dati che contiene le informazioni dei client connessi
     pthread_mutex_t mux_clients;
 
@@ -181,8 +182,8 @@ int logging(struct fs_ds_t *ds, int errcode, char *message);
 // Funzioni per tentare di fare lock/unlock e riportare l'errore prima di terminare il server se falliscono
 // Se obj fosse NULL e la lock fallisce allora ho deallocato obj contenente la variabile di lock
 // (questo avviene per i file rimossi su cui altri thread stavano aspettando di avere lock)
-void LOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t mutex, void *obj);
-void UNLOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t mutex);
+void LOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t *mutex, void *obj);
+void UNLOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t *mutex);
 
 //-----------------------------------------------------------------------------------
 // Operazioni sui file (implementazione delle funzionalità della API)

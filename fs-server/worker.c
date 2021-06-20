@@ -18,35 +18,38 @@
 #define OP_OK "OK"
 #define OP_FAIL "FAILED"
 
-// worker thread
+// Worker thread
+// Ogni worker tiene traccia del numero di richieste servite e lo ritorna come exit status
 void *work(void *params) {
+    size_t served = 0; // numero di richieste servite da questo worker
+
     struct fs_ds_t *ds = (struct fs_ds_t *)params;
     struct node_t *elem = NULL;
     struct request_t *request = NULL;
     char *path = NULL;
     int client_sock = -1;
-    while(1) {
+
+    char msg[BUF_BASESZ];
+    memset(msg, 0, BUF_BASESZ * sizeof(char));
+
+    int term = 0; // flag per terminazione: assicura che prima di terminare il thread si abbia il log
+    while(!term) {
         // prendo mutex sulla coda di richieste
-        if(pthread_mutex_lock(&(ds->mux_jobq)) == -1) {
-            // Fallita operazione di lock
-            return NULL;
-        }
+        LOCK_OR_KILL(ds, &(ds->mux_jobq), ds->job_queue);
         // aspetto tramite la variabile di condizione che arrivi una richiesta
         while((elem = pop(ds->job_queue)) == NULL) {
             // Se non ho richieste in coda ed è in corso la procedura di terminazione lenta
             // allora termino il worker
             if(ds->slow_term == 1) {
-                if(pthread_mutex_unlock(&(ds->mux_jobq)) == -1) {
-                    // Fallita operazione di unlock
-                    pthread_kill(pthread_self(), SIGKILL);
-                }
-                return (void*)0;
+                term = 1;
+                break;
             }
             pthread_cond_wait(&(ds->new_job), &(ds->mux_jobq));
         }
-        if(pthread_mutex_unlock(&(ds->mux_jobq)) == -1) {
-            // Fallita operazione di unlock
-            return NULL;
+        UNLOCK_OR_KILL(ds, &(ds->mux_jobq));
+        // Se nel while era stata decisa la terminazione allora esco anche da questo while
+        if(term) {
+            break;
         }
 
         client_sock = elem->socket; // il socket del client da servire
@@ -54,31 +57,31 @@ void *work(void *params) {
         // posso liberare la memoria occupata dalla richiesta
         free(elem);
 
-        // Controllo se la richiesta ricevuta sia di terminazione
+        // Controllo se la richiesta ricevuta sia di terminazione veloce
         if(request->type == FAST_TERM) {
+            // in tal caso esco dal while
             free(request);
             break;
         }
-
-        char msg[BUF_BASESZ];
-        memset(msg, 0, BUF_BASESZ * sizeof(char));
 
         // Leggo il path del file su cui operare (se necessario) e lo trasformo in path assoluto (se non lo è)
         if((request->type != READ_N_FILES || request->type != CLOSE_CONN) && request->path_len > 0) {
             path = malloc(request->path_len * sizeof(char));
             if(!path) {
-                // Impossibile allocare memoria per il path: termino il server
-                if(logging(ds, errno, "Impossibile allocare memoria per il path da leggere") == -1) {
-                    perror("Impossibile allocare memoria per il path da leggere");
+                // Impossibile allocare memoria per il path: scarto la richiesta
+                if(logging(ds, errno, "[WORKER]: Impossibile allocare memoria per il path da leggere") == -1) {
+                    perror("[WORKER]: Impossibile allocare memoria per il path da leggere");
                 }
-                break;
+                free(request);
+                continue;
             }
             if(readn(client_sock, path, request->path_len) != request->path_len) {
-                if(logging(ds, errno, "Fallita lettura path") == -1) {
-                    perror("Fallita lettura path");
+                if(logging(ds, errno, "[WORKER]: Fallita lettura path") == -1) {
+                    perror("[WORKER]: Fallita lettura path");
                 }
                 free(path);
-                break;
+                free(request);
+                continue;
             }
             // Ora ho il path
             if(path[0] != '/') {
@@ -86,7 +89,7 @@ void *work(void *params) {
                 char *cwd = malloc(BUF_BASESZ * sizeof(char));
                 if(!cwd) {
                     // errore di allocazione
-                    return (void*)-1;
+                    return (void*)1;
                 }
                 size_t dir_sz = BUF_BASESZ;
                 errno = 0; // resetto errno per esaminare eventuali errori
@@ -155,7 +158,7 @@ void *work(void *params) {
             void *key = NULL;
             struct fs_filedata_t *file = NULL;
             icl_hash_foreach(ds->fs_table, i, tmp_el, key, file) {
-                pthread_mutex_lock(&(file->mux_file));
+                LOCK_OR_KILL(ds, &(file->mux_file), file);
                 while(file->modifying == 1) {
                     pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
                 }
@@ -164,24 +167,27 @@ void *work(void *params) {
                     file->lockedBy = -1;
                 }
                 file->modifying = 0;
-                pthread_mutex_unlock(&(file->mux_file));
+                UNLOCK_OR_KILL(ds, &(file->mux_file));
             }
 
             // Se era l'ultimo client connesso ed era in corso la terminazione
             // allora devo terminare il server, pertanto segnalo
             // la coda (che sarà vuota) a tutti i worker e poi termino il thread
+            LOCK_OR_KILL(ds, &(ds->mux_clients), ds->active_clients);
             if(ds->connected_clients == 0 && ds->slow_term == 1) {
-                LOCK_OR_KILL(ds, ds->mux_jobq, ds->job_queue);
+                LOCK_OR_KILL(ds, &(ds->mux_jobq), ds->job_queue);
                 pthread_cond_broadcast(&(ds->new_job));
-                UNLOCK_OR_KILL(ds, ds->mux_jobq);
-                return (void*)0;
+                UNLOCK_OR_KILL(ds, &(ds->mux_jobq));
+
+                term = 1; // il worker dovrà terminare
             }
+            UNLOCK_OR_KILL(ds, &(ds->mux_clients));
             break;
         }
         case OPEN_FILE: { // operazione di apertura di un file
             // chiamo api_openfile con il path appena letto e le flag che erano state settate nella richiesta
             if(api_openFile(ds, path, client_sock, request->pid, request->flags) == -1) {
-                // %s: effettuo il log
+                // openFile non consentita: effettuo il log
                 snprintf(
                     msg,
                     BUF_BASESZ,
@@ -217,7 +223,7 @@ void *work(void *params) {
         case CLOSE_FILE: { // operazione di chiusura del file
             // chiamo api_closeFile con il path appena letto
             if(api_closeFile(ds, path, client_sock, request->pid) == -1) {
-           		// %s: effettuo il log
+           		// closeFile non consentita: effettuo il log
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_closeFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
@@ -234,7 +240,7 @@ void *work(void *params) {
         case READ_FILE: { // operazione di lettura di un file
             // leggo dalla ht (se presente) il file path, inviandolo lungo il socket fornito
             if(api_readFile(ds, path, client_sock, request->pid) == -1) {
-                // %s: logging
+                // readFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
@@ -253,7 +259,7 @@ void *work(void *params) {
             // Il campo flags della richiesta al server è usato per specificare il numero di file da leggere
             int nfiles = -1;
             if((nfiles = api_readN(ds, request->flags, client_sock, request->pid)) == -1) {
-                // %s: logging
+                // readNFiles non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readNFiles(%d): %s", request->pid, request->flags, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
@@ -279,7 +285,7 @@ void *work(void *params) {
                 }
                 // scrivo i dati contenuti in buf alla fine del file path (se presente)
                 if(api_appendToFile(ds, path, client_sock, request->pid, request->buf_len, buf) == -1) {
-                    // %s: logging
+                    // appendToFile non consentita: logging
                     snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_appendToFile(%s): %s", request->pid, path, OP_FAIL);
                     if(logging(ds, errno, msg) == -1) {
                         perror(msg);
@@ -315,9 +321,9 @@ void *work(void *params) {
                     }
                     break;
                 }
-                // creo il file solo se era stato aperto con la flag O_CREATEFILE
+                // scrivo il file letto dal socket
                 if(api_writeFile(ds, path, client_sock, request->pid, request->buf_len, buf) == -1) {
-                    // %s: logging
+                    // writeFile fallita: logging
                     snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_writeFile(%s): %s", request->pid, path, OP_FAIL);
                     if(logging(ds, errno, msg) == -1) {
                         perror(msg);
@@ -344,7 +350,7 @@ void *work(void *params) {
             // La mutua esclusione sul file viene garantita solo se il file era aperto
             // pre questo client e non era lockato da altri client
             if(api_lockFile(ds, path, client_sock, request->pid) == -1) {
-                // %s: logging
+                // lockFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
@@ -362,14 +368,14 @@ void *work(void *params) {
         case UNLOCK_FILE: { // unlock file
             // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
             if(api_unlockFile(ds, path, client_sock, request->pid) == -1) {
-                // %s: logging
+                // unlockFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_unlockFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
-                // lock OK
+                // unlock OK
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_unlockFile(%s): %s", request->pid, path, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
@@ -380,14 +386,14 @@ void *work(void *params) {
         case REMOVE_FILE: { // remove file
             // La mutua esclusione viene tolta se client_sock aveva lock sul pathname richiesto
             if(api_rmFile(ds, path, client_sock, request->pid) == -1) {
-                // %s: logging
+                // removeFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_rmFile(%s): %s", request->pid, path, OP_FAIL);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
-                // lock OK
+                // remove OK
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_rmFile(%s): %s", request->pid, path, OP_OK);
                 if(logging(ds, errno, msg) == -1) {
                     perror(msg);
@@ -414,6 +420,13 @@ void *work(void *params) {
                 perror("Fallito invio feedback al server");
             }
         }
+        // Aumento il numero di richieste servite da questo worker
+        served++;
+    }
+    // stampo nel file di log in numero di richieste servite da questo thread prima di uscire
+    snprintf(msg, BUF_BASESZ, "[WORKER %lu]: Servite %lu richieste", pthread_self(), served);
+    if(logging(ds, 0, msg) == -1) {
+        perror(msg);
     }
 
     return (void*)0;

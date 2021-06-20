@@ -9,6 +9,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stddef.h>
+#include <time.h>
 
 // sorgente contenente varie funzioni di utilità
 
@@ -63,6 +64,21 @@ int string_dup(char **dest, const char *src) {
         return -1;
     }
     return 0;
+}
+
+// funzione di utilità per convertire msec in un delay specificato secondo timespec
+void get_delay(const int msec, struct timespec *delay) {
+    // dato che il delay è specificato in ms devo convertirlo a ns per scriverlo in timespec
+    // Se il delay in ms è troppo grande (>=1000) per essere convertito in ns provo a convertire in secondi
+    // Se non gestissi questi due casi potrei avere overflow su tv_nsec
+    if(msec >= 1000) {
+        delay->tv_sec = (time_t)(msec / 1000); // con la divisione intera ottengo il numero di secondi in msec ms
+        delay->tv_nsec = (msec % 1000) * 1000000; // il resto è convertito a ns e non posso avere overflow
+    }
+    else {
+        delay->tv_sec = 0;
+        delay->tv_nsec = msec * 1000000;
+    }
 }
 
 // inizializza una coda (vuota): ritorna un puntatore ad essa se ha successo, NULL altrimenti
