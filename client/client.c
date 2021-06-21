@@ -175,12 +175,44 @@ int main(int argc, char **argv) {
                         }
                         // Mostro l'avvenuta lettura
                         PRINT(options->prints_on, fprintf(stdout, "[%d]: Letto il file \"%s\" (%lu bytes)\n", PID, path, file_sz);)
+                        // Se era stata settata la directory per salvarlo lo salvo, altrimenti viene liberata la memoria
+                        if(op->dir_swp) {
+                            int success = 0;
+                            int ffd = -1;
+                            char *only_fname = strrchr(path, '/');
+                            only_fname += 1;
+                            char *saved_fpath = get_fullpath(op->dir_swp, only_fname);
+                            if(saved_fpath) {
+                                if((ffd = open(saved_fpath, O_WRONLY|O_CREAT|O_TRUNC, PERMS_ALL_READ)) == -1) {
+                                    success = -1;
+                                }
+                                if(success == 0 && writen(ffd, buf, file_sz) != file_sz) {
+                                    success = -1;
+                                }
+                            }
+                            else {
+                                success = -1;
+                            }
+                            if(success == -1) {
+                                PRINT(options->prints_on,
+                                    fprintf(stderr, "[%d]: Impossibile salvare il file \"%s\" nella directory \"%s\": %s\n",
+                                        getpid(),
+                                        path,
+                                        op->dir_swp,
+                                        strerror(errno)
+                                        );
+                                )
+                            }
+                            if(saved_fpath) free(saved_fpath);
+                            if(buf) free(buf);
+                            if(ffd != -1) close(ffd);
+                        }
                         // Chiudo il file
                         if(closeFile(path) == -1) {
                             // errore di chiusura: log su stderr
                             PRINT(options->prints_on,
-                                  fprintf(stderr, "[%d]: Impossibile chiudere il file \"%s\"\n", PID, path);
-                                 )
+                                fprintf(stderr, "[%d]: Impossibile chiudere il file \"%s\"\n", PID, path);
+                            )
                         }
                         break;
                     }
