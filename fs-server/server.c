@@ -355,7 +355,7 @@ int main(int argc, char **argv) {
                     }
                     // mando comunque una risposta al client, altrimenti si blocca
                     struct reply_t *reply = NULL;
-                    if((reply = newreply(REPLY_NO, 0, NULL)) == NULL) {
+                    if((reply = newreply(REPLY_NO, errno, 0, NULL)) == NULL) {
                         // errore allocazione risposta: il client presumibilmente va in stallo
                         // ma quantomeno è presente nel file di log la ragione
                         errcode = errno;

@@ -59,7 +59,7 @@ struct request_t *newrequest(const char type, const int flags, const size_t path
     return req;
 }
 
-struct reply_t *newreply(const char stat, const int nbuf, const char **names) {
+struct reply_t *newreply(const char stat, const int err, const int nbuf, char **names) {
     if(nbuf < 0) {
         // il numero di buffer non può essere < 0
         return NULL;
@@ -71,6 +71,7 @@ struct reply_t *newreply(const char stat, const int nbuf, const char **names) {
     }
     memset(rep, 0, sizeof(struct reply_t)); // per evitare errori di campi non inizializzati
     rep->status = stat;
+    rep->errcode = err;
     rep->nbuffers = nbuf;
     rep->paths_sz = 0;
 	// calcolo la lunghezza della stringa di path

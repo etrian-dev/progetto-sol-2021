@@ -20,10 +20,17 @@ if [ ! -d save_writes_2 ]; then
     mkdir save_writes_2
 fi
 
-./client.out -p -f $1 -w testcases,0 -D save_writes
+./client.out -p -f $1 -W testcases/cp.html,testcases/book1,testcases/alphabet.txt,testcases/paper1\
+,testcases/alice29.txt,testcases/pic,testcases/news.testcases/fields.c,testcases/progp\
+,testcases/random.txt,testcases/aaa.txt,testcases/E.coli,testcases/bib,testcases/pi.txt\
+,testcases/xargs.1,testcases/a.txt,testcases/bible.txt,testcases/progc,testcases/grammar.lsp\
+,testcases/ptt5,testcases/paper4,testcases/paper5,testcases/geo,testcases/progl,testcases/sum\
+,testcases/src/alberi.c,testcases/src/visita-liv.c,testcases/src/inverti-abr.c,testcases/plrabn.txt\
+ -D save_writes
 ./client.out -p -f $1 -R 5
 ./client.out -p -f $1 -R 0 -d save_reads
-./client.out -p -f $1 -W "testcases/pic" -D save_writes_2
+./client.out -p -f $1 -c testcases/xargs.1 -c testcases/a.txt -c testcases/grammar.lsp
+./client.out -p -f $1 -W testcases/pic -D save_writes_2 -W testcases/cp.html -D save_writes_2
 
 # Quindi invia il segnale di terminazione al server
 printf "\n\n\n******* SIGHUP inviato a $(ps --no-headers -o command $server_pid) *******\n"

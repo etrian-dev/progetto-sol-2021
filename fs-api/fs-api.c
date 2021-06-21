@@ -18,6 +18,30 @@
 
 // file contenente l'implementazione della api di comunicazione tra file storage server ed i client
 
+// Macro per la stampa di errori
+#define NOFILE "File non trovato"
+#define ALREADY_THERE "File già presente nel server (non può essere creato)"
+#define ALREADY_OPEN "File già aperto da questo client"
+#define CANT_OPEN "Il file non e' stato aperto"
+#define TOO_MANY "Limite del numero di file presenti nel server già raggiunto"
+#define LOCKED_ANOTHER "Un altro client ha la mutua esclusione sul file"
+#define TOO_BIG "Il file è più grande della capacita' massima del server"
+#define PRINT_ERR(fn, path, e_code) \
+    if((e_code) != 0) { \
+        char *e_msg; \
+        switch((e_code)) { \
+            case ENOFILE: e_msg = NOFILE; break; \
+            case EALREADYCREATED: e_msg = ALREADY_THERE; break; \
+            case EALREADYOPEN: e_msg = ALREADY_OPEN; break; \
+            case ENOPENED: e_msg = CANT_OPEN; break; \
+            case ETOOMANYFILES: e_msg = TOO_MANY; break; \
+            case ELOCKED: e_msg = LOCKED_ANOTHER; break; \
+            case ETOOBIG: e_msg = TOO_BIG; break; \
+            default: e_msg = strerror((e_code)); \
+        } \
+        fprintf(stderr, "[%d]: %s(\"%s\") non consentita: %s\n", getpid(), (fn), (path), e_msg); \
+    }
+
 // Apre la connessione al socket sockname
 int openConnection(const char *sockname, int msec, const struct timespec abstime) {
     if(msec < 0) {
@@ -58,7 +82,6 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
             term = 1;
         }
 
-        struct timespec sleep_left;
         if(connect(conn_sock, (struct sockaddr*)&address, sizeof(struct sockaddr_un)) == -1) {
             // salvo errno generato da connect perchè potrebbe essere sovrascritto
             errno_saved = errno;
@@ -150,7 +173,7 @@ int openFile(const char *pathname, int flags) {
         return -1;
     }
     size_t slen = strlen(pathname) + 1;
-    if(writen(csock, pathname, slen) != slen) {
+    if(writen(csock, (void*)pathname, slen) != slen) {
         return -1;
     }
 
@@ -162,8 +185,9 @@ int openFile(const char *pathname, int flags) {
     if(readn(csock, reply, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         return -1;
     }
-    if(reply->status != REPLY_YES) {
+    if(reply->status == REPLY_NO) {
         // errore: la richiesta non è stata soddisfatta
+        PRINT_ERR("openFile", pathname, reply->errcode);
         free(reply);
         return -1;
     }
@@ -193,7 +217,7 @@ int closeFile(const char *pathname) {
         return -1;
     }
     size_t slen = strlen(pathname) + 1;
-    if(writen(csock, pathname, slen) != slen) {
+    if(writen(csock, (void*)pathname, slen) != slen) {
         return -1;
     }
 
@@ -205,8 +229,10 @@ int closeFile(const char *pathname) {
     if(readn(csock, reply, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
         return -1;
     }
-    if(reply->status != REPLY_YES) {
+    if(reply->status == REPLY_NO) {
         // errore: la richiesta non è stata soddisfatta
+        PRINT_ERR("closeFile", pathname, reply->errcode);
+        free(reply);
         return -1;
     }
     free(reply); // il buffer in questo caso è sempre NULL
@@ -238,7 +264,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
         return -1;
     }
     size_t slen = strlen(pathname) + 1;
-    if(writen(csock, pathname, slen) != slen) {
+    if(writen(csock, (void*)pathname, slen) != slen) {
         return -1;
     }
 
@@ -253,6 +279,8 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     }
     if(reply->status == REPLY_NO) {
         // operazione negata
+        PRINT_ERR("readFile", pathname, reply->errcode);
+        free(reply);
         return -1;
     }
     // altrimenti lettura consentita
@@ -284,14 +312,12 @@ int readNFiles(int N, const char *dirname) {
     if(csock == -1) {
         return -1;
     }
-
     // Invio n richieste: uso il campo flags (intero) per specificarne il numero
     struct request_t *req = newrequest(READ_N_FILES, N, 0, 0);
     if(!req) {
         // fallita allocazione richiesta
         return -1;
     }
-
     // Scrivo la richiesta di lettura di n files
     if(writen(csock, req, sizeof(struct request_t)) != sizeof(struct request_t)) {
         // fallita scrittura richiesta
@@ -312,7 +338,19 @@ int readNFiles(int N, const char *dirname) {
         return -1;
     }
     if(rep->status == REPLY_NO) {
-        // Operazione negata
+        // Operazione negata. Non uso la macro per stampare in questo caso
+        char *e_msg;
+        switch(rep->errcode) {
+            case ENOFILE: e_msg = NOFILE; break;
+            case EALREADYCREATED: e_msg = ALREADY_THERE; break;
+            case EALREADYOPEN: e_msg = ALREADY_OPEN; break;
+            case ENOPENED: e_msg = CANT_OPEN; break;
+            case ETOOMANYFILES: e_msg = TOO_MANY; break;
+            case ELOCKED: e_msg = LOCKED_ANOTHER; break;
+            case ETOOBIG: e_msg = TOO_BIG; break;
+            default: e_msg = strerror((rep->errcode));
+        }
+        fprintf(stderr, "[%d]: readNFiles(%d) non consentita: %s\n", getpid(), N, e_msg);
         free(rep);
         return -1;
     }
@@ -383,7 +421,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     }
     // Di seguito scrivo il path del file da modificare ed i dati da concatenare
     size_t slen = strlen(pathname) + 1;
-    if(writen(csock, pathname, slen) != slen) {
+    if(writen(csock, (void*)pathname, slen) != slen) {
         free(request);
         return -1;
     }
@@ -405,6 +443,7 @@ int appendToFile(const char* pathname, void* buf, size_t size, const char* dirna
     }
     if(rep->status == REPLY_NO) {
         // operazione negata
+        PRINT_ERR("appendToFile", pathname, rep->errcode);
         free(rep);
         return -1;
     }
@@ -511,7 +550,7 @@ int writeFile(const char *pathname, const char *dirname) {
     }
     // Scrivo il path del file da creare sul socket
     size_t slen = strlen(pathname) + 1;
-    if(writen(csock, pathname, slen) != slen) {
+    if(writen(csock, (void*)pathname, slen) != slen) {
         free(request);
         return -1;
     }
@@ -536,6 +575,7 @@ int writeFile(const char *pathname, const char *dirname) {
     }
     if(rep->status == REPLY_NO) {
         // operazione negata
+        PRINT_ERR("writeFile", pathname, rep->errcode);
         free(rep);
         return -1;
     }
@@ -629,7 +669,7 @@ int lockFile(const char *pathname) {
         }
         // Scrivo il path del file su il client vuole acquisire mutua esclusione
         size_t slen = strlen(pathname) + 1;
-        if(writen(csock, pathname, slen) != slen) {
+        if(writen(csock, (void*)pathname, slen) != slen) {
             // errore di scrittura path
             free(request);
             return -1;
@@ -646,19 +686,16 @@ int lockFile(const char *pathname) {
         }
         // Se la lock fallisce la api aspetta 100ms e poi tenta di nuovo di effettuare l'operazione
         else {
-            // Se ho -1 in nbuffers significa che il file non è presente nel server, quindi ritorno
+            // Se ho ENOFILE in errcode significa che il file non è presente nel server, quindi ritorno
             // dall'operazione per evitare di andare in deadlock
-            if(rep->nbuffers == -1) {
-                fprintf(stderr, "[%d] Fallita acquisizione lock su \"%s\": file non presente nel server\n", getpid(), pathname);
+            PRINT_ERR("lockFile", pathname, rep->errcode);
+            if(rep->errcode == ENOFILE) {
                 free(request);
                 free(rep);
                 return -1;
             }
-            else {
-                fprintf(stderr, "[%d] Fallita acquisizione lock su \"%s\": riprovo tra 100ms\n", getpid(), pathname);
-            }
             if(nanosleep(&delay, NULL) == -1) {
-                // syscall interrotta da un segnale: lock fallisce
+                // se nanosleep fallisce allora salvo il codice di errore
                 int saved_errno = errno;
                 free(request);
                 free(rep);
@@ -695,7 +732,7 @@ int unlockFile(const char *pathname) {
     }
     // Scrivo il path del file su cui rilasciare la lock sul socket
     size_t slen = strlen(pathname) + 1;
-    if(writen(csock, pathname, slen) != slen) {
+    if(writen(csock, (void*)pathname, slen) != slen) {
         free(request);
         return -1;
     }
@@ -713,6 +750,7 @@ int unlockFile(const char *pathname) {
     }
     if(rep->status == REPLY_NO) {
         // operazione negata
+        PRINT_ERR("unlockFile", pathname, rep->errcode);
         free(rep);
         return -1;
     }
@@ -742,7 +780,7 @@ int removeFile(const char *pathname) {
     }
     // Scrivo il path del file da rimuovere
     size_t slen = strlen(pathname) + 1;
-    if(writen(csock, pathname, slen) != slen) {
+    if(writen(csock, (void*)pathname, slen) != slen) {
         free(request);
         return -1;
     }
@@ -760,6 +798,7 @@ int removeFile(const char *pathname) {
     }
     if(rep->status == REPLY_NO) {
         // operazione negata
+        PRINT_ERR("removeFile", pathname, rep->errcode);
         free(rep);
         return -1;
     }

@@ -37,7 +37,6 @@ shell_perms: makeconf.sh test1.sh test2.sh statistiche.sh
 dirs:
 	#crea (se non esistono) le directory per i file oggetto e le librerie condivise
 	-mkdir objs libs
-
 clean:
 	# rimuove gli eseguibili (se presenti)
 	-rm -fr $(wildcard ./*.out)
@@ -46,7 +45,7 @@ cleanall: clean
 	# rimuove tutto quello che è stato generato
 	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o)
 	-rm -fr $(wildcard *.conf) $(wildcard ./*.log) $(wildcard ./*.sock)
-	-rm -fr save_reads save_writes save_writes_2
+	-rm -fr save_reads save_writes save_writes_2 objs libs
 test1: all
 	# Creo il file di configurazione del server per il test1
 	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf

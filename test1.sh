@@ -27,7 +27,7 @@ fi
 ./client.out -p -t $delay -f $1 -W testcases/inputs/input0.txt,testcases/inputs/input1.txt
 ./client.out -p -t $delay -f $1 -a "testcases/inputs/input1.txt:testcases/inputs/prova0.in,testcases/inputs/input1.txt:ciao mondo"
 ./client.out -p -t $delay -f $1 -r testcases/inputs/input1.txt -r testcases/pi.txt
-./client.out -p -t $delay -f $1 -l testcases/inputs/input1.txt -u testcases/inputs/input1.txt
+./client.out -p -t $delay -f $1 -l testcases/inputs/input1.txt -u testcases/inputs/input1.txt &
 ./client.out -p -t $delay -f $1 -l testcases/inputs/input1.txt
 ./client.out -p -t $delay -f $1 -w testcases,0 -D save_writes
 ./client.out -p -t $delay -f $1 -R 0
