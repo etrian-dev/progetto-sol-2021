@@ -21,7 +21,7 @@ if [ ! -d save_writes_2 ]; then
 fi
 
 ./client.out -p -f $1 -W testcases/cp.html,testcases/book1,testcases/alphabet.txt,testcases/paper1\
-,testcases/alice29.txt,testcases/pic,testcases/news.testcases/fields.c,testcases/progp\
+,testcases/alice29.txt,testcases/pic,testcases/news,testcases/fields.c,testcases/progp\
 ,testcases/random.txt,testcases/aaa.txt,testcases/E.coli,testcases/bib,testcases/pi.txt\
 ,testcases/xargs.1,testcases/a.txt,testcases/bible.txt,testcases/progc,testcases/grammar.lsp\
 ,testcases/ptt5,testcases/paper4,testcases/paper5,testcases/geo,testcases/progl,testcases/sum\
