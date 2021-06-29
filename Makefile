@@ -20,14 +20,12 @@ all: shell_perms dirs $(UTILS) $(HTABLE)
 
 $(UTILS): utils.o
 	$(CC) $(CFLAGS) -shared -o $@ $< -lpthread
-	mv $< objs/
-utils.o: utils.c utils.h dirs
+utils.o: utils.c utils.h
 	$(CC) $(CFLAGS) $(HEADERS) -c -fPIC -o $@ $< -lpthread
 
 $(HTABLE): icl_hash.o
 	$(CC) $(CFLAGS) -shared -o $@ $<
-	mv $< objs/
-icl_hash.o: icl_hash/icl_hash.c dirs
+icl_hash.o: icl_hash/icl_hash.c
 	$(CC) $(CFLAGS) $(HEADERS) -c -fPIC -o $@ $<
 
 shell_perms: makeconf.sh test1.sh test2.sh statistiche.sh
@@ -36,16 +34,16 @@ shell_perms: makeconf.sh test1.sh test2.sh statistiche.sh
 
 dirs:
 	#crea (se non esistono) le directory per i file oggetto e le librerie condivise
-	-mkdir objs libs
+	-mkdir libs
 clean:
 	# rimuove gli eseguibili (se presenti)
 	-rm -fr $(wildcard ./*.out)
 
 cleanall: clean
-	# rimuove tutto quello che è stato generato
-	-rm -fr $(wildcard libs/*.so) $(wildcard objs/*.o)
+	# rimuove tutto quello che è stato generato: file oggetto, file di log, socket...
+	-rm -fr $(wildcard ./*.o ./fs-server/*.o ./fs-api/*.o ./client/*.o) $(wildcard libs/*.so)
 	-rm -fr $(wildcard *.conf) $(wildcard ./*.log) $(wildcard ./*.sock)
-	-rm -fr save_reads save_writes save_writes_2 objs libs
+	-rm -fr save_reads save_writes save_writes_2 libs
 test1: all
 	# Creo il file di configurazione del server per il test1
 	./makeconf.sh 1 128 10000 test1.sock test1.log test1.conf
