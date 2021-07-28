@@ -41,7 +41,7 @@ clean:
 
 cleanall: clean
 	# rimuove tutto quello che è stato generato: file oggetto, file di log, socket...
-	-rm -fr $(wildcard ./*.o ./fs-server/*.o ./fs-api/*.o ./client/*.o) $(wildcard libs/*.so)
+	-rm -fr $(wildcard *.o) $(wildcard fs-server/*.o) $(wildcard fs-api/*.o) $(wildcard client/*.o) $(wildcard libs/*.so)
 	-rm -fr $(wildcard *.conf) $(wildcard ./*.log) $(wildcard ./*.sock)
 	-rm -fr save_reads save_writes save_writes_2 libs
 test1: all

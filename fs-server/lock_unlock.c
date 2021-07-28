@@ -16,7 +16,7 @@ void LOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t *mutex, void *obj) {
     int e_code = 0;
     if((e_code = pthread_mutex_lock(mutex)) != 0) {
         if(obj) {
-            if(logging((ds), e_code, "Lock fallita") == -1) {
+            if(put_logmsg((ds->log_thread_config), e_code, "Lock fallita") == -1) {
                 perror("Lock fallita");
             }
             free_serv_ds(ds);
@@ -31,7 +31,7 @@ void LOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t *mutex, void *obj) {
 void UNLOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t *mutex) {
     int e_code = 0;
     if((e_code = pthread_mutex_unlock(mutex)) != 0) {
-        if(logging((ds), e_code, "Unlock fallita") == -1) {
+        if(put_logmsg((ds->log_thread_config), e_code, "Unlock fallita") == -1) {
             perror("Unlock fallita");
         }
         free_serv_ds(ds);

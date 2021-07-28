@@ -69,15 +69,15 @@ void *work(void *params) {
             path = malloc(request->path_len * sizeof(char));
             if(!path) {
                 // Impossibile allocare memoria per il path: scarto la richiesta
-                if(logging(ds, errno, "[WORKER]: Impossibile allocare memoria per il path da leggere") == -1) {
-                    perror("[WORKER]: Impossibile allocare memoria per il path da leggere");
+                if(put_logmsg(ds->log_thread_config, errno, "[WORKER]: Impossibile allocare memoria") == -1) {
+                    fprintf(stderr, "[MANAGER THREAD]: Impossibile allocare memoria\n[SERVER]: Impossibile effettuare logging\n");
                 }
                 free(request);
                 continue;
             }
             if(readn(client_sock, path, request->path_len) != request->path_len) {
-                if(logging(ds, errno, "[WORKER]: Fallita lettura path") == -1) {
-                    perror("[WORKER]: Fallita lettura path");
+                if(put_logmsg(ds->log_thread_config, errno, "[MANAGER THREAD]: Fallita lettura con il path fornito") == -1) {
+                    fprintf(stderr, "[MANAGER THREAD]: Fallita lettura file con il path fornito\n[SERVER]: Impossibile effettuare logging\n");
                 }
                 free(path);
                 free(request);
@@ -137,14 +137,14 @@ void *work(void *params) {
             if(rm_connection(ds, client_sock, request->pid) == -1) {
                 // Fallita rimozione client
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] Disconnessione dal socket %d: %s", request->pid, client_sock, OP_FAIL);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 // Connessione con il client chiusa con successo
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] Disconnessione dal socket %d: %s", request->pid, client_sock, OP_OK);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
                 // chiudo il socket su cui si era connesso (in realtà lo fa anche il client stesso)
@@ -194,7 +194,7 @@ void *work(void *params) {
                     (request->flags & O_LOCKFILE ? "O_LOCKFILE" : "0x0"),
                     OP_FAIL
                 );
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
@@ -210,7 +210,7 @@ void *work(void *params) {
                     (request->flags & O_LOCKFILE ? "O_LOCKFILE" : "0x0"),
                     OP_OK
                 );
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
@@ -221,13 +221,13 @@ void *work(void *params) {
             if(api_closeFile(ds, path, client_sock, request->pid) == -1) {
            		// closeFile non consentita: effettuo il log
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_closeFile(%s): %s", request->pid, path, OP_FAIL);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
            	}
            	else {
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_closeFile(%s): %s", request->pid, path, OP_OK);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
@@ -238,14 +238,14 @@ void *work(void *params) {
             if(api_readFile(ds, path, client_sock, request->pid) == -1) {
                 // readFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readFile(%s): %s", request->pid, path, OP_FAIL);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             // La lettura del file ha avuto successo: logging
             else {
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readFile(%s): %s", request->pid, path, OP_OK);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
@@ -257,13 +257,13 @@ void *work(void *params) {
             if((nfiles = api_readN(ds, request->flags, client_sock, request->pid)) == -1) {
                 // readNFiles non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readNFiles(%d): %s", request->pid, request->flags, OP_FAIL);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_readNFiles(%d): %s", request->pid, nfiles, OP_OK);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
@@ -274,7 +274,7 @@ void *work(void *params) {
             void *buf = malloc(request->buf_len);
             if(buf) {
                 if(readn(client_sock, buf, request->buf_len) == -1) {
-                    if(logging(ds, errno, "api_appendToFile: Fallita lettura dati") == -1) {
+                    if(put_logmsg(ds->log_thread_config, errno, "api_appendToFile: Fallita lettura dati") == -1) {
                         perror("api_appendToFile: Fallita lettura dati");
                     }
                     break;
@@ -283,7 +283,7 @@ void *work(void *params) {
                 if(api_appendToFile(ds, path, client_sock, request->pid, request->buf_len, buf) == -1) {
                     // appendToFile non consentita: logging
                     snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_appendToFile(%s): %s", request->pid, path, OP_FAIL);
-                    if(logging(ds, errno, msg) == -1) {
+                    if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                         perror(msg);
                     }
                 }
@@ -293,14 +293,14 @@ void *work(void *params) {
                         msg, BUF_BASESZ,
                         "[CLIENT %d] api_appendToFile(%s) (%lu bytes): %s",
                         request->pid, path, request->buf_len, OP_OK);
-                    if(logging(ds, errno, msg) == -1) {
+                    if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                         perror(msg);
                     }
                 }
                 free(buf);
             }
             else {
-                if(logging(ds, errno, "api_appendToFile: Fallita allocazione buffer dati") == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, "api_appendToFile: Fallita allocazione buffer dati") == -1) {
                     perror("api_appendToFile: Fallita allocazione buffer dati");
                 }
                 break;
@@ -312,7 +312,7 @@ void *work(void *params) {
             void *buf = malloc(request->buf_len);
             if(buf) {
                 if(readn(client_sock, buf, request->buf_len) == -1) {
-                    if(logging(ds, errno, "api_writeFile: Fallita lettura dati") == -1) {
+                    if(put_logmsg(ds->log_thread_config, errno, "api_writeFile: Fallita lettura dati") == -1) {
                         perror("api_writeFile: Fallita lettura dati");
                     }
                     break;
@@ -321,21 +321,21 @@ void *work(void *params) {
                 if(api_writeFile(ds, path, client_sock, request->pid, request->buf_len, buf) == -1) {
                     // writeFile fallita: logging
                     snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_writeFile(%s): %s", request->pid, path, OP_FAIL);
-                    if(logging(ds, errno, msg) == -1) {
+                    if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                         perror(msg);
                     }
                 }
                 else {
                     // write OK
                     snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_writeFile(%s) (%lu bytes): %s", request->pid, path, request->buf_len, OP_OK);
-                    if(logging(ds, errno, msg) == -1) {
+                    if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                         perror(msg);
                     }
                 }
                 free(buf);
             }
             else {
-                if(logging(ds, errno, "api_writeFile: Fallita allocazione buffer dati") == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, "api_writeFile: Fallita allocazione buffer dati") == -1) {
                     perror("api_writeFile: Fallita allocazione buffer dati");
                 }
                 break;
@@ -348,14 +348,14 @@ void *work(void *params) {
             if(api_lockFile(ds, path, client_sock, request->pid) == -1) {
                 // lockFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", request->pid, path, OP_FAIL);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 // lock OK
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", request->pid, path, OP_OK);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
@@ -366,14 +366,14 @@ void *work(void *params) {
             if(api_unlockFile(ds, path, client_sock, request->pid) == -1) {
                 // unlockFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_unlockFile(%s): %s", request->pid, path, OP_FAIL);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 // unlock OK
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_unlockFile(%s): %s", request->pid, path, OP_OK);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
@@ -384,14 +384,14 @@ void *work(void *params) {
             if(api_rmFile(ds, path, client_sock, request->pid) == -1) {
                 // removeFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_rmFile(%s): %s", request->pid, path, OP_FAIL);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
             else {
                 // remove OK
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_rmFile(%s): %s", request->pid, path, OP_OK);
-                if(logging(ds, errno, msg) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
@@ -399,7 +399,7 @@ void *work(void *params) {
         }
         default:
             snprintf(msg, BUF_BASESZ, "[SERVER] Operazione non riconosciuta proveniente dal client %d", client_sock);
-            if(logging(ds, errno, msg) == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                 perror(msg);
             }
         }
@@ -412,7 +412,7 @@ void *work(void *params) {
 
         // Quindi deposito il socket servito nella pipe di feedback
         if(write(ds->feedback[1], &client_sock, sizeof(client_sock)) == -1) {
-            if(logging(ds, errno, "Fallito invio feedback al server") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "Fallito invio feedback al server") == -1) {
                 perror("Fallito invio feedback al server");
             }
         }
@@ -421,7 +421,7 @@ void *work(void *params) {
     }
     // stampo nel file di log in numero di richieste servite da questo thread prima di uscire
     snprintf(msg, BUF_BASESZ, "[WORKER %lu]: Servite %lu richieste", pthread_self(), served);
-    if(logging(ds, 0, msg) == -1) {
+    if(put_logmsg(ds->log_thread_config, 0, msg) == -1) {
         perror(msg);
     }
 

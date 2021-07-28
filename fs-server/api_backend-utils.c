@@ -279,8 +279,8 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
     // aggiorno il numero di chiamate (che hanno avuto successo) dell'algorimto di rimpiazzamento
     if(success != -1) {
         if(num_evicted > 0) ds->cache_triggered++;
-        // Effettuo il logging dell'operazione stampando il messaggio ed i file espulsi
-        if(logging(ds, 0, "[SERVER] Capacity miss: espulsi i seguenti file") == -1) {
+        // Effettuo il put_logmsg dell'operazione stampando il messaggio ed i file espulsi
+        if(put_logmsg(ds->log_thread_config, 0, "[SERVER] Capacity miss: espulsi i seguenti file") == -1) {
             perror("[SERVER] Capacity miss: espulsi i seguenti file");
         }
         struct node_t *victim = (*paths)->head;
@@ -288,7 +288,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         char msg[BUF_BASESZ]; // buffer di dimensione fissa: dovrebbe avere una capacita sufficiente per i path
         while(victim) {
             snprintf(msg, BUF_BASESZ, "\"%s\" (%lu bytes)", (char*)victim->data, ((struct fs_filedata_t *)vdata->data)->size);
-            if(logging(ds, 0, msg) == -1) {
+            if(put_logmsg(ds->log_thread_config, 0, msg) == -1) {
                 perror(msg);
             }
             victim = victim->next;
@@ -297,7 +297,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
     }
     else {
         errno = errno_saved; // ripristino errno
-        if(logging(ds, errno, "[SERVER] Capacity miss: Errore nell'espulsione di file") == -1) {
+        if(put_logmsg(ds->log_thread_config, errno, "[SERVER] Capacity miss: Errore nell'espulsione di file") == -1) {
             perror("[SERVER] Capacity miss: Errore nell'espulsione di file");
         }
     }

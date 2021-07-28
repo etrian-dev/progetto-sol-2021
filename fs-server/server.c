@@ -68,16 +68,6 @@ int main(int argc, char **argv) {
         return errcode;
     }
 
-    // parsing completato con successo: apro il file di log. Se non esiste viene creato
-    // e se esiste ne viene cancellato il contenuto
-    int logfile_fd;
-    if((logfile_fd = open(run_params.log_path, O_WRONLY|O_CREAT|O_TRUNC, PERMS_ALL_READ)) == -1) {
-        // errore nell'apertura o nella creazione del file di log. L'errore è riportato
-        // su standard error, ma il server continua l'esecuzione
-        errcode = errno;
-        fprintf(stderr, "[SERVER]: Impossibile creare o aprire il file di log \"%s\": %s\n", run_params.log_path, strerror(errno));
-        return errcode;
-    }
 
     // inizializzo la struttura dati del server
     struct fs_ds_t *server_ds = NULL; // la struttura viene allocata in init_ds
@@ -87,9 +77,6 @@ int main(int argc, char **argv) {
         clean_server(&run_params, server_ds);
         return errcode;
     }
-    // Assegno il descrittore del file di log alla struttura dati, al fine di consentire
-    // la scrittura nel file di log all'interno dei worker
-    server_ds->log_fd = logfile_fd; // ancora single-threaded, quindi non è necessaria alcuna sincronizzazione
 
     // Creo il socket sul quale il server ascolta connessioni
     int listen_connections;
@@ -97,11 +84,8 @@ int main(int argc, char **argv) {
     unlink(run_params.sock_path);
     if((listen_connections = sock_init(run_params.sock_path, strlen(run_params.sock_path))) == -1) {
         errcode = errno; // salvo l'errore originato dalla funzione sock_init per ritornarlo
-        if(logging(server_ds, errno, "[SERVER]: Impossibile creare socket per ascolto connessioni") == -1) {
-            errno = errcode;
-            fprintf(stderr, "[SERVER]: Impossibile creare socket \"%s\": %s\n", run_params.sock_path, strerror(errno));
-            clean_server(&run_params, server_ds);
-        }
+        fprintf(stderr, "[SERVER]: Impossibile creare socket \"%s\": %s\n", run_params.sock_path, strerror(errno));
+        clean_server(&run_params, server_ds);
         return errcode;
     }
 
@@ -112,49 +96,52 @@ int main(int argc, char **argv) {
         || sigaddset(&mask_sigs, SIGINT) == -1
         || sigaddset(&mask_sigs, SIGQUIT) == -1) {
         errcode = errno;
-        if(logging(server_ds, errno, "[MANAGER THREAD]: Impossibile creare maschera segnali") == -1) {
-            errno = errcode;
-            perror("[MANAGER THREAD]: Impossibile creare maschera segnali");
-        }
+        perror("[MANAGER THREAD]: Impossibile creare maschera segnali");
         // cleanup e poi esco
         clean_server(&run_params, server_ds);
         return errcode;
     }
     if((errcode = pthread_sigmask(SIG_BLOCK, &mask_sigs, NULL)) != 0) {
-    if(logging(server_ds, errcode, "[MANAGER THREAD]: Impossibile bloccare i segnali") == -1) {
-            errno = errcode;
-            perror("[MANAGER THREAD]: Impossibile bloccare i segnali");
-        }
+        errcode = errno;
+        perror("[MANAGER THREAD]: Impossibile bloccare i segnali");
         // cleanup e poi esco
         clean_server(&run_params, server_ds);
         return errcode;
     }
 
     //-------------------------------------------------------------------------------
-    // Con la creazione del thread di terminazione il processo diventa multithreaded
+    // Con la creazione dei thread effettuata di seguito il processo diventa multithreaded
+
+     // Creo il thread che gestisce il logging
+    pthread_t logger_tid;
+    // passo al thread la struttura dati condivisa server_ds
+    if(pthread_create(&logger_tid, NULL, logging, server_ds->log_thread_config) == -1) {
+        errcode = errno;
+        fprintf(stderr, "[SERVER]: Impossibile creare il thread di terminazione: %s\n", strerror(errno));
+        clean_server(&run_params, server_ds);
+        return errcode;
+    }
 
     // Creo il thread che gestisce la terminazione
     pthread_t term_tid;
     // passo al thread la struttura dati condivisa server_ds
     if(pthread_create(&term_tid, NULL, term_thread, server_ds) == -1) {
         errcode = errno;
-        if(logging(server_ds, errno, "[SERVER]: Impossibile creare il thread di terminazione") == -1) {
-            // in questo caso va bene usare strerror, nonostante sia MT-unsafe, poichè viene
-            // chiamata se e solo se la creazione del thread fallisce (e comunque termino il server subito dopo)
-            errno = errcode;
-            fprintf(stderr, "[SERVER]: Impossibile creare il thread di terminazione: %s\n", strerror(errno));
-            clean_server(&run_params, server_ds);
+        if(put_logmsg(server_ds->log_thread_config, errno, "[SERVER]: Impossibile creare il thread di terminazione") == -1) {
+            fprintf(stderr, "[SERVER]: Impossibile creare il thread di terminazione\n[SERVER]: Impossibile effettuare logging\n");
         }
+        clean_server(&run_params, server_ds);
         return errcode;
     }
+
+    // Creo il thread che gestisce il logging in modo asincrono (i thread inseriscono richieste di log)
 
     // Creo la thread pool
     pthread_t *workers = malloc(run_params.thread_pool * sizeof(pthread_t));
     if(!workers) {
-    errcode = errno;
-    if(logging(server_ds, errno, "[MANAGER THREAD]: Impossibile creare il pool di thread workers") == -1) {
-            errno = errcode;
-            perror("[MANAGER THREAD]: Impossibile creare il pool di thread workers");
+        errcode = errno;
+        if(put_logmsg(server_ds->log_thread_config, errno, "[SERVER]: Impossibile creare threadpool") == -1) {
+            fprintf(stderr, "[SERVER]: Impossibile creare threadpool\n[SERVER]: Impossibile effettuare logging\n");
         }
         clean_server(&run_params, server_ds);
         return errcode;
@@ -163,9 +150,8 @@ int main(int argc, char **argv) {
     for(i = 0; i < run_params.thread_pool; i++) {
         // Il puntatore alle strutture dati viene passato ad ogni worker thread come parametro
         if((errcode = pthread_create(&(workers[i]), NULL, work, server_ds)) != 0) {
-            if(logging(server_ds, errcode, "[MANAGER THREAD]: Impossibile creare worker thread") == -1) {
-                errno = errcode;
-                perror("[MANAGER THREAD]: Impossibile creare worker thread");
+            if(put_logmsg(server_ds->log_thread_config, errcode, "[SERVER]: Impossibile creare threadpool") == -1) {
+                fprintf(stderr, "[SERVER]: Impossibile creare threadpool\n[SERVER]: Impossibile effettuare logging\n");
             }
             // Mando il segnale di terminazione manualmente al thread di terminazione
             // Quindi tale thread notificherà al manager la terminazione veloce
@@ -202,10 +188,8 @@ int main(int argc, char **argv) {
         // Il server seleziona i file descriptor pronti in lettura
         if(select(max_fd_idx + 1, &fd_read_cpy, NULL, NULL, NULL) == -1) {
             // Select interrota da un errore non gestito: logging + terminazione
-            errcode = errno;
-            if(logging(server_ds, errno, "[MANAGER THREAD]: select() fallita") == -1) {
-                errno = errcode;
-                perror("[MANAGER THREAD]: Select fallita");
+            if(put_logmsg(server_ds->log_thread_config, errno, "[SERVER]: select() fallita") == -1) {
+                fprintf(stderr, "[SERVER]: select() fallita\n[SERVER]: Impossibile effettuare logging\n");
             }
             // mando il segnale di terminazione manualmente al thread di terminazione
             pthread_kill(term_tid, SIGINT);
@@ -281,12 +265,10 @@ int main(int argc, char **argv) {
             if(fd == listen_connections && FD_ISSET(fd, &fd_read_cpy)) {
                 int client_sock;
                 if((client_sock = accept_connection(listen_connections)) == -1) {
-                    errcode = errno;
                     // errore nella connessione al client, ma non fatale: il server va avanti normalmente
                     // tuttavia eseguo il logging dell'operazione
-                    if(logging(server_ds, errno, "[MANAGER THREAD]: Impossibile accettare la connessione di un client") == -1) {
-                        errno = errcode;
-                        perror("[MANAGER THREAD]: Impossibile accettare la connessione di un client");
+                    if(put_logmsg(server_ds->log_thread_config, errno, "[MANAGER THREAD]: Impossibile accettare la connessione di un client") == -1) {
+                        fprintf(stderr, "[MANAGER THREAD]: Impossibile creare threadpool\n[SERVER]: Impossibile effettuare logging\n");
                     }
                     continue; // posso passare ad esaminare il prossimo socket pronto
                 }
@@ -297,9 +279,8 @@ int main(int argc, char **argv) {
                     // impossibile aggiungere un client: chiudo il socket della connessione
                     close(client_sock);
                     // log dell'operazione fallita
-                    if(logging(server_ds, errno, "[MANAGER THREAD]: Impossibile accettare la connessione di un client") == -1) {
-                        errno = errcode;
-                        perror("[MANAGER THREAD]: Impossibile accettare la connessione di un client");
+                    if(put_logmsg(server_ds->log_thread_config, errno, "[SERVER]: Impossibile aggiungere la connessione allo stato del server") == -1) {
+                        fprintf(stderr, "[SERVER]: Impossibile aggiungere la connessione allo stato del server\n[SERVER]: Impossibile effettuare logging\n");
                     }
                 }
                 else {
@@ -314,11 +295,8 @@ int main(int argc, char **argv) {
             else if(fd == server_ds->feedback[0] && FD_ISSET(fd, &fd_read_cpy)) {
                 int sock = -1; // leggo il socket servito dal worker
                 if(read(server_ds->feedback[0], (void*)&sock, sizeof(int)) == -1) {
-                    // se la read fallisce lo segnalo sul file di log, ma continuo normalmente l'esecuzione
-                    errcode = errno;
-                    if(logging(server_ds, errno, "[MANAGER THREAD]: Impossibile leggere feedback") == -1) {
-                        errno = errcode;
-                        perror("[MANAGER THREAD]: Impossibile leggere feedback");
+                    if(put_logmsg(server_ds->log_thread_config, errno, "[SERVER]: Fallita lettura del feedback da un worker") == -1) {
+                        fprintf(stderr, "[SERVER]: Fallita lettura del feedback da un worker\n[SERVER]: Impossibile effettuare logging\n");
                     }
                     continue; // passo al prossimo descrittore pronto
                 }
@@ -349,9 +327,8 @@ int main(int argc, char **argv) {
                 if(processRequest(server_ds, fd) == -1) {
                     // errore nel processing della richiesta
                     errcode = errno;
-                    if(logging(server_ds, errno, "[MANAGER THREAD]: Fallito processing richiesta") == -1) {
-                        errno = errcode;
-                        perror("[MANAGER THREAD]: Fallito processing richiesta");
+                    if(put_logmsg(server_ds->log_thread_config, errno, "[SERVER]: Fallito il processing di una richesta") == -1) {
+                        fprintf(stderr, "[SERVER]: Fallito il processing di una richiesta\n[SERVER]: Impossibile effettuare logging\n");
                     }
                     // mando comunque una risposta al client, altrimenti si blocca
                     struct reply_t *reply = NULL;
@@ -359,17 +336,15 @@ int main(int argc, char **argv) {
                         // errore allocazione risposta: il client presumibilmente va in stallo
                         // ma quantomeno è presente nel file di log la ragione
                         errcode = errno;
-                        if(logging(server_ds, errno, "[MANAGER THREAD]: Fallita allocazione risposta") == -1) {
-                            errno = errcode;
-                            perror("[MANAGER THREAD]: Fallita allocazione risposta");
+                        if(put_logmsg(server_ds->log_thread_config, errno, "[SERVER]: Fallita allocazione risposta") == -1) {
+                            fprintf(stderr, "[SERVER]: Fallita allocazione risposta\n[SERVER]: Impossibile effettuare logging\n");
                         }
                     }
                     else if(writen(fd, reply, sizeof(*reply)) != sizeof(*reply)) {
                         // vale quanto commentato in precedenza
                         errcode = errno;
-                        if(logging(server_ds, errno, "[MANAGER THREAD]: Fallita scrittura risposta") == -1) {
-                            errno = errcode;
-                            perror("[MANAGER THREAD]: Fallita scrittura risposta");
+                        if(put_logmsg(server_ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta al client") == -1) {
+                            fprintf(stderr, "[SERVER]: Fallito invio risposta al client\n[SERVER]: Impossibile effettuare logging\n");
                         }
                         free(reply);
                     }
@@ -399,9 +374,8 @@ term:
     // Aspetto la terminazione dei worker thread (necessario per deallocare risorse)
     for(i = 0; i < run_params.thread_pool; i++) {
         if((errcode = pthread_join(workers[i], NULL)) != 0) {
-            if(logging(server_ds, errcode, "[MANAGER THREAD]: Impossibile effettuare il join di un worker thread") == -1) {
-                errno = errcode;
-                perror("[MANAGER THREAD]: Impossibile effettuare il join di un worker thread");
+            if(put_logmsg(server_ds->log_thread_config, errcode, "[SERVER]: Impossibile effettuare il join di un worker thread") == -1) {
+                fprintf(stderr, "[SERVER]: Impossibile effettuare il join di un worker thread\n[SERVER]: Impossibile effettuare logging\n");
             }
             free(workers);
             stats(&run_params, server_ds);
@@ -414,10 +388,17 @@ term:
 
     // Effettuo il join del thread di terminazione (sarà già terminato in modo indipendente)
     if((errcode = pthread_join(term_tid, NULL)) != 0) {
-        if(logging(server_ds, errcode, "[MANAGER THREAD]: Impossibile effettuare il join del thread per la terminazione") == -1) {
-            errno = errcode;
-            perror("[MANAGER THREAD]: Impossibile effettuare il join del thread per la terminazione");
+        if(put_logmsg(server_ds->log_thread_config, errcode, "[SERVER]: Impossibile effettuare il join del thread di terminazione") == -1) {
+            fprintf(stderr, "[SERVER]: Impossibile effettuare il join del thread di terminazione\n[SERVER]: Impossibile effettuare logging\n");
         }
+        stats(&run_params, server_ds);
+        clean_server(&run_params, server_ds);
+        return errcode;
+    }
+
+    // Effettuo il join del thread per il logging (sarà già terminato in modo indipendente)
+    if((errcode = pthread_join(term_tid, NULL)) != 0) {
+        fprintf(stderr, "[SERVER]: Impossibile effettuare il join del thread per il logging\n");
         stats(&run_params, server_ds);
         clean_server(&run_params, server_ds);
         return errcode;
@@ -433,22 +414,22 @@ term:
             BUF_BASESZ,
             "[SERVER]: Max memoria utilizzata: %lu Mbytes (%lu bytes)",
             server_ds->max_used_mem/1048576, server_ds->max_used_mem);
-    logging(server_ds, 0, buf);
+    put_logmsg(server_ds->log_thread_config, 0, buf);
     snprintf(buf,
             BUF_BASESZ,
             "[SERVER]: Numero massimo di file: %lu",
             server_ds->max_nfiles);
-    logging(server_ds, 0, buf);
+    put_logmsg(server_ds->log_thread_config, 0, buf);
     snprintf(buf,
             BUF_BASESZ,
             "[SERVER]: Capacity misses: %lu",
             server_ds->cache_triggered);
-    logging(server_ds, 0, buf);
+    put_logmsg(server_ds->log_thread_config, 0, buf);
     snprintf(buf,
             BUF_BASESZ,
             "[SERVER]: Massimo numero di client connessi contemporaneamente: %lu",
             server_ds->max_connections);
-    logging(server_ds, 0, buf);
+    put_logmsg(server_ds->log_thread_config, 0, buf);
 
     // libero strutture dati del server
     clean_server(&run_params, server_ds);
@@ -460,9 +441,7 @@ void clean_server(struct serv_params *params, struct fs_ds_t *ds) {
     // rimuovo il socket dal filesystem
     if(params) {
         if(unlink(params->sock_path) == -1) {
-            if(logging(ds, errno, "Fallita rimozione socket") == -1) {
-                perror("Fallita rimozione socket");
-            }
+            perror("Fallita rimozione socket");
         }
         // devo liberare anche la stringa contenente il path del file di log e del socket
         free(params->sock_path);
@@ -498,9 +477,6 @@ int processRequest(struct fs_ds_t *server_ds, const int client_sock) {
     // Ora inserisco la richiesta nella coda (in ME)
     LOCK_OR_KILL(server_ds, &(server_ds->mux_jobq), server_ds->job_queue);
     if(enqueue(server_ds->job_queue, req, sizeof(struct request_t), client_sock) == -1) {
-        if(logging(server_ds, errno, "Fallito inserimento nella coda di richieste") == -1) {
-            perror("Fallito inserimento nella coda di richieste");
-        }
         return -1;
     }
     free(req);

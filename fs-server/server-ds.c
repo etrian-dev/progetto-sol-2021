@@ -57,18 +57,33 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     pthread_mutex_init(&((*server_ds)->mux_mem), NULL);
     pthread_mutex_init(&((*server_ds)->mux_jobq), NULL);
     pthread_mutex_init(&((*server_ds)->mux_cacheq), NULL);
-    pthread_mutex_init(&((*server_ds)->mux_log), NULL);
     pthread_mutex_init(&((*server_ds)->mux_clients), NULL);
     // inizializzo cond variable
     pthread_cond_init(&((*server_ds)->new_job), NULL);
 
-    // Inizializzo le code
+    // Inizializzo le code per le richieste
     (*server_ds)->job_queue = queue_init();
     (*server_ds)->cache_q = queue_init();
     if(!((*server_ds)->job_queue && (*server_ds)->cache_q)) {
         // errore di allocazione
         return -1;
     }
+
+    // Inizializzo la struttura utilizzata dal thread di logging
+    if(((*server_ds)->log_thread_config = malloc(sizeof(struct logging_params))) == NULL) {
+        // fallita inizializzazione
+        return -1;
+    }
+    // Inizializzo la coda di richieste
+    if(((*server_ds)->log_thread_config->log_requests = queue_init()) == NULL) {
+        // fallita inizializzazione della coda di richieste
+        return -1;
+    }
+    // Inizializzo mutex e cond variables su tale coda
+    pthread_mutex_init(&((*server_ds)->log_thread_config->mux_logq), NULL);
+    pthread_cond_init(&((*server_ds)->log_thread_config->new_logrequest), NULL);
+    // Copio il puntatore alla stringa contenente il path del file di log
+    (*server_ds)->log_thread_config->log_fpath = params->log_path;
 
     // Setto i limiti di numero di file e memoria (il resto dei parametri sono azzerati di default)
     (*server_ds)->max_files = params->max_fcount;
@@ -111,6 +126,17 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
             {
                 perror("[SERVER] Impossibile chiudere una pipe");
             }
+        }
+
+        // dealloco la struttura del thread di logging e libero la coda ivi contenuta
+        // non necessario liberare il path perché è semplicemente un alias della
+        // stringa in serv_params (in server.c) e quella viene deallocata comunque
+        // alla terminazione del server
+        if(server_ds->log_thread_config && server_ds->log_thread_config->log_requests) {
+            free_Queue(server_ds->log_thread_config->log_requests);
+        }
+        if(server_ds->log_thread_config) {
+            free(server_ds->log_thread_config);
         }
 
         free(server_ds);

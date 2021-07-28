@@ -91,6 +91,35 @@ struct client_info {
 #define FAST_TERM 1
 #define SLOW_TERM 2
 
+//-----------------------------------------------------------------------------------
+//Gestione del logging
+
+// Struttura per raggruppare i parametri alla funzione di logging
+struct logging_params {
+    char *log_fpath;                 // path del file nel quale effettuare il logging
+    struct Queue *log_requests;      // coda nella quale le richieste di logging sono immesse
+    pthread_mutex_t mux_logq;        // mutex per la coda di richieste
+    pthread_cond_t new_logrequest;   // condition variable per indicare la presenza di richieste di log
+};
+
+// Struttura delle richieste di logging (inserite nella coda log_requests sopra definita)
+struct log_request {
+    int error_code;
+    char *message;
+};
+
+// Funzione eseguita dal thread per effettuare il logging: prende come parametro
+// un puntatore ad una struttura logging_params, castato a void perché è la funzione
+// eseguita dal thread di logging. La funzione ritorna 0 se ha successo,
+// -1 se riscontra un errore (setta errno)
+void *logging(void *params);
+// Funzione di utilità per inserire una richiesta di log in coda, avente come messaggio
+// la stringa passata come parametro e come codice di errore l'intero passato
+// (se err == 0 indica che non è un errore di sistema, ma logico di utilizzo del server)
+// La funzione ritorna 0 se ha successo (è stata inserita la richiesta in coda e sarà
+// scritta sul file di log appena possibile), -1 altrimenti
+int put_logmsg(struct logging_params *lp, const int err, char *message);
+
 // Struttura dati condivisa del server
 struct fs_ds_t {
     // Timestamp del tempo di avvio del server (solo dopo allocazione di questa struttura)
@@ -142,14 +171,11 @@ struct fs_ds_t {
     // Pipe per il feedback dal worker al manager thread
     int feedback[2];
     int slow_term; // flag per indicare terminazione lenta (con SIGHUP)
-
     // Pipe per la gestione della terminazione
     int termination[2];
 
-    // File descriptor del file di log del server
-    int log_fd;
-    // Mutex per la scrittura in ME sul file di log
-    pthread_mutex_t mux_log;
+    // Struttura dati per la gestione del logging
+    struct logging_params *log_thread_config;
 };
 
 // Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
@@ -168,15 +194,6 @@ int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid);
 // Ritorna 0 se ha successo, -1 altrimenti
 int update_client_op(struct fs_ds_t *ds, const int csock, const int cpid, const char op, const int op_flags, const char *op_path);
 
-//-----------------------------------------------------------------------------------
-//Gestione del logging
-
-// Funzione per effettuare il logging: prende come parametri
-// La struttura dati del server (ds)
-// Il codice di errore (corrisponderà ad errno oppure 0 se è un errore di utilizzo del server)
-// La stringa da stampare nel file di log (null-terminated)
-// La funzione ritorna 0 se ha successo, -1 se riscontra un errore (setta errno)
-int logging(struct fs_ds_t *ds, int errcode, char *message);
 
 //-----------------------------------------------------------------------------------
 // Funzioni per tentare di fare lock/unlock e riportare l'errore prima di terminare il server se falliscono

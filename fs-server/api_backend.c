@@ -65,7 +65,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                 if(update_client_op(ds, client_sock, client_PID, OPEN_FILE, flags, pathname) == -1) {
                     // fallito aggiornamento stato client
                     errno_saved = errno;
-                    if(logging(ds, errno, "Fallito aggiornamento stato client") == -1) {
+                    if(put_logmsg(ds->log_thread_config, errno, "Fallito aggiornamento stato client") == -1) {
                         errno = errno_saved;
                         perror("Fallito aggiornamento stato client");
                     }
@@ -153,7 +153,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
                     // aggiorno info client
                     if(update_client_op(ds, client_sock, client_PID, OPEN_FILE, flags, pathname) == -1) {
                         // fallito aggiornamento stato client
-                        if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                        if(put_logmsg(ds->log_thread_config, 0, "Fallito aggiornamento stato client") == -1) {
                             perror("Fallito aggiornamento stato client");
                         }
                     }
@@ -171,7 +171,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     if(reply) {
         if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
             errno_saved = errno;
-            if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                 errno = errno_saved;
                 perror("[SERVER]: Fallito invio risposta");
             }
@@ -182,7 +182,7 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     else {
         // Fallita allocazione risposta (probabilmente dovuto ad un errore di memoria)
         success = -1;
-        if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+        if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
             errno = errno_saved;
             perror("[SERVER]: Fallito invio risposta");
         }
@@ -257,7 +257,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
     if(reply) {
         if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
             errno_saved = errno;
-            if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                 errno = errno_saved;
                 perror("[SERVER]: Fallito invio risposta");
             }
@@ -269,7 +269,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
         // Fallita allocazione risposta (probabilmente dovuto ad un errore di memoria)
         success = -1;
         errno_saved = errno;
-        if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+        if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
             errno = errno_saved;
             perror("[SERVER]: Fallito invio risposta");
         }
@@ -328,7 +328,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
             // aggiorno info client
             if(update_client_op(ds, client_sock, client_PID, READ_FILE, 0, pathname) == -1) {
                 // fallito aggiornamento stato client
-                if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                if(put_logmsg(ds->log_thread_config, 0, "Fallito aggiornamento stato client") == -1) {
                     perror("Fallito aggiornamento stato client");
                 }
             }
@@ -344,7 +344,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     if(reply) {
         if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
             errno_saved = errno;
-            if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                 errno = errno_saved;
                 perror("[SERVER]: Fallito invio risposta");
             }
@@ -353,7 +353,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         // Invio il file al client
         if(success == 0 && reply->status == REPLY_YES) {
             if(writen(client_sock, file->data, file->size) != file->size) {
-                if(logging(ds, errno, "[SERVER]: Fallito invio file") == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio file") == -1) {
                     errno = errno_saved;
                     perror("[SERVER]: Fallito invio file");
                 }
@@ -366,7 +366,7 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
         // Fallita allocazione risposta (probabilmente dovuto ad un errore di memoria)
         success = -1;
         errno_saved = errno;
-        if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+        if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
             errno = errno_saved;
             perror("[SERVER]: Fallito invio risposta");
         }
@@ -451,7 +451,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
             // aggiorno info client
             if(update_client_op(ds, client_sock, client_PID, READ_N_FILES, 0, NULL) == -1) {
                 // fallito aggiornamento stato client
-                if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                if(put_logmsg(ds->log_thread_config, 0, "Fallito aggiornamento stato client") == -1) {
                     perror("Fallito aggiornamento stato client");
                 }
             }
@@ -463,7 +463,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
         if(writen(client_sock, reply, sizeof(struct reply_t)) != sizeof(struct reply_t)) {
             // errore di scrittura
             errno_saved = errno;
-            if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                 errno = errno_saved;
                 perror("[SERVER]: Fallito invio risposta");
             }
@@ -641,7 +641,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
                     // aggiorno info client
                     if(update_client_op(ds, client_sock, client_PID, APPEND_FILE, 0, pathname) == -1) {
                         // fallito aggiornamento stato client
-                        if(logging(ds, 0, "Fallito aggiornamento stato client") == -1) {
+                        if(put_logmsg(ds->log_thread_config, 0, "Fallito aggiornamento stato client") == -1) {
                             perror("Fallito aggiornamento stato client");
                         }
                     }
@@ -659,7 +659,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
         if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
             // fallita scrittura
             errno_saved = errno;
-            if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                 errno = errno_saved;
                 perror("[SERVER]: Fallito invio risposta");
             }
@@ -746,7 +746,7 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname,
         if(reply) {
             if(writen(client_sock, reply, sizeof(*reply)) != sizeof(*reply)) {
                 errno_saved = errno;
-                if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                     errno = errno_saved;
                     perror("[SERVER]: Fallito invio risposta");
                 }
@@ -814,7 +814,7 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock,
     else {
         if(writen(client_sock, rep, sizeof(*rep)) != sizeof(*rep)) {
             errno_saved = errno;
-            if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                 errno = errno_saved;
                 perror("[SERVER]: Fallito invio risposta");
             }
@@ -879,7 +879,7 @@ int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_so
     if(rep) {
         if(writen(client_sock, rep, sizeof(*rep)) != sizeof(*rep)) {
             errno_saved = errno;
-            if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                 errno = errno_saved;
                 perror("[SERVER]: Fallito invio risposta");
             }
@@ -974,14 +974,14 @@ int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, c
                 }
                 else {
                     // impossibile togliere il file dalla ht
-                    if(logging(ds, 0, "[SERVER] api_rmFile: Consistenza hash table persa") == -1) {
+                    if(put_logmsg(ds->log_thread_config, 0, "[SERVER] api_rmFile: Consistenza hash table persa") == -1) {
                         perror("[SERVER] api_rmFile: Consistenza hash table persa");
                     }
                 }
                 if(cache == -1) {
                     // consistenza della cache non garantita!
                     // Non termino il server ma effettuo il log dell'evento
-                    if(logging(ds, 0, "[SERVER] api_rmFile: Consistenza cache persa") == -1) {
+                    if(put_logmsg(ds->log_thread_config, 0, "[SERVER] api_rmFile: Consistenza cache persa") == -1) {
                         perror("[SERVER] api_rmFile: Consistenza cache persa");
                     }
                 }
@@ -992,7 +992,7 @@ int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, c
     if(rep) {
         if(writen(client_sock, rep, sizeof(*rep)) != sizeof(*rep)) {
             errno_saved = errno;
-            if(logging(ds, errno, "[SERVER]: Fallito invio risposta") == -1) {
+            if(put_logmsg(ds->log_thread_config, errno, "[SERVER]: Fallito invio risposta") == -1) {
                 errno = errno_saved;
                 perror("[SERVER]: Fallito invio risposta");
             }
