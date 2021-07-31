@@ -1,3 +1,11 @@
+/**
+ * \file worker.c
+ * \brief File contenente l'implementazione della funzione eseguita dai thread worker
+ *
+ * Tutti i thread worker creati dal thread manager eseguono la funzione work() qui
+ * implementata per servire le richieste dei client connessi
+ */
+
 // header server
 #include <server-utils.h>
 // header API
@@ -18,8 +26,19 @@
 #define OP_OK "OK"
 #define OP_FAIL "FAILED"
 
-// Worker thread
-// Ogni worker tiene traccia del numero di richieste servite e lo ritorna come exit status
+/**
+ * Un thread worker compie ciclicamente le seguenti operazioni:
+ * - Estrae dalla coda di job una richiesta (attende se la coda è vuota)
+ * - Esamina la richiesta
+ *  - Se di terminazione veloce allora termina
+ *  - Altrimenti sceglie la opportuna funzione della API che si occupa di gestire la richiesta
+ * - Quando la gestione della richiesta è terminata viene scritto nella pipe di feedback il descrittore del socket servito
+ *
+ * Ogni thread tiene anche traccia del numero di richieste servite da quando è stato
+ * creato (che abbiano avuto successo o meno), per poi scriverlo nel file di log prima di terminare
+ * \param [in] params Un puntatore generico che è in realtà un puntatore alla struttura dati del server (fs_ds_t)
+ * \return Ritorna 0 se il thread è terminato normalmente (a seguito di un segnale catturato dal server), -1 altrimenti
+ */
 void *work(void *params) {
     size_t served = 0; // numero di richieste servite da questo worker
 

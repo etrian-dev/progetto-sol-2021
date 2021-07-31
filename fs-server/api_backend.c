@@ -1,3 +1,13 @@
+/**
+ * \file api_backend-utils.c
+ * \brief File contenente l'implementazione delle funzionalità sui file (apertura, chisura...)
+ *
+ * Il seguente file contiene l'implementazione delle funzioni che eseguono le operazioni
+ * sui file per realizzare la richiesta proveniente dalla API ed estratta dal thread worker.
+ * Inoltre sono implementate anche alcune funzioni utili per la manipolazione dei file e
+ * l'algoritmo di rimpiazzamento FIFO (cache_miss)
+ */
+
 // header server
 #include <server-utils.h>
 // header API
@@ -15,7 +25,16 @@
 #include <string.h>
 #include <errno.h>
 
-// Costruisce una stringa contenente i num pathname in paths (str deve essere già allocata)
+/**
+ * \brief Concatena le num stringhe in paths in una stringa, separandole con '\n'
+ *
+ * La funzione costruisce una stringa contenente i num paths dell'array di stringhe paths.
+ * La precondizione è che num >= 0 e deve essere la lunghezza di paths. Inoltre str deve
+ * essere allocata dinamicamente dal chiamante in modo da poter contenere i path concatenati
+ * \param [in,out] str La stringa che contiene la concatenazione dei path
+ * \param [in] paths Un array di num stringhe, contenente dei path di file
+ * \param [in] num Il numero di path (lunghezza dell'array)
+ */
 void build_pathstr(char **str, char **paths, const int num) {
     size_t offt = 0; // offset nella stringa di paths
     int i = 0;
@@ -31,8 +50,28 @@ void build_pathstr(char **str, char **paths, const int num) {
     }
 }
 
-// Apre il file con path pathname (se presente) per il client con le flag passate come parametro
-// Se l'operazione ha successo ritorna 0, -1 altrimenti
+/**
+ * \brief Tenta di aprire il file con questo path per il client che lo richiede
+ *
+ * Effettua l'apertura del file con path pathname per il client con PID passato come parametro, se possibile.
+ * Le flags sono un OR di O_LOCKFILE e O_CREATEFILE. Le cause del fallimento dell'operazione
+ * sono riportate di seguito:
+ * - Il file non è presente nel server, ma non è stata specificata la flag O_CREATEFILE
+ * - Il file è presente nel server ed è stata specificata la flag O_CREATEFILE
+ * - Sono già presenti nel server il massimo numero di file specificato dalla configurazione corrente
+ * - Il file è in stato locked per qualche altro client ed è stata passata O_LOCKFILE
+ * - Il file è già aperto da questo client
+ *
+ * Chiaramente, anche se l'operazione è consentita, qualche passo della procedura potrebbe
+ * fallire. Se tutto va a buon fine il file è aggiornato come aperto dal client client_PID
+ *
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] pathname Il path del file di cui il client richiede l'apertura
+ * \param [in] client_sock Il socket del client che richiede l'apertura
+ * \param [in] client_PID Il PID del client che richiede l'apertura
+ * \param [in] flags Le flag di apertura del client (OR di O_CREATEFILE e O_LOCKFILE)
+ * \return Ritorna 0 se l'apertura/creazione viene eseguita con successo, -1 altrimenti
+ */
 int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID, int flags) {
     struct reply_t *reply = NULL; // conterrà la risposta del server
     int success = 0; // se rimane 0 allora l'operazione ha successo, altrimenti è fallita
@@ -191,8 +230,23 @@ int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     return success; // 0 se successo, -1 altrimenti
 }
 
-// Chiude il file con path pathname (se presente) per il socket passato come parametro
-// Se l'operazione ha successo ritorna 0, -1 altrimenti
+/**
+ * \brief Tenta di chiudere il file con questo path per il client che lo richiede
+ *
+ * Effettua la chiusura del file con path pathname per il client con PID passato come parametro, se possibile.
+ * Le cause del fallimento dell'operazione sono riportate di seguito:
+ * - Il file non è presente nel server
+ * - Il file è presente nel server, ma non era aperto da questo client
+ *
+ * Chiaramente, anche se l'operazione è consentita, qualche passo della procedura potrebbe
+ * fallire. Se tutto va a buon fine il file viene chiuso per questo client
+ *
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] pathname Il path del file di cui il client richiede la chiusura
+ * \param [in] client_sock Il socket del client che richiede la chiusura
+ * \param [in] client_PID Il PID del client che richiede la chiusura
+ * \return Ritorna 0 se la chiusura viene eseguita con successo, -1 altrimenti
+ */
 int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID) {
     struct reply_t *reply = NULL; // conterrà la risposta del server
     int success = 0;
@@ -216,7 +270,7 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
                 pthread_cond_wait(&(file->mod_completed), &(file->mux_file));
             }
             file->modifying = 1;
-            // file presente: devo controllare se il client che richiede la sua chiusuraq lo abbia aperto
+            // file presente: devo controllare se il client che richiede la sua chiusura lo abbia aperto
             size_t i = 0;
             while(i < file->nopened && file->openedBy[i] != client_PID) {
                 i++;
@@ -278,8 +332,18 @@ int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_soc
    	return success;
 }
 
-// Legge il file con path pathname (se presente) e lo invia al client client_sock
-// Se l'operazione ha successo ritorna 0, -1 altrimenti
+/**
+ * \brief Tenta di leggere il file con questo path per il client che lo richiede
+ *
+ * Invia alla API il file con path pathname sul socket client_sock per il client con PID
+ * passato come parametro, se possibile. Se il file non è presente nel server o non
+ * è aperto da questo client allora l'operazione fallisce
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] pathname Il path del file di cui il client richiede la letttura
+ * \param [in] client_sock Il socket del client che richiede la lettura
+ * \param [in] client_PID Il PID del client che richiede la lettura
+ * \return Ritorna 0 se la lettura viene eseguita con successo, -1 altrimenti
+ */
 int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID) {
     // conterrà la risposta del server
     struct reply_t *reply = NULL;
@@ -375,9 +439,18 @@ int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock
     return success;
 }
 
-// Legge n file nel server (quelli meno recenti per come è implementata) e li invia al client
-// Se n<=0 allora legge tutti i file presenti nel server
-// Se ha successo ritorna il numero di file letti, -1 altrimenti
+/**
+ * \brief Tenta di leggere n files presenti nel server
+ *
+ * Invia alla API fino a n files presenti nel server. Se n <= 0 allora invia tutti i file
+ * presenti. L'ordine di scelta dei file da inviare è quello FIFO del tempo di inserimento
+ * all'interno del server
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] n Il numero (massimo) di files che il client ha richiesto. Se <= 0 invia tutti quelli presenti
+ * \param [in] client_sock Il socket del client che richiede i file
+ * \param [in] client_PID Il PID del client che richiede i file
+ * \return Ritorna il numero di files inviati (>= 0) se viene eseguita con successo, -1 altrimenti
+ */
 int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int client_PID) {
     struct reply_t *reply = NULL;
     int success = 0;
@@ -507,6 +580,25 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
     return num_sent; // ritorno il numero di file inviati alla API
 }
 
+/**
+ * \brief Tenta di concatenare al file specificato il buffer buf
+ *
+ * La funzione tenta di concatenare al file con path pathname il buffer buf, di dimensione
+ * size. Le seguenti condizioni provocano il fallimento dell'operazione:
+ * - Il file non è presente nel server
+ * - Il file non è aperto da questo client
+ * - La dimensione del buffer da concatenare, sommata alla dimensione corrente del file,
+ * supera la massima quantità di memoria della configurazione
+ *
+ * Se viene determinato che concatenare buf provocherebbe un capacity miss nel server allora
+ * viene chiamato l'agoritmo di rimpiazzamento, che libererà la memoria necessaria ad
+ * avere
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] n Il numero (massimo) di files che il client ha richiesto. Se <= 0 invia tutti quelli presenti
+ * \param [in] client_sock Il socket del client che richiede i file
+ * \param [in] client_PID Il PID del client che richiede i file
+ * \return Ritorna il numero di files inviati (>= 0) se viene eseguita con successo, -1 altrimenti
+ */
 // Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
 // Se l'operazione ha successo ritorna 0, -1 altrimenti
 int api_appendToFile(struct fs_ds_t *ds, const char *pathname,

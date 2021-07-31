@@ -1,5 +1,16 @@
+/**
+ * \file server-ds.c
+ * \brief File contenente l'implementazione delle funzioni per l'allocazione/deallocazione delle strutture dati usate dal server
+ *
+ * Le funzioni contenute in questo file si occupano di allocare/deallocare/modificare le strutture
+ * dati del server, compresa quella che immagazzina un file e quelle che gestiscono la memorizzazione
+ * delle connessioni attive e le relative operazioni
+ */
+
 // header progetto
 #include <server-utils.h>
+// header API
+#include <fs-api.h>
 // header utilità
 #include <icl_hash.h>
 // multithreading headers
@@ -12,15 +23,22 @@
 #include <stdlib.h>
 #include <string.h>
 
-// File contenente la gestione delle strutture dati del server
-
-// Converto una quantità positiva di Mbyte nei corrispondenti byte moltiplicando per 2^20
-// NOTA: il risultato dovrebbe essere memorizzato in un size_t per scongiurare l'assenza di
-// overflow (ragionevolmente) [calcoli?]
+/// Utile macro per convertire una quantità positiva di Mbyte nel corrispondente numbero di byte
+/// NOTA: il risultato dovrebbe sempre essere memorizzato in un size_t per scongiurare l'overflow
+/// (per dimensioni in MB ragionevolmente basse)
 #define MBYTE_TO_BYTE(MB) 1048576 * (MB)
 
-// Funzione che inizializza tutte le strutture dati: prende in input i parametri del server
-// e riempe la struttura passata tramite puntatore
+/**
+ * \brief Funzione che inizializza la struttura dati principale del server (server_ds)
+ *
+ * La funzione riceve in input una configurazione nella struttura params, ottenuta dal
+ * parsing di un file di configurazione, ed inizializza
+ * con tali parametri la struttura fs_ds_t condivisa dai thread del server per effetturare
+ * le operazioni implementate
+ * \param [in] params La struttura dati che contiene la configurazione del server
+ * \param [out] server_ds Puntatore doppio usato per restituire al chiamante la struttura dati inizializzata
+ * \return Ritorna 0 se l'inizializzazione ha avuto successo, -1 altrimenti
+ */
 int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     // controllo che siano entrambi non nulli, altrimenti ho segmentation fault
     if(!(params && server_ds)) {
@@ -83,7 +101,7 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     pthread_mutex_init(&((*server_ds)->log_thread_config->mux_logq), NULL);
     pthread_cond_init(&((*server_ds)->log_thread_config->new_logrequest), NULL);
     // Copio il puntatore alla stringa contenente il path del file di log
-    (*server_ds)->log_thread_config->log_fpath = params->log_path;
+    (*server_ds)->log_thread_config->log_fpath = strdup(params->log_path);
 
     // Setto i limiti di numero di file e memoria (il resto dei parametri sono azzerati di default)
     (*server_ds)->max_files = params->max_fcount;
@@ -93,7 +111,10 @@ int init_ds(struct serv_params *params, struct fs_ds_t **server_ds) {
     return 0;
 }
 
-// Funzione che libera la memoria allocata per la struttura dati
+/**
+ * \brief Funzione che libera la memoria allocata per la struttura dati del server
+ * \param [in] server_ds La struttura dati da liberare. Vengono liberate anche le strutture dati interne (code, ...) previo controllo
+ */
 void free_serv_ds(struct fs_ds_t *server_ds) {
     if(server_ds) {
         // libero la hash table
@@ -136,6 +157,7 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
             free_Queue(server_ds->log_thread_config->log_requests);
         }
         if(server_ds->log_thread_config) {
+            free(server_ds->log_thread_config->log_fpath);
             free(server_ds->log_thread_config);
         }
 
@@ -143,6 +165,52 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
     }
 }
 
+//-----------------------------------------------------------------------------------
+// Operazioni sui file
+
+/**
+ * \brief Funzione per inserire un nuovo file nel server
+ *
+ * Questa funzione inserisce nel server un nuovo file ed inizializza ai valori di
+ * default i suoi metadati: il file viene marcato come aperto da client, con dati NULL e
+ * dimensione 0, oltre a settare la ME per client se era stata passata la flag O_LOCKFILE
+ * \param [in] client Socket del client che ha richiesto la creazione del file
+ * \param [in] flags OR di flags specificate, di cui interessa solo se è settata O_LOCKFILE
+ * \return Ritorna un puntatore al file creato se ha successo, NULL altrimenti
+ */
+struct fs_filedata_t *newfile(const int client, const int flags) {
+    struct fs_filedata_t *file = NULL;
+    // Alloco ed inizializzo il file
+    if((file = malloc(sizeof(struct fs_filedata_t))) == NULL) {
+        // errore di allocazione
+        return NULL;
+    }
+    if((file->openedBy = malloc(sizeof(int))) == NULL) {
+        // errore di allocazione: libero memoria
+        free_file(file);
+        return NULL;
+    }
+    file->openedBy[0] = client; // setto il file come aperto da questo client
+    file->nopened = 1; // il numero di client che ha il file aperto
+    file->data = NULL;
+    file->size = 0;
+    pthread_mutex_init(&(file->mux_file), NULL);
+    pthread_cond_init(&(file->mod_completed), NULL);
+    file->modifying = 0;
+    // Se devo settare mutua esclusione da parte del client che lo crea lo faccio, altrimenti -1
+    if(flags & O_LOCKFILE) {
+        file->lockedBy = client;
+    }
+    else {
+        file->lockedBy = -1;
+    }
+    return file;
+}
+
+/**
+ * \brief Funzione che libera la memoria occupata dal puntatore a file (fs_fileddata_t) passato come parametro
+ * \param [in,out] file Puntatore al file da liberare. Il parametro ha tipo void* perché viene passata a icl_hash_destroy()
+ */
 void free_file(void *file) {
     struct fs_filedata_t *f = (struct fs_filedata_t *)file;
     if(f) {
@@ -159,8 +227,17 @@ void free_file(void *file) {
     }
 }
 
-// Aggiunge un client a quelli connessi
-// Ritorna 0 se ha successo, -1 altrimenti
+//-----------------------------------------------------------------------------------
+// Operazioni sui client
+
+/**
+ * La funzione inserisce il client connesso sul socket csock tra quelli attivi nel server
+ * e successivamente attende con read bloccante la scrittura del PID del client sul socket.
+ * Il PID ottenuto serve ad identificare il client (viene usato ad esempio per settare ME su un file)
+ * \param [in,out] ds La struttura dati del server, che viene aggiornata opportunamente
+ * \param [in] csock Il socket assegnato dalla funzione accept_connection() al client connesso
+ * \return Ritorna 0 se l'aggiunta del client ha successo, -1 altrimenti
+ */
 int add_connection(struct fs_ds_t *ds, const int csock) {
     if(!(ds->active_clients)) {
         ds->active_clients = malloc(sizeof(struct client_info));
@@ -203,8 +280,14 @@ int add_connection(struct fs_ds_t *ds, const int csock) {
     return 0;
 }
 
-// Rimuove un client da quelli connessi
-// Ritorna 0 se ha successo, -1 altrimenti
+/**
+ * La funzione rimuove il client connesso sul socket csock tra quelli attivi nel server (se presente).
+ * Per identificare univocamente il client serve il PID, passato tramite cpid
+ * \param [in,out] ds La struttura dati del server, che viene aggiornata opportunamente
+ * \param [in] csock Il socket assegnato dalla funzione accept_connection() al client connesso
+ * \param [in] cpid Il PID del client connesso su csock
+ * \return Ritorna 0 se la rimozione del client ha successo, -1 altrimenti
+ */
 int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid) {
     if(!ds) {
         return -1;
@@ -258,8 +341,18 @@ int rm_connection(struct fs_ds_t *ds, const int csock, const int cpid) {
     return 0;
 }
 
-// Aggiorna lo stato del client connesso sul socket sock con l'ultima operazione conclusa con successo
-// Ritorna 0 se ha successo, -1 altrimenti
+/**
+ * Aggiorna lo stato del client connesso sul socket csock con l'ultima operazione
+ * conclusa con successo e le relative flags e path del file su cui l'operazione è
+ * stata eseguita (se rilevanti, altrimenti 0 e NULL rispettivamente)
+ * \param [in,out] ds La struttura dati del server, che viene aggiornata opportunamente
+ * \param [in] csock Il socket sul quale il client è connesso
+ * \param [in] cpid Il PID del client connesso su csock
+ * \param [in] op Il carattere che identifica l'ultima operazione compiuta dal client, come specificato in fs-api.h
+ * \param [in] op_flags Le (eventuali) flags dell'operazione op
+ * \param [in] op_path Il path del file su cui è stata effettuata l'operazione op (se rilevante)
+ * \return Ritorna 0 se ha successo, -1 altrimenti
+ */
 int update_client_op(struct fs_ds_t *ds, const int csock, const int cpid, const char op, const int op_flags, const char *op_path) {
     size_t i;
     LOCK_OR_KILL(ds, &(ds->mux_clients), ds->active_clients);

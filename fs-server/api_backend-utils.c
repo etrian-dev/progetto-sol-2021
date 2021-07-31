@@ -1,10 +1,18 @@
+/**
+ * \file api_backend-utils.c
+ * \brief File contenente l'algoritmo di rimpiazzamento e funzioni per manipolare i file
+ *
+ * Nel file sono contenute le implementazioni delle funzioni usate per manipolare i file
+ * e l'algoritmo di rimpiazzamento FIFO (cache_miss)
+ */
+
 // header server
 #include <server-utils.h>
 // header API
 #include <fs-api.h>
 // header utilità
 #include <utils.h>
-#include <icl_hash.h> // per hashtable
+#include <icl_hash.h>
 // header multithreading
 #include <pthread.h>
 // syscall headers
@@ -15,39 +23,13 @@
 #include <string.h>
 #include <errno.h>
 
-// Funzione che crea un nuovo file con i parametri specificati
-// Ritorna un puntatore se ha successo, NULL altrimenti
-struct fs_filedata_t *newfile(const int client, const int flags) {
-    struct fs_filedata_t *file = NULL;
-    // Alloco ed inizializzo il file
-    if((file = malloc(sizeof(struct fs_filedata_t))) == NULL) {
-        // errore di allocazione
-        return NULL;
-    }
-    if((file->openedBy = malloc(sizeof(int))) == NULL) {
-        // errore di allocazione: libero memoria
-        free_file(file);
-        return NULL;
-    }
-    file->openedBy[0] = client; // setto il file come aperto da questo client
-    file->nopened = 1; // il numero di client che ha il file aperto
-    file->data = NULL;
-    file->size = 0;
-    pthread_mutex_init(&(file->mux_file), NULL);
-    pthread_cond_init(&(file->mod_completed), NULL);
-    file->modifying = 0;
-    // Se devo settare mutua esclusione da parte del client che lo crea lo faccio, altrimenti -1
-    if(flags & O_LOCKFILE) {
-        file->lockedBy = client;
-    }
-    else {
-        file->lockedBy = -1;
-    }
-    return file;
-}
-
-// Cerca il file con quel nome nel server: se lo trova ritorna un puntatore ad esso
-// Altrimenti ritorna NULL
+/**
+ * Cerca il file con path fname tra quelli presenti nel server (cioè nella hashtable che associa)
+ * i puntatori a file ai path
+ * \param [in] ds La struttura dati condivisa del server, contenente la tabella dei file
+ * \param [in] fname Il path del file da cercare nel server
+ * \return Ritorna il puntatore al file cercato se fname è nel server, NULL altrimenti
+ */
 struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
     // cerco il file nella hash table
     struct fs_filedata_t *file = NULL;
@@ -55,6 +37,29 @@ struct fs_filedata_t *find_file(struct fs_ds_t *ds, const char *fname) {
     return file;
 }
 
+/**
+ * La funzione svolge due compiti:
+ * - Se buf == NULL allora tenta di creare un nuovo file vuoto (dimensione 0) nel server
+ * con il path passato come parametro
+ * - Se buf != NULL allora prova a concatenare il contenuto del buffer buf al file puntato
+ * dal path dato
+ *
+ * Questa funzione viene usata sia da api_openFile() (infatti prende anche le flags di apertura
+ * come parametro) che da api_appendToFile() ed in tal caso viene usato il parametro buf con la relativa size.
+ * Non viene effettuato alcun controllo internamente perché è pensata per essere una chiamata
+ * interna delle funzioni sopracitate, per cui è sconsigliato chiamare direttamente questa funzione.
+ * Al termine della funzione il file ha una dimensione aumentata di size bytes.
+ * NOTA: non controllo la consistenza della coda di file con la hash table,
+ * ma a patto di controllare sempre il risultato di find_file() non ho problemi
+ * per path di file presenti nella coda che non siano anche nella hashtable
+ * \param [in,out] ds La struttura dati condivisa del server, contenente la tabella dei file
+ * \param [in] path Il path del file da creare/aggiornare nel server
+ * \param [in] flags Le flags di apertura del file (solo O_LOCKFILE rilevante)
+ * \param [in] buf Il buffer (eventualmente NULL) contenente i dati da concatenare al file
+ * \param [in] size La dimensione di buf, eventualmente 0
+ * \param [in] client Il PID del client che ha richiesto l'operazione, che deve essere inserito nei metadati del file
+ * \return Ritorna il puntatore al file aggiornato/creato se ha successo, NULL altrimenti
+ */
 // Se buf == NULL crea un nuovo file vuoto aperto dal client passato come parametro
 // Se buf != NULL concatena buf, di dimensione size, al file con pathname path già presente nel server
 // In entrambi i casi ritorna un puntatore al file se ha successo, NULL altrimenti
@@ -161,12 +166,21 @@ struct fs_filedata_t *insert_file(
     return file; // ritorno il puntatore al file inserito
 }
 
-// Algoritmo di rimpiazzamento dei file: rimuove uno o più file per fare spazio ad un file di dimensione
-// newsz byte, in modo tale da avere una occupazione in memoria inferiore a ds->max_mem - newsz al termine
-// Ritorna il numero di file espulsi (>0) se il rimpiazzamento è avvenuto con successo, -1 altrimenti.
-// Se la funzione ha successo inizializza e riempe con i file espulsi ed i loro path le due code passate come
-// parametro alla funzione, altrimenti se l'algoritmo di rimpiazzamento fallisce
-// esse non sono allocate e comunque lasciate in uno stato inconsistente
+/**
+ * Algoritmo di rimpiazzamento FIFO dei file: vengono selezionati come vittime i file
+ * a partire dal meno recente inserito nel server.
+ * Rimuove uno o più file per fare spazio ad un file di dimensione newsz byte,
+ * in modo tale da avere al termine della chiamata una occupazione di memoria inferiore
+ * a ds->max_mem - newsz.
+ * Se la funzione ha successo inizializza e riempe con i file espulsi ed i loro path
+ * le due code passate come terzo e quarto parametro, altrimenti se l'algoritmo di
+ * rimpiazzamento fallisce esse non sono allocate e comunque lasciate in uno stato inconsistente
+ * \param [in,out] ds La struttura dati condivisa del server, contenente la tabella dei file
+ * \param [in] newsz La dimensione del file (o segmento di) che provoca l'espulsione
+ * \param [out] paths Coda di path dei file individuati come vittime dall'algoritmo
+ * \param [out] files Coda di puntatori a file (fs_filedata_t *) individuati come vittime dall'algoritmo
+ * \return Ritorna il numero di file espulsi (>0) se il rimpiazzamento è avvenuto con successo, -1 altrimenti
+ */
 int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Queue **files) {
     // È possibile che il file sia più grande del quantitativo di memoria massimo fissato all'avvio.
     // In tal caso l'algoritmo fallisce (e qualunque operazione collegata)

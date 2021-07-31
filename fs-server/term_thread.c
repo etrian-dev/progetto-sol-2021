@@ -1,3 +1,12 @@
+/**
+ * \file term_thread.c
+ * \brief File contenente l'implementazione della funzione eseguita dal thread che gestisce la terminazione del server
+ *
+ * Il thread manager nel server crea un thread apposito per gestire la terminazione.
+ * Tale thread ha il compito di ricevere i segnali dall'ambiente di esecuzione e reagire
+ * in modo appropriato
+ */
+
 // header server
 #include <server-utils.h>
 // multithreading headers
@@ -9,6 +18,25 @@
 #include <stdio.h>
 #include <errno.h>
 
+/**
+ * \brief Funzione eseguita dal thread che gestisce la terminazione
+ *
+ * Questa funzione si occupa di gestire la terminazione del fileserver catturando tre segnali:
+ * - Terminazione lenta
+ *  - SIGHUP (1)
+ * - Terminazione veloce
+ *  - SIGINT (2)
+ *  - SIGQUIT (3)
+ *
+ * Il segnale di terminazione lenta provoca soltanto la chiusura del socket su cui vengono
+ * accettate nuove connessioni, per cui il server terminerà soltanto quando tutti i client
+ * già connessi effettueranno la disconnessione. Invece, se viene ricevuto uno dei due segnali
+ * per la terminazione veloce, sono inoltre disconnessi immediatamente tutti i client
+ * ed il server termina appena possibile. Per ricevere i segnali sopracitati viene usata
+ * la syscall sigwait (man 2 sigwait)
+ * \param [in] params Un puntatore generico che è in realtà un puntatore alla struttura dati del server (fs_ds_t)
+ * \return Ritorna 0 se il thread termina normalmente (dopo la ricezione di uno dei segnali gestiti), -1 altrimenti
+ */
 void *term_thread(void *params) {
     struct fs_ds_t *ds = (struct fs_ds_t *)params;
 
@@ -21,7 +49,7 @@ void *term_thread(void *params) {
     {
         // Fallito settaggio della maschera
         perror("[SERVER] Fallito settaggio della maschera");
-        return (void*)1;
+        return (void*)-1;
     }
 
     // aspetto un segnale di terminazione con sigwait

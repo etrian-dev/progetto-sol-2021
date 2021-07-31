@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
     int listen_connections;
     // se presente tolgo il socket prima di ricrearlo
     unlink(run_params.sock_path);
-    if((listen_connections = sock_init(run_params.sock_path, strlen(run_params.sock_path))) == -1) {
+    if((listen_connections = sock_init(run_params.sock_path)) == -1) {
         errcode = errno; // salvo l'errore originato dalla funzione sock_init per ritornarlo
         fprintf(stderr, "[SERVER]: Impossibile creare socket \"%s\": %s\n", run_params.sock_path, strerror(errno));
         clean_server(&run_params, server_ds);
@@ -115,9 +115,9 @@ int main(int argc, char **argv) {
      // Creo il thread che gestisce il logging
     pthread_t logger_tid;
     // passo al thread la struttura dati condivisa server_ds
-    if(pthread_create(&logger_tid, NULL, logging, server_ds->log_thread_config) == -1) {
+    if(pthread_create(&logger_tid, NULL, logging, server_ds) == -1) {
         errcode = errno;
-        fprintf(stderr, "[SERVER]: Impossibile creare il thread di terminazione: %s\n", strerror(errno));
+        fprintf(stderr, "[SERVER]: Impossibile creare il thread di logging: %s\n", strerror(errno));
         clean_server(&run_params, server_ds);
         return errcode;
     }
@@ -396,14 +396,6 @@ term:
         return errcode;
     }
 
-    // Effettuo il join del thread per il logging (sarà già terminato in modo indipendente)
-    if((errcode = pthread_join(term_tid, NULL)) != 0) {
-        fprintf(stderr, "[SERVER]: Impossibile effettuare il join del thread per il logging\n");
-        stats(&run_params, server_ds);
-        clean_server(&run_params, server_ds);
-        return errcode;
-    }
-
     // Stampo su stdout le statistiche di uso del server
     stats(&run_params, server_ds);
 
@@ -430,6 +422,21 @@ term:
             "[SERVER]: Massimo numero di client connessi contemporaneamente: %lu",
             server_ds->max_connections);
     put_logmsg(server_ds->log_thread_config, 0, buf);
+
+
+    // Inserisco il messaggio di log in coda per far terminare il thread di logging
+    if(put_logmsg(server_ds->log_thread_config, -1, NULL) == -1) {
+        fprintf(stderr, "[SERVER]: Fallito inserimento messaggio di terminazione logging\n");
+        // posso anche terminare brutalmente, dato che è l'unica cosa rimasta in sospeso
+        pthread_kill(pthread_self(), SIGKILL);
+    }
+    // Effettuo il join del thread per il logging (sarà già terminato in modo indipendente)
+    if((errcode = pthread_join(logger_tid, NULL)) != 0) {
+        fprintf(stderr, "[SERVER]: Impossibile effettuare il join del thread per il logging\n");
+        stats(&run_params, server_ds);
+        clean_server(&run_params, server_ds);
+        return errcode;
+    }
 
     // libero strutture dati del server
     clean_server(&run_params, server_ds);

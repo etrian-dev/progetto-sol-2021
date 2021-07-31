@@ -1,3 +1,14 @@
+/**
+ * \file parse_config.c
+ * \brief File contenente l'implementazione della funzione che realizza il parsing del file di configurazione
+ *
+ * Il server chiama la funzione parse_config per ottenere i parametri di configurazione
+ * dal file il cui path è specificato come conf_fpath, il cui formato è dettagliato nella relazione allegata.
+ * I valori ottenuti sono usati per settare i relativi campi della struttura params, la quale
+ * deve essere già stata allocata dal chiamante. È ammesso non specificare alcun file di configurazione
+ * (viene usato quello di default)
+ */
+
 // header server
 #include <server-utils.h>
 // headers libreria standard
@@ -6,12 +17,26 @@
 #include <string.h>
 #include <errno.h>
 
-// funzione di cleanup_conf: libera memoria e chiude il file di configurazione
+/**
+ * La funzione apre, legge e tenta di effettuare il parsing del file conf_fpath (path relativo).
+ * Se conf_fpath è NULL o non è possibile aprirlo allora usa il file di configurazione
+ * di default
+ * \param [out] params The structure containing the initialized server configuration
+ * \param [in] conf_fpath A relative path to the configuration file used by the server.
+ * It can be NULL, in which case the default one is used
+ * \return Ritorna 0 ed inizializza params se ha successo, -1 altrimenti
+ */
+int parse_config(struct serv_params *params, const char *conf_fpath);
+
+/**
+ * \brief Funzione di cleanup: libera memoria e chiude il file di configurazione
+ *
+ * \param [in] fp Il puntatore al file di configurazione aperto
+ * \param [in] buf Buffer usato per la lettura del file (da liberare se non nullo)
+ */
 void cleanup_conf(FILE *fp, char *buf); // entrambi gli argomenti possono essere NULL
 
-// Questo file contiene l'implementazione della funzione che effettua il parsing del file
-// di configurazione "config.txt" e riempe una struttura contenente tutti i parametri
-// del server settati opportunamente
+
 int parse_config(struct serv_params *params, const char *conf_fpath) {
     // Se è stato fornito un path per il file di configurazione lo leggo
     // Altrimenti apro quello di default
@@ -135,14 +160,11 @@ int parse_config(struct serv_params *params, const char *conf_fpath) {
     return 0;
 }
 
-// funzione di cleanup_conf: libera memoria e chiude il file di configurazione
 void cleanup_conf(FILE *fp, char *buf) {
+    if(fp) {
+        fclose(fp);
+    }
     if(buf) {
         free(buf);
-    }
-    if(fp && fclose(fp) != 0) {
-        // errore nella chiusura del file
-        // TODO: scrittura nel file di log
-        ;
     }
 }
