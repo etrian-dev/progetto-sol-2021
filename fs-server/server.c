@@ -1,3 +1,12 @@
+/**
+ * \file server.c
+ * \brief File contenente la funzione main del server
+ *
+ * Il file contiene la funzione main del fileserver, che inizializza e coordina tutti i thread
+ * aggiuntivi. Sono inoltre presenti altre procedure per processare le richeste, fare cleanup ed
+ * ottenere statistiche d'uso
+ */
+
 // header server
 #include <server-utils.h>
 // header API
@@ -20,18 +29,18 @@
 #include <string.h>
 #include <errno.h>
 
-// Effettua la rimozione del socket e liberazione della memoria occupata dalla struttura dati del server
+/// Effettua la rimozione del socket e liberazione della memoria occupata dalla struttura dati del server
 void clean_server(struct serv_params *params, struct fs_ds_t *ds);
-// Accetta la connessione e restituisce il socket da usare (o -1 in caso di errore)
+/// Accetta la connessione e restituisce il socket da usare (o -1 in caso di errore)
 int accept_connection(const int serv_sock);
-// Legge dal socket del client (client_fd) la richiesta e la inserisce nella coda per servirla
+/// Legge dal socket del client (client_fd) la richiesta e la inserisce nella coda per servirla
 int processRequest(struct fs_ds_t *server_ds, const int client_sock);
-// Chiude tutti gli fd in set, rimuovendoli anche dal set
+/// Chiude tutti gli fd in set, rimuovendoli anche dal set
 void close_fd(fd_set *set, const int maxfd);
-// Stampa su stdout delle statistiche di utilizzo del server
+/// Stampa su stdout delle statistiche di utilizzo del server
 void stats(struct serv_params *params, struct fs_ds_t *ds);
 
-// Funzione main del server multithreaded: ricopre il ruolo di thread manager
+/// Funzione main del server multithreaded: ricopre il ruolo di thread manager
 int main(int argc, char **argv) {
     // Ignora SIGPIPE istallando l'apposito signal handler (process-wide)
     struct sigaction ign_pipe;

@@ -1,3 +1,12 @@
+/**
+ * \file utils.c
+ * \brief File contenente l'implementazione di funzioni di utilità
+ *
+ * Questo file contiene l'implementazione delle funzioni di utilità definite in utils.h
+ * tra cui vi sono quelle per la gestione di una coda concorrente (struct Queue)
+ */
+
+
 // header utilità
 #include <utils.h>
 // system call headers
@@ -11,10 +20,13 @@
 #include <stddef.h>
 #include <time.h>
 
-// sorgente contenente varie funzioni di utilità
-
-// Questa funzione prova a riallocare un buffer ad una nuova dimensione passata come parametro
-// Ritorna 0 se ha successo, -1 se si sono verificati errori
+/**
+ * Dato il buffer buf, allocato sullo heap e di dimensione qualunque,
+ * lo rialloca alla dimensione newsz
+ * \param [in,out] buf Puntatore doppio al buffer da riallocare
+ * \param [in] newsz La nuova dimensione del buffer dopo l'esecuzione
+ * \return Ritorna 0 se ha successo (ed eventualmente modifica il contenuto del puntatore buf), -1 altrimenti
+ */
 int rialloca_buffer(char **buf, size_t newsz) {
     char *newbuf = realloc(*buf, newsz);
     if(!newbuf) {
@@ -25,6 +37,12 @@ int rialloca_buffer(char **buf, size_t newsz) {
     return 0;
 }
 
+/**
+ * Partendo dalla stringa base e name construisce il path base/name (duplica gli argomenti)
+ * \param [in] base La base del path da costruire
+ * \param [in] name La parte finale del path da costruire (può contenere '/')
+ * \return Ritorna un puntatore alla stringa "base/name" se ha successo, NULL altrimenti
+ */
 char *get_fullpath(const char *base, const char *name) {
     size_t path_sz = strlen(base) + strlen(name) + 2;
     char *full_path = calloc(path_sz, sizeof(char));
@@ -37,12 +55,16 @@ char *get_fullpath(const char *base, const char *name) {
     return full_path;
 }
 
-// Funzione per convertire una stringa s in un long int
-// isNumber ritorna
-//	0: ok
-//	1: non e' un numbero
-//	2: overflow/underflow
-//
+/**
+ * Funzione per convertire una stringa s in un long int.
+ * isNumber ritorna:
+ * - 0: conversione ok
+ * - 1: non e' un numbero
+ * - 2: overflow/underflow
+ * \param [in] s La stringa da convertire in un intero
+ * \param [out] n Puntatore all'intero risultato della conversione
+ * \return Ritorna un numero corrispondente all'esito della conversione, come riportato nella descrizione
+ */
 int isNumber(const char* s, long* n) {
     if (s==NULL) return 1;
     if (strlen(s)==0) return 1;
@@ -57,7 +79,6 @@ int isNumber(const char* s, long* n) {
     return 1;   // non e' un numero
 }
 
-// duplico la stringa
 int string_dup(char **dest, const char *src) {
     if((*dest = strndup(src, strlen(src) + 1)) == NULL) {
         // errore di duplicazione della stringa, riporto il codice di errore al chiamante
@@ -66,7 +87,13 @@ int string_dup(char **dest, const char *src) {
     return 0;
 }
 
-// funzione di utilità per convertire msec in un delay specificato secondo timespec
+/**
+ * La procedura converte un certo tempo espresso in millisecondi (msec) nella struttura
+ * struct timespec, che ha campi tv_sec (numero di secondi) e tv_nsec (numero di nanosecondi).
+ * La conversione è effettuata in modo da prevenire eventuali overflow del campo nsec se msec > 1000
+ * \param [in] msec Il numero di millisecondi da convertire
+ * \param [out] delay La struttura risultato della conversione (passata come puntatore per far persistere la modifica nel chiamante)
+ */
 void get_delay(const int msec, struct timespec *delay) {
     // dato che il delay è specificato in ms devo convertirlo a ns per scriverlo in timespec
     // Se il delay in ms è troppo grande (>=1000) per essere convertito in ns provo a convertire in secondi
@@ -81,7 +108,10 @@ void get_delay(const int msec, struct timespec *delay) {
     }
 }
 
-// inizializza una coda (vuota): ritorna un puntatore ad essa se ha successo, NULL altrimenti
+/**
+ * Inizializza una coda struct Queue, inizialmente vuota
+ * \return Ritorna un puntatore alla coda allocata dinamicamente se ha successo, NULL altrimenti
+ */
 struct Queue *queue_init(void) {
     struct Queue *q = malloc(sizeof(struct Queue));
     if(!q) {
@@ -93,7 +123,10 @@ struct Queue *queue_init(void) {
     return q;
 }
 
-// Libera la coda puntata da q
+/**
+ * Libera una coda struct Queue, effettuando free anche sui suoi nodi
+ * \param [in] q Un puntatore alla coda da liberare
+ */
 void free_Queue(struct Queue *q) {
     struct node_t *a = NULL;
     while((a = pop(q)) != NULL) {
@@ -103,7 +136,18 @@ void free_Queue(struct Queue *q) {
     free(q);
 }
 
-// funzione per aggiungere alla coda un elemento
+/**
+ * La funzione tenta di aggiungere in coda a q il nodo contenente i dati puntati da data_ptr, di
+ * dimensione size. Può essere settato il campo socket del nodo, se utile.
+ * NOTA: L'operazione richiede sincronizzazione esplicita a carico del chiamante se eseguita
+ * potenzialmente da più thread in contemporanea
+ * \param [in,out] q La coda in cui si vuole inserire il nodo
+ * \param [in] data_ptr I dati da inserire nel nuovo nodo
+ * \param [in] size La dimensione del buffer data_ptr
+ * \param [in] csock Un descrittore di socket mantenuto dal nodo
+ * (di solito usato per sapere a quale socket inviare la risposta di una struct request_t)
+ * \return Ritorna 0 se l'operazione ha successo, -1 altrimenti
+ */
 int enqueue(struct Queue *q, const void *data_ptr, size_t size, const int csock) {
     // alloco un nuovo nodo della coda
     struct node_t *elem = malloc(sizeof(struct node_t));
@@ -134,6 +178,11 @@ int enqueue(struct Queue *q, const void *data_ptr, size_t size, const int csock)
     return 0;
 }
 
+/**
+ * La funzione tenta di rimuovere il nodo di testa della coda q passata come parametro
+ * \param [in,out] q La coda da cui si vuole estrarre un nodo
+ * \return Ritorna un puntatore al nodo estratto da q se ha successo, NULL se la coda era vuota o non inizializzata
+ */
 struct node_t *pop(struct Queue *q) {
     if(q && q->head) {
         struct node_t *tmp = q->head;

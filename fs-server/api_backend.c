@@ -1,11 +1,9 @@
 /**
- * \file api_backend-utils.c
+ * \file api_backend.c
  * \brief File contenente l'implementazione delle funzionalità sui file (apertura, chisura...)
  *
- * Il seguente file contiene l'implementazione delle funzioni che eseguono le operazioni
- * sui file per realizzare la richiesta proveniente dalla API ed estratta dal thread worker.
- * Inoltre sono implementate anche alcune funzioni utili per la manipolazione dei file e
- * l'algoritmo di rimpiazzamento FIFO (cache_miss)
+ * Il file contiene l'implementazione delle operazioni richieste dalla API, ovvero
+ * aprire file, leggerli, scriverli...
  */
 
 // header server
@@ -26,7 +24,7 @@
 #include <errno.h>
 
 /**
- * \brief Concatena le num stringhe in paths in una stringa, separandole con '\n'
+ * \brief Concatena le num stringhe in paths in un'unica stringa
  *
  * La funzione costruisce una stringa contenente i num paths dell'array di stringhe paths.
  * La precondizione è che num >= 0 e deve essere la lunghezza di paths. Inoltre str deve
@@ -799,10 +797,21 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
     return success;
 }
 
-// Se l'operazione precedente del client client_PID (completata con successo) era stata
-// openFile(pathname, O_CREATEFILE|O_LOCKFILE) allora il file pathname viene troncato e
-// viene scritto il contenuto di buf, di dimensione size
-// Se l'operazione ha successo ritorna 0, -1 altrimenti
+/**
+ * \brief Tenta di scrivere il file pathname, con dati buf, nel server
+ *
+ * Implementa la funzione writeFile della API, scrivendo i dati contenuti in buf in un
+ * nuovo file con path pathname se e solo se la precedente richiesta completata con successo
+ * dal server proveniente dal client client_PID è stata openFile(pathname O_CREATEFILE|O_LOCKFILE).
+ * Internamente viene chiamata api_appendToFile() per effettuare la scrittura vera e propria
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] pathname Il path del file da scrivere nel server
+ * \param [in] client_sock Il descrittore del socket sul quale il client richiedente è connesso
+ * \param [in] client_PID Il PID del client che richiede l'operazione
+ * \param [in] size La dimensione del buffer da scrivere
+ * \param [in] buf Il buffer che andrà a costituire la parte dati del file da scrivere
+ * \return Ritorna 0 se viene eseguita con successo, -1 altrimenti
+ */
 int api_writeFile(struct fs_ds_t *ds, const char *pathname,
     const int client_sock, const int client_PID, const size_t size, void *buf)
     {
@@ -852,8 +861,17 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname,
     return ret;
 }
 
-// Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_PID
-// Ritorna 0 se ha successo, -1 altrimenti
+/**
+ * \brief Tenta di assegnare la mututa esclusione sul file con path dato al client che ha effettuato la richiesta
+ *
+ * La funzione fa un tentativo di settare il lock sul file con path dato a condizione che
+ * il file sia stato aperto dal client e che non vi siano altri client che hanno lock sul file
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] pathname Il path del file su cui si vuole settare ME nel server
+ * \param [in] client_sock Il descrittore del socket sul quale il client richiedente è connesso
+ * \param [in] client_PID Il PID del client che richiede l'operazione
+ * \return Ritorna 0 se viene eseguita con successo, -1 altrimenti
+ */
 int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
     int success = 0;
     // La risposta del server
@@ -917,8 +935,18 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock,
 
     return success;
 }
-// Toglie la mutua esclusione sul file pathname (solo se era lockato da client_PID)
-// Ritorna 0 se ha successo, -1 altrimenti
+
+/**
+ * \brief Tenta di togliere la mututa esclusione sul file con path dato al client che ha effettuato la richiesta
+ *
+ * La funzione fa un tentativo di resettare la lock sul file con path dato a condizione che
+ * il file sia stato aperto dal client e sia in stato locked per il client che effettua unlock
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] pathname Il path del file su cui si vuole resettare ME nel server
+ * \param [in] client_sock Il descrittore del socket sul quale il client richiedente è connesso
+ * \param [in] client_PID Il PID del client che richiede l'operazione
+ * \return Ritorna 0 se viene eseguita con successo, -1 altrimenti
+ */
 int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID) {
     // La risposta del server
     struct reply_t *rep = NULL;
@@ -983,8 +1011,18 @@ int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_so
     return success;
 }
 
-// Rimuove dal server il file con path pathname, se presente e lockato da client_PID
-// Ritorna 0 se ha successo, -1 altrimenti
+/**
+ * \brief Tenta di rimuovere il file con path dato dal server
+ *
+ * La funzione rimuove il file con path dato se il file era aperto e in stato locked per
+ * il client che ne richiede la chiusura. Se almeno una delle condizioni non è vera allora
+ * l'operazione fallisce
+ * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
+ * \param [in] pathname Il path del file di cui si vuole effettuare la rimozione
+ * \param [in] client_sock Il descrittore del socket sul quale il client richiedente è connesso
+ * \param [in] client_PID Il PID del client che richiede l'operazione
+ * \return Ritorna 0 se viene eseguita con successo, -1 altrimenti
+ */
 int api_rmFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
     // La risposta del server
     struct reply_t *rep = NULL;

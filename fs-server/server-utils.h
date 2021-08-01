@@ -266,9 +266,7 @@ int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int 
 /// Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
 int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
     const int client_sock,const int client_PID, const size_t size, void *buf);
-/// Se l'operazione precedente del client client_PID (completata con successo) era stata
-/// openFile(pathname, O_CREATEFILE|O_LOCKFILE) allora il file pathname viene troncato e
-/// viene scritto il contenuto di buf, di dimensione size
+/// Scrive il buffer buf in un nuovo file con path pathname nel server
 int api_writeFile(struct fs_ds_t *ds, const char *pathname,
     const int client_sock, const int client_PID, const size_t size, void *buf);
 /// Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_PID

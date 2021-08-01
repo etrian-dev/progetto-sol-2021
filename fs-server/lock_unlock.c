@@ -1,3 +1,10 @@
+/**
+ * \file lock_unlock.c
+ * \brief File contenente l'implementazione di wrapper per pthread_mutex_lock/unlock
+ *
+ * File contenente l'implementazione di wrapper per operazioni di lock/unlock sulla struttura
+ * dati condivisa del server (fs_ds_t)
+ */
 // header server
 #include <server-utils.h>
 // header multithreading
