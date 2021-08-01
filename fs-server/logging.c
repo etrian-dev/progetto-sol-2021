@@ -108,6 +108,7 @@ void *logging(void *params) {
         UNLOCK_OR_KILL(fs_params, &(log_params->mux_logq));
 
         struct log_request *log_req = (struct log_request *)request->data;
+        free(request);
 
         // La terminazione del log thread è determinata dalla lettura di una richiesta di formato speciale
         // ovvero quella con codice di errore -1 e messaggio NULL
@@ -133,7 +134,7 @@ void *logging(void *params) {
         // Scrittura sul file di log della stringa col seguente formato:
         // [data + ora]: messaggio di log: stringa di errore (eventuale)
         dprintf(logfile_fd, "[%s]: %s", timestamp, log_req->message);
-        if(log_req) {
+        if(error_str) {
             dprintf(logfile_fd, ": %s\n", error_str);
         }
         else {
@@ -142,11 +143,12 @@ void *logging(void *params) {
 
         free(log_req->message);
         free(log_req);
-        free(request);
     }
 
     // Chiudo il file di log
     close(logfile_fd);
+    // libero buffer usato per i timestamp
+    free(timestamp);
 
     // log thread terminato con successo
     return 0;
@@ -172,23 +174,47 @@ int put_logmsg(struct logging_params *lp, const int err, char *message) {
         return -1;
     }
     // creo una nuova richiesta ed inizializzo i suoi parametri
-    struct log_request *newrequest = NULL;
-    if((newrequest = malloc(sizeof(struct log_request))) == NULL) {
+    struct node_t *newnode = malloc(sizeof(struct node_t));
+    if(!newnode) {
         return -1;
     }
+    struct log_request *newrequest = malloc(sizeof(struct log_request));
+    if(!newrequest) {
+        free(newnode);
+        return -1;
+    }
+    if(message) {
+        newrequest->message = strdup(message);
+        if(!(newrequest->message)) {
+            free(newrequest);
+            free(newnode);
+            return -1;
+        }
+    }
+    else {
+        newrequest->message = NULL;
+    }
     newrequest->error_code = err;
-    newrequest->message = strdup(message);
+    newnode->data = newrequest;
+    newnode->data_sz = sizeof(struct log_request);
+    newnode->socket = -1;
+    newnode->next = NULL;
 
     // prendo mutex sulla coda
     if(pthread_mutex_lock(&(lp->mux_logq)) != 0) {
         // fallito lock
         return -1;
     }
-    if(enqueue(lp->log_requests, newrequest, sizeof(struct log_request), -1) == -1) {
-        // fallito inserimento della richiesta di log in coda
-        free(newrequest);
-        return -1;
+
+    // Il nuovo nodo è aggiunto in fondo alla coda
+    if(lp->log_requests->tail) {
+        lp->log_requests->tail->next = newnode;
+        lp->log_requests->tail = newnode;
     }
+    else {
+        lp->log_requests->head = lp->log_requests->tail = newnode;
+    }
+
     pthread_cond_signal(&(lp->new_logrequest));
     if(pthread_mutex_unlock(&(lp->mux_logq)) != 0) {
         // fallito unlock
