@@ -185,13 +185,7 @@ struct fs_filedata_t *newfile(const int client, const int flags) {
         // errore di allocazione
         return NULL;
     }
-    if((file->openedBy = malloc(sizeof(int))) == NULL) {
-        // errore di allocazione: libero memoria
-        free_file(file);
-        return NULL;
-    }
-    file->openedBy[0] = client; // setto il file come aperto da questo client
-    file->nopened = 1; // il numero di client che ha il file aperto
+    // Inizializzo i campi della struct
     file->data = NULL;
     file->size = 0;
     pthread_mutex_init(&(file->mux_file), NULL);
@@ -204,6 +198,20 @@ struct fs_filedata_t *newfile(const int client, const int flags) {
     else {
         file->lockedBy = -1;
     }
+    // inizializzo la coda (vuota) di clients in attesa della lock
+    if((file->waiting_clients = queue_init()) == NULL) {
+        free_file(file);
+        return NULL;
+    }
+    pthread_cond_init(&(file->lock_free), NULL);
+    if((file->openedBy = malloc(sizeof(int))) == NULL) {
+        // errore di allocazione: libero memoria
+        free_file(file);
+        return NULL;
+    }
+    file->openedBy[0] = client; // setto il file come aperto da questo client
+    file->nopened = 1; // il numero di client che ha il file aperto
+    
     return file;
 }
 
@@ -219,6 +227,15 @@ void free_file(void *file) {
         }
         if(f->openedBy) {
             free(f->openedBy);
+        }
+        if(f->waiting_clients) {
+            // Se necessario svuoto la coda
+            struct node_t *n = NULL;
+            while((n = pop(f->waiting_clients)) != NULL) {
+                free(n->data);
+                free(n);
+            }
+            free(f->waiting_clients);
         }
         // rilascio lock nel caso in cui fosse acquisita (anche se fallisce non è rilevante)
         pthread_mutex_unlock(&(f->mux_file));

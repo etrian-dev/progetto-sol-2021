@@ -872,7 +872,7 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname,
  * \param [in] client_PID Il PID del client che richiede l'operazione
  * \return Ritorna 0 se viene eseguita con successo, -1 altrimenti
  */
-int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
+pthread_t api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
     int success = 0;
     // La risposta del server
     struct reply_t *rep = NULL;
@@ -896,16 +896,35 @@ int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock,
             }
             file->modifying = 1;
 
-            // Se era lockato da questo client o era libero setto lock
+            // Se era libero o lockato da questo client posso settare la lock immediatamente
             if(file->lockedBy == -1 || file->lockedBy == client_PID) {
                 file->lockedBy = client_PID;
                 // L'operazione ha avuto esito positivo
                 rep = newreply(REPLY_YES, 0, 0, NULL);
             }
+            // Lockato da un altro client: devo attendere che si liberi
             else {
-                // Lockato da un altro client
-                rep = newreply(REPLY_NO, ELOCKED, 0, NULL);
-                success = -1;
+                // Metto in coda il PID del client che deve attendere la lock
+                // ed anche un puntatore alla struttura dati condivisa
+                int r1 = enqueue(file->waiting_clients, &client_PID, sizeof(int), client_sock);
+                int r2 = enqueue(file->waiting_clients, ds, sizeof(struct fs_ds_t), -1);
+                if(r1 == -1 || r2 == -1) {
+                    // falliti inserimenti in coda
+                    rep = newreply(REPLY_NO, errno, 0, NULL);
+                    success = -1;
+                }
+                else {
+                    // resetto flag modifica: non cambia detentore lock
+                    file->modifying = 0;
+                    UNLOCK_OR_KILL(ds, &(file->mux_file));
+                    // Creo un altro thread detached che si incarica dell'attesa
+                    pthread_t waiter_th = 0;
+                    pthread_attr_t attrs;
+                    pthread_attr_init(&attrs);
+                    pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
+                    pthread_create(&waiter_th, &attrs, wait_lock, file);
+                    return waiter_th;
+                }
             }
 
             file->modifying = 0;
@@ -975,6 +994,9 @@ int api_unlockFile(struct fs_ds_t *ds, const char *pathname, const int client_so
             if(file->lockedBy == client_PID) {
                 // Se il file era lockato da questo client allora rimuovo la lock
                 file->lockedBy = -1;
+                // Poi devo segnalare un thread in attesa di questa lock che essa è free
+                pthread_cond_signal(&(file->lock_free));
+
                 rep = newreply(REPLY_YES, 0, 0, NULL);
                 if(!rep) {
                     // Se non posso inviare la risposta ripristino la lock e faccio fallire l'operazione

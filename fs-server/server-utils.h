@@ -65,6 +65,8 @@ void *work(void *params);
 void *term_thread(void *params);
 /// Funzione eseguita dal thread che effettua la scrittura del file di log
 void *logging(void *params);
+/// Funzione eseguita dal thread che attende la liberazione della lock
+void *wait_lock(void *params);
 
 //-----------------------------------------------------------------------------------
 // Strutture dati del server per la memorizzazione dei file ed operazioni su di essi
@@ -83,6 +85,8 @@ struct fs_filedata_t {
     pthread_cond_t mod_completed; ///< CV per controllare la modifica del file
     int modifying;   ///< Flag settata se è in corso una modifica al file (per attendere sulla CV)
     int lockedBy;    ///< Il client (al più uno) che ha la ME sul file. Se nessuno ha ME è settata a -1
+    struct Queue *waiting_clients; ///< Clients in attesa di acquisire lock
+    pthread_cond_t lock_free; ///< CV per aspettare che si liberi lock sul file
     int *openedBy;   ///< Array di socket per i quali questo file è aperto (possono richiedervi operazioni)
     int nopened;     ///< La dimensione (variabile) dell'array openedBy
 };
@@ -270,7 +274,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
 int api_writeFile(struct fs_ds_t *ds, const char *pathname,
     const int client_sock, const int client_PID, const size_t size, void *buf);
 /// Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_PID
-int api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
+pthread_t api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
 /// Toglie la mutua esclusione sul file pathname (solo se era lockato da client_PID)
 int api_unlockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
 /// Rimuove dal server il file con path pathname, se presente e lockato da client_PID

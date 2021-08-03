@@ -148,6 +148,7 @@ void *work(void *params) {
             // Ora path contiene il path completo del file su cui operare
         }
 
+        int write_feedback = 1; // flag per scegliere di mandare feedback o meno (utile sono per api_lockfile)
         // A seconda dell'operazione richiesta chiama la funzione che la implementa
         // e si occupa di fare tutto l'I/O ed i controlli internamente
         switch(request->type) {
@@ -185,6 +186,8 @@ void *work(void *params) {
                 if(file->lockedBy == request->pid) {
                     file->lockedBy = -1;
                 }
+                // segnalo a tutti i thread sospesi che la lock è adesso libera
+                pthread_cond_broadcast(&(file->lock_free));
                 file->modifying = 0;
                 UNLOCK_OR_KILL(ds, &(file->mux_file));
             }
@@ -363,20 +366,29 @@ void *work(void *params) {
         }
         case LOCK_FILE: { // unlock file
             // La mutua esclusione sul file viene garantita solo se il file era aperto
-            // pre questo client e non era lockato da altri client
-            if(api_lockFile(ds, path, client_sock, request->pid) == -1) {
+            // per questo client e non era lockato da altri client
+            pthread_t result;
+            // Se è stato ritornato -1 allora operazione non consentita
+            if((result = api_lockFile(ds, path, client_sock, request->pid)) == -1) {
                 // lockFile non consentita: logging
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", request->pid, path, OP_FAIL);
                 if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
             }
-            else {
+            // Se ritornato 0 allora lock acquisita
+            else if(result == 0) {
                 // lock OK
                 snprintf(msg, BUF_BASESZ, "[CLIENT %d] api_lockFile(%s): %s", request->pid, path, OP_OK);
                 if(put_logmsg(ds->log_thread_config, errno, msg) == -1) {
                     perror(msg);
                 }
+            }
+            // Altrimenti è stato creato il thread per l'attesa
+            else {
+                // Se il client è stato messo in attesa dell'acquisizione della lock
+                // allora non devo mandare subito il feedback
+                write_feedback = 0;
             }
             break;
         }
@@ -430,9 +442,11 @@ void *work(void *params) {
         free(request); // libero la richiesta servita
 
         // Quindi deposito il socket servito nella pipe di feedback
-        if(write(ds->feedback[1], &client_sock, sizeof(client_sock)) == -1) {
-            if(put_logmsg(ds->log_thread_config, errno, "Fallito invio feedback al server") == -1) {
-                perror("Fallito invio feedback al server");
+        if(write_feedback == 1) {
+            if(write(ds->feedback[1], &client_sock, sizeof(client_sock)) == -1) {
+                if(put_logmsg(ds->log_thread_config, errno, "Fallito invio feedback al server") == -1) {
+                    perror("Fallito invio feedback al server");
+                }
             }
         }
         // Aumento il numero di richieste servite da questo worker

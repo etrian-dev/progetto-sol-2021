@@ -6,7 +6,7 @@
 # ed è specificato nel file test1.conf generato dal target test1 del Makefile
 
 # Lancio il server in background con valgrind
-valgrind --leak-check=full ./fs-server.out -f test1.conf &
+valgrind --leak-check=full --track-origins=yes ./fs-server.out -f test1.conf &
 # Recupero il PID del server per inviargli poi il segnale
 server_pid=$!
 # Un breve delay per assicurare che il server sia partito
