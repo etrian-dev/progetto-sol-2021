@@ -75,7 +75,7 @@ void free_op(struct operation **op) {
     if(*op) {
         if((*op)->dir_op) free((*op)->dir_op);
         if((*op)->dir_swp) free((*op)->dir_swp);
-        if((*op)->flist) free_Queue((*op)->flist);
+        if((*op)->flist) free_Queue((*op)->flist, free);
         free(*op);
         *op = NULL;
     }

@@ -258,26 +258,16 @@ void UNLOCK_OR_KILL(struct fs_ds_t *ds, pthread_mutex_t *mutex);
 //-----------------------------------------------------------------------------------
 // Operazioni sui file (implementazione delle funzionalità della API)
 
-/// Apre il file con path pathname (se presente) per il socket passato come parametro con le flag richieste
 int api_openFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID, int flags);
-/// Chiude il file con path pathname (se presente) per il socket passato come parametro
 int api_closeFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID);
-/// Legge il file con path pathname (se presente nel server) e lo invia lungo il socket client_sock
 int api_readFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID);
-/// Legge n file nel server (quelli meno recenti per come è implementata) e li invia al client
-/// Se n<=0 allora legge tutti i file presenti nel server
 int api_readN(struct fs_ds_t *ds, const int n, const int client_sock, const int client_PID);
-/// Scrive in append al file con path pathname (se presente) il buffer buf di lunghezza size
 int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
     const int client_sock,const int client_PID, const size_t size, void *buf);
-/// Scrive il buffer buf in un nuovo file con path pathname nel server
 int api_writeFile(struct fs_ds_t *ds, const char *pathname,
     const int client_sock, const int client_PID, const size_t size, void *buf);
-/// Assegna, se possibile, la mutua esclusione sul file con path pathname al client client_PID
 pthread_t api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
-/// Toglie la mutua esclusione sul file pathname (solo se era lockato da client_PID)
 int api_unlockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID);
-/// Rimuove dal server il file con path pathname, se presente e lockato da client_PID
 int api_rmFile(struct fs_ds_t *ds, const char *pathname, const int client_sock, const int client_PID);
 
 //-----------------------------------------------------------------------------------

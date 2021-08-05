@@ -52,8 +52,8 @@ struct Queue {
 
 /// Inizializza una coda (vuota)
 struct Queue *queue_init(void);
-/// Libera la coda puntata da q (e tutti i suoi nodi)
-void free_Queue(struct Queue *q);
+/// Libera la coda puntata da q
+void free_Queue(struct Queue *q, void (*free_Node)(void *node));
 /// Inserisce il buffer data (di size bytes) nella coda
 int enqueue(struct Queue *q, const void *data_ptr, size_t size, const int csock);
 /// Rimuove e ritorna l'elemento di testa della coda o ritorna NULL se la coda è vuota

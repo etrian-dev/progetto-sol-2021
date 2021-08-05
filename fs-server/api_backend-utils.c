@@ -196,7 +196,7 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
     *files = queue_init();
     if(!(*files)) {
         // fallita alloc coda
-        free_Queue(*paths);
+        free_Queue(*paths, free);
         return -1;
     }
 
@@ -219,8 +219,8 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
 
         if(!victim) {
             // pop ha ritornato NULL per qualche motivo
-            free_Queue(*paths);
-            free_Queue(*files);
+            free_Queue(*paths, free);
+            free_Queue(*files, free);
             return -1;
         }
 
@@ -267,8 +267,8 @@ int cache_miss(struct fs_ds_t *ds, size_t newsz, struct Queue **paths, struct Qu
         else {
             UNLOCK_OR_KILL(ds, &(fptr->mux_file));
             UNLOCK_OR_KILL(ds, &(ds->mux_mem));
-            free_Queue(*paths);
-            free_Queue(*files);
+            free_Queue(*paths, free);
+            free_Queue(*files, free_file);
             free(victim->data);
             free(victim);
             return -1;

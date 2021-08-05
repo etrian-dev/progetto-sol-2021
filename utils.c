@@ -126,11 +126,14 @@ struct Queue *queue_init(void) {
 /**
  * Libera una coda struct Queue, effettuando free anche sui suoi nodi
  * \param [in] q Un puntatore alla coda da liberare
+ * \param [in] free_Node Puntatore alla funzione usata per liberare il campo dati del nodo
  */
-void free_Queue(struct Queue *q) {
+void free_Queue(struct Queue *q, void (*free_Node)(void *node)) {
     struct node_t *a = NULL;
     while((a = pop(q)) != NULL) {
-        if(a->data) free(a->data);
+        if(a->data) {
+            free_Node(a->data);
+        }
         free(a);
     }
     free(q);

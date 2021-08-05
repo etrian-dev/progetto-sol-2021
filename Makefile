@@ -8,7 +8,7 @@ LIBPATH = -L ./libs
 UTILS   = libs/libutilities.so
 HTABLE  = libs/libicl_hash.so
 
-.PHONY: all shell_perms dirs clean cleanall test1 test2
+.PHONY: all shell_perms dirs clean cleanall test1 test2 doc
 
 all: shell_perms dirs $(UTILS) $(HTABLE)
 	# Creo il file di configurazione di default del server
@@ -54,3 +54,5 @@ test2: all
 	./makeconf.sh 4 1 10 test2.sock test2.log test2.conf
 	# testo il server tramite questo script
 	./test2.sh test2.sock
+doc: doxygen-config
+	doxygen $<

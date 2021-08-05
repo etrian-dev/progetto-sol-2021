@@ -118,8 +118,8 @@ int main(int argc, char **argv) {
                         free(file_data);
                     }
                 }
-                free_Queue(lfiles);
-                free_Queue(ldata);
+                free_Queue(lfiles, free);
+                free_Queue(ldata, free);
                 break;
             }
             case READ_N_FILES: { // l'opzione -R viene trattata in modo speciale

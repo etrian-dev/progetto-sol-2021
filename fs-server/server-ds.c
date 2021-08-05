@@ -124,10 +124,10 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
         }
         // libero le code di job e di cache
         if(server_ds->job_queue) {
-            free_Queue(server_ds->job_queue);
+            free_Queue(server_ds->job_queue, free);
         }
         if(server_ds->cache_q) {
-            free_Queue(server_ds->cache_q);
+            free_Queue(server_ds->cache_q, free);
         }
 
         // libero l'array di client
@@ -154,7 +154,7 @@ void free_serv_ds(struct fs_ds_t *server_ds) {
         // stringa in serv_params (in server.c) e quella viene deallocata comunque
         // alla terminazione del server
         if(server_ds->log_thread_config && server_ds->log_thread_config->log_requests) {
-            free_Queue(server_ds->log_thread_config->log_requests);
+            free_Queue(server_ds->log_thread_config->log_requests, free);
         }
         if(server_ds->log_thread_config) {
             free(server_ds->log_thread_config->log_fpath);

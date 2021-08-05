@@ -727,7 +727,7 @@ int api_appendToFile(struct fs_ds_t *ds, const char *pathname,
                     // devo quindi concatenare gli nevicted path dei file in all_paths e separarli con '\n'
                     build_pathstr(&all_paths, paths, nevicted);
                     // quindi posso deallocare la lista di path
-                    free_Queue(evicted_paths);
+                    free_Queue(evicted_paths, free);
                     // aggiorno info client
                     if(update_client_op(ds, client_sock, client_PID, APPEND_FILE, 0, pathname) == -1) {
                         // fallito aggiornamento stato client
@@ -864,13 +864,23 @@ int api_writeFile(struct fs_ds_t *ds, const char *pathname,
 /**
  * \brief Tenta di assegnare la mututa esclusione sul file con path dato al client che ha effettuato la richiesta
  *
- * La funzione fa un tentativo di settare il lock sul file con path dato a condizione che
- * il file sia stato aperto dal client e che non vi siano altri client che hanno lock sul file
+ * La funzione tenta di assegnare la mututa esclusione sul file con path pathname
+ * al client richiedente.
+ * Condizioni necessarie per ottenere ME:
+ * - Il file con path pathname è presente nel server
+ * - Il file è aperto dal client client_PID
+ * Se nessun client ha la ME sul file richiesto, essa viene assegnata al client richiedente.
+ * Se vi è un client che detiene la ME sul file allora il client viene messo in coda di attesa
+ * e viene creato un thread dedicato che aspetta di ricevere la notifica dell'unlock.
+ * Nel secondo caso la risposta di lock acquisita ed il feedback al server sarà
+ * inviato dal thread di attesa (wait_lock)
  * \param [in,out] ds La struttura dati condivisa del server, dove sono memorizzati i file
  * \param [in] pathname Il path del file su cui si vuole settare ME nel server
  * \param [in] client_sock Il descrittore del socket sul quale il client richiedente è connesso
  * \param [in] client_PID Il PID del client che richiede l'operazione
- * \return Ritorna 0 se viene eseguita con successo, -1 altrimenti
+ * \return Ritorna 0 se la ME viene acquisita senza attendere, il TID del thread
+ * che effettua l'attesa (intero > 0) se il client viene messo in attesa del completamento
+ * dell'operazione, -1 altrimenti
  */
 pthread_t api_lockFile(struct fs_ds_t*ds, const char *pathname, const int client_sock, const int client_PID) {
     int success = 0;
